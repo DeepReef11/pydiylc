@@ -47,6 +47,7 @@ All component constructors are dataclasses — every field has a sensible defaul
 |---|---|---|
 | `BlankBoard` | `diylc.boards.BlankBoard` | Plain rectangular board |
 | `PerfBoard` | `diylc.boards.PerfBoard` | Perfboard with through-hole grid |
+| `VeroBoard` | `diylc.boards.VeroBoard` | Stripboard (continuous copper strips) |
 | `Resistor` | `diylc.passive.Resistor` | Through-hole resistor (two-pin) |
 | `RadialFilmCapacitor` | `diylc.passive.RadialFilmCapacitor` | Film cap (two-pin, default unit `nF`) |
 | `RadialCeramicDiskCapacitor` | `diylc.passive.RadialCeramicDiskCapacitor` | Ceramic disk cap (two-pin, default unit `pF`) |
@@ -60,6 +61,10 @@ All component constructors are dataclasses — every field has a sensible defaul
 | `Jumper` | `diylc.connectivity.Jumper` | Insulated jumper wire (two-pin) |
 | `HookupWire` | `diylc.connectivity.HookupWire` | Curved insulated wire (2 or 4 control points) |
 | `SolderPad` | `diylc.connectivity.SolderPad` | Single pad / drilled hole |
+| `TraceCut` | `diylc.connectivity.TraceCut` | Breaks a stripboard strip at one hole |
+| `MiniToggleSwitch` | `diylc.electromechanical.MiniToggleSwitch` | Toggle / 3PDT bypass foot switch |
+| `PlasticDCJack` | `diylc.electromechanical.PlasticDCJack` | 2.1mm DC barrel (pedal power) |
+| `OpenJack1_4` | `diylc.electromechanical.OpenJack1_4` | Open-frame 1/4" guitar jack |
 | `Label` | `diylc.misc.Label` | Free-floating text |
 
 For exact field lists, defaults, types, and allowed enum values, load **`catalog.json`** at repo root. It is the canonical machine-readable schema.
@@ -112,6 +117,10 @@ Two-pin components parse their `value` string as `number + unit`:
 - `pin_count` (DIL_IC): `_4`, `_6`, `_8`, `_10`, ... `_50` (even values only)
 - `taper` (PotentiometerPanel): `LIN`, `LOG`, `REV_LOG`, `W`, `S`, `M`, `N`
 - `view` (PotentiometerPanel): `ShaftDown`, `ShaftUp`
+- `switch_type` (MiniToggleSwitch): `SPST`, `SPDT`, `SPDT_off`, `DPDT`, `DPDT_off`, `DPDT_ononon_1/2`, `_3PDT`, `_3PDT_off`, `_4PDT`, `_4PDT_off`, `_4PDT_ononon_1/2`, `_5PDT`, `_5PDT_off`. Use `_3PDT` for a true-bypass foot switch.
+- `polarity` (PlasticDCJack): `NONE`, `CENTER_POSITIVE`, `CENTER_NEGATIVE` (most pedals are CENTER_NEGATIVE)
+- `type` (OpenJack1_4): `MONO`, `STEREO`, `SWITCHED`
+- `orientation` (VeroBoard, TraceCut, MiniToggleSwitch): `HORIZONTAL`, `VERTICAL`. For stripboard the trace cut orientation must match the parent board's.
 - `gauge` (HookupWire AWG): `_12` ... `_30`
 - `type` (SolderPad): `ROUND`, `SQUARE`, `OVAL_HORIZONTAL`, `OVAL_VERTICAL`
 - `style` (Jumper, HookupWire): `SOLID`, `DASHED`, `DOTTED`
@@ -137,7 +146,7 @@ Anywhere a color is accepted, pass a 6- or 3-char hex string (no `#`) or an int.
 - No reading/parsing of existing `.diy` files yet (emit only).
 - No rendering — DIYLC renders. To get a preview image, run DIYLC headless:
   `diylc -convert input.diy output.png`
-- Switches, jacks, tubes, transformers, BJT/FET/IC schematic symbols, stripboard, and rotary controls are not yet implemented. They follow the same pattern when added.
+- Tubes, transformers, BJT/FET/IC schematic symbols, lever switches, rotary controls, and TO-220/TO-3 transistor packages are not yet implemented. They follow the same pattern when added.
 
 ## Where to look next
 

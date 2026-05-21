@@ -96,6 +96,26 @@ POT_TYPE = ("ThroughHole", "PCB")
 # Potentiometer view orientation
 POT_VIEW = ("ShaftDown", "ShaftUp")
 
+# Two-state orientation used by stripboard cuts, mini toggle switches
+ORIENTATION_HV = ("HORIZONTAL", "VERTICAL")
+
+# Mini toggle switch types — covers everything from SPST to 5PDT footswitches.
+# A 3PDT pedal foot switch is `_3PDT` (or `_3PDT_off` for momentary).
+TOGGLE_SWITCH_TYPE = (
+    "SPST",
+    "SPDT", "SPDT_off",
+    "DPDT", "DPDT_off", "DPDT_ononon_1", "DPDT_ononon_2",
+    "_3PDT", "_3PDT_off",
+    "_4PDT", "_4PDT_off", "_4PDT_ononon_1", "_4PDT_ononon_2",
+    "_5PDT", "_5PDT_off",
+)
+
+# OpenJack1_4 type
+OPEN_JACK_TYPE = ("MONO", "STEREO", "SWITCHED")
+
+# DC barrel jack polarity
+DC_POLARITY = ("NONE", "CENTER_POSITIVE", "CENTER_NEGATIVE")
+
 
 def check(field: str, value, allowed: tuple[str, ...]) -> None:
     """Raise ValueError listing allowed values when value isn't permitted."""

@@ -8,11 +8,16 @@ rendering engine — pydiylc just produces files it can open.
 
 ## Status
 
-Pre-alpha. Current component set: boards (`BlankBoard`, `PerfBoard`),
-passives (`Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`,
-`RadialElectrolytic`, `PotentiometerPanel`), semiconductors (`DiodePlastic`,
-`LED`, `TransistorTO92`, `DIL_IC`), connectivity (`CopperTrace`, `Jumper`,
-`HookupWire`, `SolderPad`), and `Label`.
+Pre-alpha. Current component set:
+
+- **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard` (stripboard)
+- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `PotentiometerPanel`
+- **Semiconductors**: `DiodePlastic`, `LED`, `TransistorTO92`, `DIL_IC`
+- **Connectivity**: `CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `TraceCut`
+- **Electromechanical**: `MiniToggleSwitch` (incl. 3PDT bypass), `PlasticDCJack`, `OpenJack1_4`
+- `Label`
+
+A complete pedal layout — stripboard, transistor, pot, 3PDT bypass, DC and 1/4" jacks — is buildable in code or via JSON (see `examples/demo_lpb1_stripboard.py`).
 
 ## AI-friendly by design
 

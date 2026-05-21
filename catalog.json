@@ -229,6 +229,37 @@
     "POT_VIEW": [
       "ShaftDown",
       "ShaftUp"
+    ],
+    "ORIENTATION_HV": [
+      "HORIZONTAL",
+      "VERTICAL"
+    ],
+    "TOGGLE_SWITCH_TYPE": [
+      "SPST",
+      "SPDT",
+      "SPDT_off",
+      "DPDT",
+      "DPDT_off",
+      "DPDT_ononon_1",
+      "DPDT_ononon_2",
+      "_3PDT",
+      "_3PDT_off",
+      "_4PDT",
+      "_4PDT_off",
+      "_4PDT_ononon_1",
+      "_4PDT_ononon_2",
+      "_5PDT",
+      "_5PDT_off"
+    ],
+    "OPEN_JACK_TYPE": [
+      "MONO",
+      "STEREO",
+      "SWITCHED"
+    ],
+    "DC_POLARITY": [
+      "NONE",
+      "CENTER_POSITIVE",
+      "CENTER_NEGATIVE"
     ]
   },
   "components": [
@@ -446,6 +477,176 @@
             "kind": "string"
           },
           "default": "Letters",
+          "required": false,
+          "enum": [
+            "Numbers",
+            "Letters"
+          ]
+        },
+        {
+          "name": "coordinate_origin",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Top_Left",
+          "required": false,
+          "enum": [
+            "Top_Left",
+            "Top_Right",
+            "Bottom_Left",
+            "Bottom_Right"
+          ]
+        },
+        {
+          "name": "coordinate_display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "One_Side",
+          "required": false,
+          "enum": [
+            "None",
+            "One_Side",
+            "Both_Sides"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "VeroBoard",
+      "diylc_class": "diylc.boards.VeroBoard",
+      "doc": "Stripboard / Veroboard \u2014 a perfboard with continuous copper strips.\n\nXML: ``<diylc.boards.VeroBoard>``\n\nStrip orientation is set with `orientation`: ``\"HORIZONTAL\"`` means strips\nrun along the X axis (rows), ``\"VERTICAL\"`` means strips run down the Y\naxis (columns). To break a strip, place a :class:`TraceCut` on top.\n\nExample::\n\n    p.add(VeroBoard(\"Board1\", x1=1.0, y1=1.0, x2=2.2, y2=2.5))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f8ebb3",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ada47d",
+          "required": false
+        },
+        {
+          "name": "strip_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "da8a67",
+          "required": false
+        },
+        {
+          "name": "coordinate_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "666666",
+          "required": false
+        },
+        {
+          "name": "spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "HORIZONTAL",
+          "required": false,
+          "enum": [
+            "HORIZONTAL",
+            "VERTICAL"
+          ]
+        },
+        {
+          "name": "x_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Numbers",
+          "required": false,
+          "enum": [
+            "Numbers",
+            "Letters"
+          ]
+        },
+        {
+          "name": "y_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Numbers",
           "required": false,
           "enum": [
             "Numbers",
@@ -2577,6 +2778,359 @@
             "value": 0.8,
             "unit": "mm"
           },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TraceCut",
+      "diylc_class": "diylc.connectivity.TraceCut",
+      "doc": "Break a stripboard strip at a single hole.\n\nXML: ``<diylc.connectivity.TraceCut>``\n\nPlace one on each strip you want to interrupt. `orientation` should\nmatch the parent VeroBoard's strip orientation: ``\"HORIZONTAL\"`` cuts\nhorizontal strips, ``\"VERTICAL\"`` cuts vertical ones.\n\nExample::\n\n    p.add(TraceCut(\"C1\", x=1.4, y=1.5))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.08,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "fill_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f8ebb3",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f8ebb3",
+          "required": false
+        },
+        {
+          "name": "cut_between_holes",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VERTICAL",
+          "required": false,
+          "enum": [
+            "HORIZONTAL",
+            "VERTICAL"
+          ]
+        },
+        {
+          "name": "hole_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "MiniToggleSwitch",
+      "diylc_class": "diylc.electromechanical.MiniToggleSwitch",
+      "doc": "Mini toggle switch \u2014 also covers 3PDT pedal foot switches.\n\nXML: ``<diylc.electromechanical.MiniToggleSwitch>``\n\nAnchor (`x`, `y`) is lug 1. Remaining lugs lay out along the orientation\naxis based on `switch_type` (pole count) \u2014 2 lugs for SPST, 6 for DPDT,\n9 for 3PDT, 12 for 4PDT, 15 for 5PDT. For a bypass 3PDT use\n``switch_type=\"_3PDT\"``.\n\nExample::\n\n    p.add(MiniToggleSwitch(\"SW1\", x=2.0, y=4.0, switch_type=\"_3PDT\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "switch_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DPDT",
+          "required": false,
+          "enum": [
+            "SPST",
+            "SPDT",
+            "SPDT_off",
+            "DPDT",
+            "DPDT_off",
+            "DPDT_ononon_1",
+            "DPDT_ononon_2",
+            "_3PDT",
+            "_3PDT_off",
+            "_4PDT",
+            "_4PDT_off",
+            "_4PDT_ononon_1",
+            "_4PDT_ononon_2",
+            "_5PDT",
+            "_5PDT_off"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VERTICAL",
+          "required": false,
+          "enum": [
+            "HORIZONTAL",
+            "VERTICAL"
+          ]
+        },
+        {
+          "name": "spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3299cc",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "236b8e",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PlasticDCJack",
+      "diylc_class": "diylc.electromechanical.PlasticDCJack",
+      "doc": "Plastic 2.1mm DC barrel jack (the \"Boss-style\" power input).\n\nXML: ``<diylc.electromechanical.PlasticDCJack>``\n\nThree terminals: tip, sleeve, and switch contact. Anchor is the tip lug.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "polarity",
+          "type": {
+            "kind": "string"
+          },
+          "default": "CENTER_NEGATIVE",
+          "required": false,
+          "enum": [
+            "NONE",
+            "CENTER_POSITIVE",
+            "CENTER_NEGATIVE"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "OpenJack1_4",
+      "diylc_class": "diylc.electromechanical.OpenJack1_4",
+      "doc": "Open-frame 1/4\" audio jack \u2014 the standard \"Switchcraft 11\"-style guitar jack.\n\nXML: ``<diylc.electromechanical.OpenJack1_4>``\n\nAnchor is the tip lug. Use `type=\"MONO\"` for input, `\"STEREO\"` for\nstereo, `\"SWITCHED\"` for an input jack that disconnects ground when\nno plug is inserted (battery save on pedals).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "MONO",
+          "required": false,
+          "enum": [
+            "MONO",
+            "STEREO",
+            "SWITCHED"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "angle",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "show_labels",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
           "required": false
         }
       ]

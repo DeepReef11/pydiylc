@@ -117,6 +117,78 @@ class BlankBoard(Component):
 
 
 @dataclass
+class VeroBoard(Component):
+    """Stripboard / Veroboard — a perfboard with continuous copper strips.
+
+    XML: ``<diylc.boards.VeroBoard>``
+
+    Strip orientation is set with `orientation`: ``"HORIZONTAL"`` means strips
+    run along the X axis (rows), ``"VERTICAL"`` means strips run down the Y
+    axis (columns). To break a strip, place a :class:`TraceCut` on top.
+
+    Example::
+
+        p.add(VeroBoard("Board1", x1=1.0, y1=1.0, x2=2.2, y2=2.5))
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    alpha: int = 127
+    value: str = ""
+    board_color: str = "f8ebb3"
+    border_color: str = "ada47d"
+    strip_color: str = "da8a67"
+    coordinate_color: str = "666666"
+    spacing: Measure = field(default_factory=lambda: inches(0.1))
+    orientation: str = "HORIZONTAL"
+    x_type: str = "Numbers"
+    y_type: str = "Numbers"
+    coordinate_origin: str = "Top_Left"
+    coordinate_display: str = "One_Side"
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.VeroBoard"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION_HV,
+        "x_type": E.COORDINATE_AXIS,
+        "y_type": E.COORDINATE_AXIS,
+        "coordinate_origin": E.COORDINATE_ORIGIN,
+        "coordinate_display": E.COORDINATE_DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.boards.VeroBoard>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}    <point x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <boardColor hex="{hex_color(self.board_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <coordinateColor hex="{hex_color(self.coordinate_color)}"/>\n'
+            f"{pad}  <xType>{self.x_type}</xType>\n"
+            f"{pad}  <coordinateOrigin>{self.coordinate_origin}</coordinateOrigin>\n"
+            f"{pad}  <coordinateDisplay>{self.coordinate_display}</coordinateDisplay>\n"
+            f"{pad}  <yType>{self.y_type}</yType>\n"
+            f"{pad}  <spacing {self.spacing.attrs()}/>\n"
+            f'{pad}  <stripColor hex="{hex_color(self.strip_color)}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}</diylc.boards.VeroBoard>"
+        )
+
+
+@dataclass
 class PerfBoard(Component):
     """Perfboard with through-hole pads on a grid.
 
@@ -939,6 +1011,59 @@ class HookupWire(Component):
 
 
 @dataclass
+class TraceCut(Component):
+    """Break a stripboard strip at a single hole.
+
+    XML: ``<diylc.connectivity.TraceCut>``
+
+    Place one on each strip you want to interrupt. `orientation` should
+    match the parent VeroBoard's strip orientation: ``"HORIZONTAL"`` cuts
+    horizontal strips, ``"VERTICAL"`` cuts vertical ones.
+
+    Example::
+
+        p.add(TraceCut("C1", x=1.4, y=1.5))
+    """
+
+    name: str
+    x: float
+    y: float
+    size: Measure = field(default_factory=lambda: inches(0.08))
+    fill_color: str = "f8ebb3"
+    border_color: str = "808080"
+    board_color: str = "f8ebb3"
+    cut_between_holes: bool = False
+    orientation: str = "VERTICAL"
+    hole_spacing: Measure = field(default_factory=lambda: inches(0.1))
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.TraceCut"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION_HV,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.connectivity.TraceCut>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f'{pad}  <fillColor hex="{hex_color(self.fill_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <boardColor hex="{hex_color(self.board_color)}"/>\n'
+            f"{pad}  <cutBetweenHoles>{str(self.cut_between_holes).lower()}</cutBetweenHoles>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <holeSpacing {self.hole_spacing.attrs()}/>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f"{pad}</diylc.connectivity.TraceCut>"
+        )
+
+
+@dataclass
 class SolderPad(Component):
     """Single solder pad / drilled hole.
 
@@ -1114,11 +1239,194 @@ class Label(Component):
         )
 
 
+# ---------------------------------------------------------------------------
+# Electromechanical
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MiniToggleSwitch(Component):
+    """Mini toggle switch — also covers 3PDT pedal foot switches.
+
+    XML: ``<diylc.electromechanical.MiniToggleSwitch>``
+
+    Anchor (`x`, `y`) is lug 1. Remaining lugs lay out along the orientation
+    axis based on `switch_type` (pole count) — 2 lugs for SPST, 6 for DPDT,
+    9 for 3PDT, 12 for 4PDT, 15 for 5PDT. For a bypass 3PDT use
+    ``switch_type="_3PDT"``.
+
+    Example::
+
+        p.add(MiniToggleSwitch("SW1", x=2.0, y=4.0, switch_type="_3PDT"))
+    """
+
+    name: str
+    x: float
+    y: float
+    switch_type: str = "DPDT"
+    orientation: str = "VERTICAL"
+    spacing: Measure = field(default_factory=lambda: inches(0.2))
+    alpha: int = 127
+    body_color: str = "3299cc"
+    border_color: str = "236b8e"
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.MiniToggleSwitch"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "switch_type": E.TOGGLE_SWITCH_TYPE,
+        "orientation": E.ORIENTATION_HV,
+    }
+
+    _LUG_COUNT_BY_TYPE: ClassVar[dict[str, int]] = {
+        "SPST": 2,
+        "SPDT": 3, "SPDT_off": 3,
+        "DPDT": 6, "DPDT_off": 6, "DPDT_ononon_1": 6, "DPDT_ononon_2": 6,
+        "_3PDT": 9, "_3PDT_off": 9,
+        "_4PDT": 12, "_4PDT_off": 12, "_4PDT_ononon_1": 12, "_4PDT_ononon_2": 12,
+        "_5PDT": 15, "_5PDT_off": 15,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        # Switches are wired in 2- or 3-row grids. Convert spacing to inches.
+        s = self.spacing.value
+        if self.spacing.unit == "mm":
+            s = s / 25.4
+        elif self.spacing.unit == "cm":
+            s = s / 2.54
+        n = self._LUG_COUNT_BY_TYPE[self.switch_type]
+        # Pole count = ceil(n/positions_per_pole); for our purposes lay out
+        # n lugs in a single column at `spacing` apart along orientation.
+        # DIYLC's editor splits poles across rows visually, but the saved
+        # control points are a flat list — one per lug.
+        pts: list[Point] = []
+        for i in range(n):
+            if self.orientation == "VERTICAL":
+                pts.append((self.x, self.y + i * s))
+            else:
+                pts.append((self.x + i * s, self.y))
+        return pts
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.electromechanical.MiniToggleSwitch>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <switchType>{self.switch_type}</switchType>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <spacing {self.spacing.attrs()}/>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}</diylc.electromechanical.MiniToggleSwitch>"
+        )
+
+
+@dataclass
+class PlasticDCJack(Component):
+    """Plastic 2.1mm DC barrel jack (the "Boss-style" power input).
+
+    XML: ``<diylc.electromechanical.PlasticDCJack>``
+
+    Three terminals: tip, sleeve, and switch contact. Anchor is the tip lug.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    polarity: str = "CENTER_NEGATIVE"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.PlasticDCJack"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "polarity": E.DC_POLARITY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # DIYLC stores 3 control points (tip, sleeve, switch) relative to anchor.
+        # 0.1 in offsets approximate a typical Boss-style jack footprint.
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x + 0.1, self.y + 0.1),
+            (self.x - 0.1, self.y + 0.2),
+        ]
+        return (
+            f"{pad}<diylc.electromechanical.PlasticDCJack>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <polarity>{self.polarity}</polarity>\n"
+            f"{pad}</diylc.electromechanical.PlasticDCJack>"
+        )
+
+
+@dataclass
+class OpenJack1_4(Component):
+    """Open-frame 1/4" audio jack — the standard "Switchcraft 11"-style guitar jack.
+
+    XML: ``<diylc.electromechanical.OpenJack1_4>``
+
+    Anchor is the tip lug. Use `type="MONO"` for input, `"STEREO"` for
+    stereo, `"SWITCHED"` for an input jack that disconnects ground when
+    no plug is inserted (battery save on pedals).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    type: str = "MONO"
+    orientation: str = "DEFAULT"
+    angle: int = 0
+    show_labels: bool = True
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.OpenJack1_4"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "type": E.OPEN_JACK_TYPE,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 3 control points: tip, sleeve, (ring/switch). Use 0.1 in offsets.
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x, self.y + 0.1),
+            (self.x, self.y + 0.2),
+        ]
+        return (
+            f"{pad}<diylc.electromechanical.OpenJack1_4>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <angle>{self.angle}</angle>\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}  <showLabels>{str(self.show_labels).lower()}</showLabels>\n"
+            f"{pad}</diylc.electromechanical.OpenJack1_4>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
     BlankBoard,
     PerfBoard,
+    VeroBoard,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1132,5 +1440,9 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     Jumper,
     HookupWire,
     SolderPad,
+    TraceCut,
+    MiniToggleSwitch,
+    PlasticDCJack,
+    OpenJack1_4,
     Label,
 )

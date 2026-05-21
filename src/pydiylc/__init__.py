@@ -9,6 +9,7 @@ from .components import (
     Component,
     BlankBoard,
     PerfBoard,
+    VeroBoard,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -22,6 +23,10 @@ from .components import (
     Jumper,
     HookupWire,
     SolderPad,
+    TraceCut,
+    MiniToggleSwitch,
+    PlasticDCJack,
+    OpenJack1_4,
     Label,
 )
 
@@ -38,6 +43,7 @@ __all__ = [
     "Component",
     "BlankBoard",
     "PerfBoard",
+    "VeroBoard",
     "Resistor",
     "RadialFilmCapacitor",
     "RadialCeramicDiskCapacitor",
@@ -51,6 +57,10 @@ __all__ = [
     "Jumper",
     "HookupWire",
     "SolderPad",
+    "TraceCut",
+    "MiniToggleSwitch",
+    "PlasticDCJack",
+    "OpenJack1_4",
     "Label",
 ]
 
