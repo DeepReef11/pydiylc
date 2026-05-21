@@ -160,6 +160,7 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         win = Gtk.ApplicationWindow(application=_app)
         win.set_title(title)
         win.set_default_size(1100, 750)
+        state.window = win
 
         header = Gtk.HeaderBar()
         win.set_titlebar(header)
@@ -188,6 +189,7 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", _make_drag_begin(state))
         drag.connect("drag-update", _make_drag_update(state, canvas))
+        drag.connect("drag-end", _make_drag_end(state, canvas))
         canvas.add_controller(drag)
 
         scroll = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
@@ -227,9 +229,16 @@ class _ViewerState:
         self.pan_y: float = 30.0
         self.selected_name: str | None = None
         self.last_drag_pan: tuple[float, float] | None = None
+        # Component-move state. When the user Ctrl+drags, this holds the
+        # component being dragged plus its original anchor so we can compute
+        # deltas live and propose the final move on drag-end.
+        self.moving_component = None
+        self.moving_orig_anchor: tuple[float, float] | None = None
+        self.last_drag_delta: tuple[float, float] = (0.0, 0.0)
         # Filled in by show()
         self.canvas = None
         self.status_lbl = None
+        self.window = None
         self.error_msg: str | None = None
 
 
@@ -288,19 +297,246 @@ def _make_click_handler(state: _ViewerState, canvas):
 
 
 def _make_drag_begin(state: _ViewerState):
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gdk
+
     def on_begin(gesture, x, y):
+        # Determine the mode based on whether Ctrl is held.
+        device = gesture.get_device()
+        seat = device.get_seat() if device else None
+        ctrl_held = False
+        if seat is not None:
+            kbd = seat.get_keyboard()
+            if kbd is not None:
+                ctrl_held = bool(kbd.get_modifier_state() & Gdk.ModifierType.CONTROL_MASK)
+
+        # If Ctrl is held and a hit is under the cursor, enter move-component
+        # mode. Otherwise plain pan.
+        if ctrl_held:
+            cx, cy = _project_xy_from_screen(state, x, y)
+            hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
+            if hit is not None:
+                state.moving_component = hit
+                state.moving_orig_anchor = _current_anchor(hit)
+                state.last_drag_delta = (0.0, 0.0)
+                state.selected_name = getattr(hit, "name", None)
+                _refresh_status(state)
+                return
         state.last_drag_pan = (state.pan_x, state.pan_y)
+        state.moving_component = None
     return on_begin
 
 
 def _make_drag_update(state: _ViewerState, canvas):
     def on_update(gesture, dx, dy):
+        if state.moving_component is not None:
+            # Move-component mode. Convert pixel delta to inches via the
+            # current zoom, undoing our previous delta first so the net move
+            # is exactly (dx, dy) from the drag-begin point.
+            inch_dx_now = dx / state.zoom / cairo_render.PX_PER_INCH
+            inch_dy_now = dy / state.zoom / cairo_render.PX_PER_INCH
+            prev_dx, prev_dy = state.last_drag_delta
+            step_dx = inch_dx_now - prev_dx
+            step_dy = inch_dy_now - prev_dy
+            try:
+                from .edit import move_component_inplace
+                move_component_inplace(state.moving_component, step_dx, step_dy)
+                state.last_drag_delta = (inch_dx_now, inch_dy_now)
+            except TypeError:
+                pass
+            canvas.queue_draw()
+            return
         if state.last_drag_pan is None:
             return
         state.pan_x = state.last_drag_pan[0] + dx
         state.pan_y = state.last_drag_pan[1] + dy
         canvas.queue_draw()
     return on_update
+
+
+def _make_drag_end(state: _ViewerState, canvas):
+    def on_end(gesture, dx, dy):
+        if state.moving_component is None:
+            return
+        comp = state.moving_component
+        new_anchor = _current_anchor(comp)
+        orig = state.moving_orig_anchor
+        # Reset move-state regardless of whether we apply.
+        state.moving_component = None
+        state.moving_orig_anchor = None
+        state.last_drag_delta = (0.0, 0.0)
+        if orig is None or new_anchor == orig:
+            return
+        # Snap the new anchor to the project grid (0.1 in default).
+        grid = state.project.grid_inches or 0.1
+        new_x = round(new_anchor[0] / grid) * grid
+        new_y = round(new_anchor[1] / grid) * grid
+        # Re-align the in-memory component to the snapped anchor so the
+        # preview matches what we'd write to disk.
+        from .edit import move_component_inplace
+        cur = _current_anchor(comp)
+        try:
+            move_component_inplace(comp, new_x - cur[0], new_y - cur[1])
+        except TypeError:
+            pass
+        canvas.queue_draw()
+        _propose_and_dialog(state, comp, orig, (new_x, new_y))
+    return on_end
+
+
+def _current_anchor(component) -> tuple[float, float]:
+    """Return the component's display anchor: its first endpoint."""
+    if hasattr(component, "x1") and hasattr(component, "y1"):
+        return float(component.x1), float(component.y1)
+    if hasattr(component, "x") and hasattr(component, "y"):
+        return float(component.x), float(component.y)
+    if hasattr(component, "points") and component.points:
+        return float(component.points[0][0]), float(component.points[0][1])
+    return 0.0, 0.0
+
+
+def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float, float],
+                         new_anchor: tuple[float, float]) -> None:
+    """Compute a source-rewrite proposal and surface a confirmation dialog.
+
+    If the source can't be AST-edited (positional args, no file, etc.),
+    show an informational dialog explaining how to apply the move manually.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    name = getattr(component, "name", None)
+    summary_line = (
+        f"{name or '?'}: ({orig_anchor[0]:.2f}, {orig_anchor[1]:.2f}) → "
+        f"({new_anchor[0]:.2f}, {new_anchor[1]:.2f}) in"
+    )
+
+    if state.watch_path is None or state.watch_path.suffix.lower() != ".py":
+        _info_dialog(
+            state.window,
+            "Component moved (in-memory only)",
+            f"{summary_line}\n\n"
+            "Source rewrite only works when the viewer was launched on a .py "
+            "file. Reload to revert the move, or edit the source by hand.",
+        )
+        return
+
+    if not name:
+        _info_dialog(
+            state.window,
+            "Component moved (in-memory only)",
+            f"{summary_line}\n\n"
+            "This component has no `name=` argument, so the source can't be "
+            "located unambiguously. Add a name and try again.",
+        )
+        return
+
+    try:
+        from .edit import propose_move
+        proposal = propose_move(
+            state.watch_path, name, new_anchor[0], new_anchor[1],
+        )
+    except LookupError as exc:
+        _info_dialog(state.window, "Can't auto-apply", str(exc))
+        return
+    except NotImplementedError as exc:
+        _info_dialog(
+            state.window,
+            "Can't auto-apply",
+            f"{exc}\n\nNew coordinates: ({new_anchor[0]:.2f}, "
+            f"{new_anchor[1]:.2f}). Update the source manually if you want "
+            "the move to persist.",
+        )
+        return
+
+    _apply_dialog(state, proposal)
+
+
+def _info_dialog(parent, title: str, body: str) -> None:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    dlg = Gtk.AlertDialog()
+    dlg.set_message(title)
+    dlg.set_detail(body)
+    dlg.show(parent)
+
+
+def _apply_dialog(state: _ViewerState, proposal) -> None:
+    """Show a modal with the diff hunk and Apply / Cancel buttons."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    win = Gtk.Window()
+    win.set_title("Apply move?")
+    win.set_default_size(640, 360)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    box.set_margin_top(12); box.set_margin_bottom(12)
+    box.set_margin_start(12); box.set_margin_end(12)
+
+    summary = Gtk.Label(label=proposal.summary)
+    summary.set_xalign(0.0)
+    summary.add_css_class("heading")
+    box.append(summary)
+
+    file_info = Gtk.Label(label=f"{proposal.path}:{proposal.line}")
+    file_info.set_xalign(0.0)
+    file_info.add_css_class("dim-label")
+    box.append(file_info)
+
+    # Diff preview.
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    diff_text = _format_diff(proposal.diff_hunk)
+    tv = Gtk.TextView()
+    tv.set_editable(False)
+    tv.set_monospace(True)
+    tv.get_buffer().set_text(diff_text)
+    sw.set_child(tv)
+    box.append(sw)
+
+    # Buttons.
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    cancel_btn = Gtk.Button(label="Cancel")
+    apply_btn = Gtk.Button(label="Apply")
+    apply_btn.add_css_class("suggested-action")
+
+    def on_cancel(_):
+        win.close()
+    def on_apply(_):
+        from .edit import apply_proposal
+        apply_proposal(proposal)
+        # Triggering a save bumps mtime; the file watcher will reload.
+        win.close()
+
+    cancel_btn.connect("clicked", on_cancel)
+    apply_btn.connect("clicked", on_apply)
+    btn_box.append(cancel_btn)
+    btn_box.append(apply_btn)
+    box.append(btn_box)
+
+    win.set_child(box)
+    win.present()
+
+
+def _format_diff(hunk: list[tuple[str, str]]) -> str:
+    out = []
+    for old, new in hunk:
+        if old == new:
+            out.append(f"  {old}")
+        else:
+            out.append(f"- {old}")
+            out.append(f"+ {new}")
+    return "\n".join(out)
 
 
 def _make_scroll_handler(state: _ViewerState, canvas):

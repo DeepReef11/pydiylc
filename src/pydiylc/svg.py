@@ -34,6 +34,7 @@ from .components import (
     AxialElectrolyticCapacitor,
     BJTSymbol,
     BlankBoard,
+    BOM,
     CapacitorSymbol,
     CurvedTrace,
     DiodeSymbol,
@@ -41,10 +42,13 @@ from .components import (
     Ellipse,
     Eyelet,
     GroundSymbol,
+    Image,
     Line,
     PerfBoard,
     Rectangle,
     ResistorSymbol,
+    TerminalStrip,
+    TrimmerPotentiometer,
     TubeSocket,
     Turret,
     VeroBoard,
@@ -967,6 +971,76 @@ def _render_curved_trace(c: CurvedTrace, s: float) -> str:
     )
 
 
+def _render_trimmer(c: TrimmerPotentiometer, s: float) -> str:
+    pts = c._control_points()
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    cx = (min(xs) + max(xs)) / 2 * s
+    cy = (min(ys) + max(ys)) / 2 * s
+    size = 14
+    out = ['<g class="trimmer" data-name="' + _esc(c.name) + '">']
+    out.append(
+        f'<rect x="{cx - size:.1f}" y="{cy - size:.1f}" width="{2*size}" height="{2*size}" '
+        f'fill="{_color(c.body_color)}" stroke="{_color(c.border_color)}" stroke-width="1" rx="2"/>'
+    )
+    for px, py in pts:
+        out.append(
+            f'<circle cx="{px*s:.1f}" cy="{py*s:.1f}" r="2" fill="#222"/>'
+        )
+    out.append(
+        f'<text x="{cx:.1f}" y="{cy+3:.1f}" font-size="8" text-anchor="middle" '
+        f'fill="#000">{_esc(c.name)} {_esc(c.resistance)}</text>'
+    )
+    out.append("</g>")
+    return "\n".join(out)
+
+
+def _render_terminal_strip(c: TerminalStrip, s: float) -> str:
+    pts = c._control_points()
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    pad = 0.08
+    x = (min(xs) - pad) * s
+    y = (min(ys) - pad) * s
+    w = (max(xs) - min(xs) + 2 * pad) * s
+    h = (max(ys) - min(ys) + 2 * pad) * s
+    out = ['<g class="terminal-strip" data-name="' + _esc(c.name) + '">']
+    out.append(
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'fill="{_color(c.body_color)}" stroke="{_color(c.border_color)}" stroke-width="1" rx="2"/>'
+    )
+    for px, py in pts:
+        out.append(
+            f'<circle cx="{px*s:.1f}" cy="{py*s:.1f}" r="2.5" '
+            f'fill="#333" stroke="#000" stroke-width="0.4"/>'
+        )
+    out.append("</g>")
+    return "\n".join(out)
+
+
+def _render_image_placeholder(c: Image, s: float) -> str:
+    # Show a hatched rectangle where the image lives — we don't decode the
+    # base64 here, this is a preview only.
+    x, y = c.x * s, c.y * s
+    return (
+        f'<g class="image" data-name="{_esc(c.name)}">'
+        f'<rect x="{x-30:.1f}" y="{y-30:.1f}" width="60" height="60" '
+        f'fill="#ffffff" stroke="#888" stroke-dasharray="4,3"/>'
+        f'<text x="{x:.1f}" y="{y+4:.1f}" font-size="9" text-anchor="middle" '
+        f'fill="#888">[image]</text></g>'
+    )
+
+
+def _render_bom(c: BOM, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    size_px = _measure_to_inches(c.size) * s
+    return (
+        f'<g class="bom" data-name="{_esc(c.name)}">'
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{size_px:.1f}" height="{size_px:.1f}" '
+        f'fill="#ffffff" stroke="{_color(c.color)}" stroke-dasharray="3,2"/>'
+        f'<text x="{x + size_px/2:.1f}" y="{y + size_px/2 + 4:.1f}" '
+        f'font-size="10" text-anchor="middle" fill="{_color(c.color)}">BOM</text></g>'
+    )
+
+
 def _render_label(c: Label, s: float) -> str:
     style = ""
     if c.font_style in (1, 3):
@@ -1016,6 +1090,10 @@ _RENDERERS: dict[type, callable] = {
     AxialFilmCapacitor: _render_axial_film_cap,
     AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    TrimmerPotentiometer: _render_trimmer,
+    TerminalStrip: _render_terminal_strip,
+    Image: _render_image_placeholder,
+    BOM: _render_bom,
     ResistorSymbol: _render_resistor_symbol,
     CapacitorSymbol: _render_capacitor_symbol,
     DiodeSymbol: _render_diode_symbol,

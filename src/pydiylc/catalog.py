@@ -134,6 +134,41 @@ def _version() -> str:
         return "0.0.0"
 
 
+def bundled_catalog_path() -> "Path | None":
+    """Return the path to the catalog.json shipped with the installed package.
+
+    Returns None if the package was installed without the data file (e.g.
+    from an editable source checkout without running hatch build).
+    """
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent
+    candidate = here / "data" / "catalog.json"
+    if candidate.exists():
+        return candidate
+    # Fall back to repo-root catalog.json when running from source.
+    repo_root = here.parent.parent
+    candidate = repo_root / "catalog.json"
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def bundled_llms_txt_path() -> "Path | None":
+    """Same as bundled_catalog_path but for LLMS.txt."""
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent
+    candidate = here / "data" / "LLMS.txt"
+    if candidate.exists():
+        return candidate
+    repo_root = here.parent.parent
+    candidate = repo_root / "LLMS.txt"
+    if candidate.exists():
+        return candidate
+    return None
+
+
 def main() -> None:
     json.dump(build_catalog(), sys.stdout, indent=2)
     sys.stdout.write("\n")

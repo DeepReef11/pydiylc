@@ -114,10 +114,10 @@ def save_project(project: Project, path: str | Path, *, dpi: int = 96) -> Path:
         )
         return p
     if suffix == ".png":
-        raise NotImplementedError(
-            "PNG output needs an SVG → raster step. Render to SVG and use "
-            "`rsvg-convert` or `cairosvg`."
-        )
+        from .cairo_render import render_png
+
+        render_png(project, p, dpi=dpi)
+        return p
     raise ValueError(f"unsupported target extension: {suffix}")
 
 
@@ -180,14 +180,18 @@ def cmd_render(args: argparse.Namespace) -> int:
         print(f"pydiylc render: {exc}", file=sys.stderr)
         return 2
     out_path = Path(args.out) if args.out else Path(args.source).with_suffix(".svg")
-    if out_path.suffix.lower() not in (".svg",):
+    if out_path.suffix.lower() not in (".svg", ".png"):
         print(
-            f"pydiylc render: only .svg is supported (got {out_path.suffix}); "
+            f"pydiylc render: only .svg / .png are supported (got {out_path.suffix}); "
             "use `pydiylc convert` for other formats.",
             file=sys.stderr,
         )
         return 2
-    save_project(project, out_path, dpi=args.dpi)
+    try:
+        save_project(project, out_path, dpi=args.dpi)
+    except ImportError as exc:
+        print(f"pydiylc render: {exc}", file=sys.stderr)
+        return 2
     print(f"wrote {out_path}")
     return 0
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pydiylc_version": "0.1.0",
+  "pydiylc_version": "0.2.0",
   "diylc_file_version_target": "5.7.0",
   "coordinate_units": "inches by default (project grid is 0.1 in)",
   "enum_pool": {
@@ -291,6 +291,16 @@
     "GROUND_SYMBOL_TYPE": [
       "DEFAULT",
       "TRIANGLE"
+    ],
+    "TRIMMER_TYPE": [
+      "FLAT_SMALL",
+      "FLAT_SMALL2",
+      "FLAT_XSMALL",
+      "FLAT_LARGE",
+      "FLAT_XLARGE",
+      "VERTICAL_INLINE",
+      "VERTICAL_OFFSET",
+      "VERTICAL_OFFSET_BIG_GAP"
     ]
   },
   "components": [
@@ -2132,6 +2142,132 @@
           },
           "default": false,
           "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TrimmerPotentiometer",
+      "diylc_class": "diylc.passive.TrimmerPotentiometer",
+      "doc": "Small board-mount trimmer pot (3-pin).\n\nXML: ``<diylc.passive.TrimmerPotentiometer>``\n\nAnchor (`x`, `y`) is lug 1. The geometry of the other lugs depends on\n`type` (horizontal flat package vs. vertical can). ``resistance`` accepts\nstrings like ``\"10K\"``, ``\"100K\"``; bare numbers default to ``\"K\"``.\n\nExample::\n\n    p.add(TrimmerPotentiometer(\"BIAS\", x=2.0, y=1.0, resistance=\"10K\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "resistance",
+          "type": {
+            "kind": "string"
+          },
+          "default": "10K",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "taper",
+          "type": {
+            "kind": "string"
+          },
+          "default": "LIN",
+          "required": false,
+          "enum": [
+            "LIN",
+            "LOG",
+            "REV_LOG",
+            "W",
+            "S",
+            "M",
+            "N"
+          ]
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "FLAT_SMALL",
+          "required": false,
+          "enum": [
+            "FLAT_SMALL",
+            "FLAT_SMALL2",
+            "FLAT_XSMALL",
+            "FLAT_LARGE",
+            "FLAT_XLARGE",
+            "VERTICAL_INLINE",
+            "VERTICAL_OFFSET",
+            "VERTICAL_OFFSET_BIG_GAP"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffe0",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "8e8e38",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
         }
       ]
     },
@@ -4919,6 +5055,135 @@
       ]
     },
     {
+      "python_class": "TerminalStrip",
+      "diylc_class": "diylc.boards.TerminalStrip",
+      "doc": "Terminal strip \u2014 multiple turret-style terminals on a board.\n\nXML: ``<diylc.boards.TerminalStrip>``\n\nAnchor (`x`, `y`) is the first terminal. The strip extends along the\norientation axis. `terminal_count` is the number of terminals per row;\nthe strip has 2 rows by default (top terminals + bottom mounting holes).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "terminal_count",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 3,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cd8500",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "8f5d00",
+          "required": false
+        },
+        {
+          "name": "board_width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "terminal_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "hole_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.3,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "center_hole",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
       "python_class": "Label",
       "diylc_class": "diylc.misc.Label",
       "doc": "Free-floating text label.\n\nXML: ``<diylc.misc.Label>``\n\n`font_style`: 0=plain, 1=bold, 2=italic, 3=bold+italic.",
@@ -5034,6 +5299,104 @@
             "_180",
             "_270"
           ]
+        }
+      ]
+    },
+    {
+      "python_class": "Image",
+      "diylc_class": "diylc.misc.Image",
+      "doc": "Embedded raster image annotation.\n\nXML: ``<diylc.misc.Image>``\n\nHolds a base64-encoded PNG/JPEG blob. pydiylc passes the data through\nunmodified on read; emitting requires the caller to provide ``data`` as\na base64 string (no MIME prefix).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "BOM",
+      "diylc_class": "diylc.misc.BOM",
+      "doc": "Bill of materials placeholder \u2014 DIYLC autopopulates this at render time.\n\nXML: ``<diylc.misc.BOM>``\n\nNo fields beyond name, position, color, size. The BOM contents are\nderived from the project's other components.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 5.0,
+            "unit": "cm"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
         }
       ]
     },

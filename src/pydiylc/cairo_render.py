@@ -21,6 +21,7 @@ from .components import (
     AxialFilmCapacitor,
     BJTSymbol,
     BlankBoard,
+    BOM,
     CapacitorSymbol,
     Component,
     CopperTrace,
@@ -33,10 +34,13 @@ from .components import (
     Eyelet,
     GroundSymbol,
     HookupWire,
+    Image,
     Jumper,
     Line,
     Rectangle,
     ResistorSymbol,
+    TerminalStrip,
+    TrimmerPotentiometer,
     TubeSocket,
     Label,
     LED,
@@ -70,6 +74,33 @@ def has_cairo() -> bool:
     except ImportError:
         return False
     return True
+
+
+def render_png(project, path, *, dpi: float = PX_PER_INCH, pad_px: float = 16.0,
+               background: tuple[float, float, float] = (1, 1, 1),
+               show_grid: bool = True) -> None:
+    """Rasterize a Project to a PNG file via pycairo.
+
+    Requires the optional `pycairo` dependency. If it's not installed, this
+    raises ImportError with a hint.
+    """
+    try:
+        import cairo
+    except ImportError as exc:
+        raise ImportError(
+            "PNG export requires pycairo. Install with `pip install pycairo` "
+            "or `pip install pydiylc[viewer]`."
+        ) from exc
+
+    w_in = project.width_cm / 2.54
+    h_in = project.height_cm / 2.54
+    w = int(w_in * dpi + 2 * pad_px)
+    h = int(h_in * dpi + 2 * pad_px)
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+    cr = cairo.Context(surface)
+    cr.translate(pad_px, pad_px)
+    draw_project(cr, project, scale=dpi, background=background, show_grid=show_grid)
+    surface.write_to_png(str(path))
 
 
 def _measure_to_inches(m: Measure) -> float:
@@ -883,6 +914,70 @@ def _render_curved_trace(cr, c: CurvedTrace, s: float) -> None:
     cr.stroke()
 
 
+def _render_trimmer(cr, c: TrimmerPotentiometer, s: float) -> None:
+    pts = c._control_points()
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    cx = (min(xs) + max(xs)) / 2 * s
+    cy = (min(ys) + max(ys)) / 2 * s
+    size = 14
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.rectangle(cx - size, cy - size, 2 * size, 2 * size)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(0.13, 0.13, 0.13)
+        cr.arc(px * s, py * s, 2, 0, 2 * math.pi)
+        cr.fill()
+    _draw_text(cr, cx, cy + 3, f"{c.name} {c.resistance}", size=8)
+
+
+def _render_terminal_strip(cr, c: TerminalStrip, s: float) -> None:
+    pts = c._control_points()
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    pad = 0.08
+    x = (min(xs) - pad) * s
+    y = (min(ys) - pad) * s
+    w = (max(xs) - min(xs) + 2 * pad) * s
+    h = (max(ys) - min(ys) + 2 * pad) * s
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.rectangle(x, y, w, h)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(0.2, 0.2, 0.2)
+        cr.arc(px * s, py * s, 2.5, 0, 2 * math.pi)
+        cr.fill()
+
+
+def _render_image(cr, c: Image, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    cr.set_source_rgb(1, 1, 1)
+    cr.rectangle(x - 30, y - 30, 60, 60)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.53, 0.53, 0.53)
+    cr.set_dash([4, 3])
+    cr.stroke()
+    cr.set_dash([])
+    _draw_text(cr, x, y + 4, "[image]", size=9, color=(0.53, 0.53, 0.53))
+
+
+def _render_bom(cr, c: BOM, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    size_px = _measure_to_inches(c.size) * s
+    cr.set_source_rgb(1, 1, 1)
+    cr.rectangle(x, y, size_px, size_px)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_dash([3, 2])
+    cr.stroke()
+    cr.set_dash([])
+    _draw_text(cr, x + size_px / 2, y + size_px / 2 + 4, "BOM", size=10)
+
+
 def _render_label(cr, c: Label, s: float) -> None:
     cr.save()
     weight = 1 if c.font_style in (1, 3) else 0
@@ -913,6 +1008,10 @@ _RENDERERS: dict[type, callable] = {
     AxialFilmCapacitor: _render_axial_film_cap,
     AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    TrimmerPotentiometer: _render_trimmer,
+    TerminalStrip: _render_terminal_strip,
+    Image: _render_image,
+    BOM: _render_bom,
     ResistorSymbol: _render_resistor_symbol,
     CapacitorSymbol: _render_capacitor_symbol,
     DiodeSymbol: _render_diode_symbol,

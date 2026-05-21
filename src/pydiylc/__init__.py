@@ -18,6 +18,7 @@ from .components import (
     AxialFilmCapacitor,
     AxialElectrolyticCapacitor,
     PotentiometerPanel,
+    TrimmerPotentiometer,
     ResistorSymbol,
     CapacitorSymbol,
     TubeSocket,
@@ -42,7 +43,10 @@ from .components import (
     MiniToggleSwitch,
     PlasticDCJack,
     OpenJack1_4,
+    TerminalStrip,
     Label,
+    Image,
+    BOM,
     GroundSymbol,
 )
 
@@ -69,6 +73,7 @@ __all__ = [
     "AxialFilmCapacitor",
     "AxialElectrolyticCapacitor",
     "PotentiometerPanel",
+    "TrimmerPotentiometer",
     "ResistorSymbol",
     "CapacitorSymbol",
     "TubeSocket",
@@ -93,8 +98,11 @@ __all__ = [
     "MiniToggleSwitch",
     "PlasticDCJack",
     "OpenJack1_4",
+    "TerminalStrip",
     "Label",
+    "Image",
+    "BOM",
     "GroundSymbol",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

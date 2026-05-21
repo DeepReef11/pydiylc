@@ -1,26 +1,40 @@
 # pydiylc
 
-Python emitter for [DIYLC](https://github.com/bancika/diy-layout-creator) `.diy`
-files. Write circuit layouts in code, open them in DIYLC.
+![tests](https://img.shields.io/badge/tests-165%20passing-brightgreen)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
+![corpus](https://img.shields.io/badge/corpus%20recognition-97.5%25-brightgreen)
 
-This is an *emitter*, not a viewer or full reimplementation. DIYLC stays as the
-rendering engine — pydiylc just produces files it can open.
+A scriptable Python library — and a native Wayland GTK4 viewer — for
+[DIYLC](https://github.com/bancika/diy-layout-creator) circuit layouts.
+
+- **Write layouts in Python or JSON**, save them as `.diy` (opens in DIYLC).
+- **Read existing `.diy` files** back into Python (97.5% component recognition
+  on the DIYLC community corpus).
+- **Preview natively** — SVG for browsers, PNG via cairo, or a Wayland-native
+  GTK4 viewer with pan/zoom/click-select and drag-to-move-with-diff.
+- **CLI** (`pydiylc convert/render/info`) and an **MCP server** for LLM clients.
+
+DIYLC itself remains the canonical renderer; pydiylc produces and consumes the
+same `.diy` format and adds a scriptable, Java-free, Wayland-friendly workflow
+on top.
 
 ## Status
 
-Pre-alpha. Current component set:
+Beta (v0.2.0). Current component set (40 types):
 
 - **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard` (stripboard)
-- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `AxialFilmCapacitor`, `AxialElectrolyticCapacitor`, `PotentiometerPanel`
+- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `AxialFilmCapacitor`, `AxialElectrolyticCapacitor`, `PotentiometerPanel`, `TrimmerPotentiometer`
 - **Semiconductors**: `DiodePlastic`, `LED`, `TransistorTO92`, `DIL_IC`
 - **Connectivity**: `CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `Dot`, `Eyelet`, `Turret`, `Line`, `TraceCut`
 - **Electromechanical**: `MiniToggleSwitch` (incl. 3PDT bypass), `PlasticDCJack`, `OpenJack1_4`
 - **Tubes**: `TubeSocket` (B7G / B9A / OCTAL / ...)
 - **Shapes**: `Rectangle`, `Ellipse`
+- **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard`, `TerminalStrip`
 - **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
-- **Misc**: `Label`, `GroundSymbol`
+- **Misc**: `Label`, `GroundSymbol`, `Image`, `BOM`
 
-**Corpus coverage:** 96.4% component recognition on the DIYLC regression corpus (52,858 of 54,841 components across 423 of 425 real community layouts).
+**Corpus coverage:** 97.5% component recognition on the DIYLC regression corpus (53,366 of 54,727 components across 423 of 425 real community layouts).
 
 ## CLI
 
@@ -79,6 +93,11 @@ Keyboard:
 - **mouse drag** — pan
 - **scroll** — zoom
 - **click** — select component (name shown in header bar)
+- **Ctrl + drag** — move a component; on release the viewer proposes the
+  source edit (snapped to the grid) and shows a diff with an **Apply** button.
+  Auto-apply works when the layout is a `.py` file whose components are built
+  with keyword args (e.g. `Resistor(name="R1", x1=1.0, ...)`); otherwise the
+  move stays in-memory and the new coordinates are shown for manual editing.
 
 Your `.py` file should expose either a top-level `project = Project(...)` or
 a `def build() -> Project`. The viewer calls it on every reload.

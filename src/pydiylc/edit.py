@@ -184,3 +184,37 @@ def apply_proposal(proposal: MoveProposal) -> None:
     """Write the proposed new_text to disk. Caller is responsible for
     backup. The viewer should only call this after user confirmation."""
     proposal.path.write_text(proposal.new_text, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# In-memory moves (for live drag previews in the viewer)
+# ---------------------------------------------------------------------------
+
+
+def move_component_inplace(component, dx: float, dy: float) -> tuple[float, float]:
+    """Shift a component's anchor by (dx, dy) in inches. Returns the new
+    anchor as (x, y) suitable for handing to ``propose_move``.
+
+    This mutates the component object so the next render reflects the move.
+    Two-pin components move both endpoints by the same delta (so the
+    component keeps its length and orientation).
+    """
+    if hasattr(component, "x1") and hasattr(component, "x2"):
+        component.x1 += dx
+        component.y1 += dy
+        component.x2 += dx
+        component.y2 += dy
+        return component.x1, component.y1
+    if hasattr(component, "x") and hasattr(component, "y"):
+        component.x += dx
+        component.y += dy
+        return component.x, component.y
+    if hasattr(component, "points"):
+        component.points = [(p[0] + dx, p[1] + dy) for p in component.points]
+        if component.points:
+            return component.points[0]
+        return 0.0, 0.0
+    raise TypeError(
+        f"don't know how to move {type(component).__name__}: no x/y, x1/y1, "
+        "or points attribute"
+    )

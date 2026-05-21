@@ -89,6 +89,33 @@ def test_apply_writes_to_disk(tmp_path):
     assert "y=4.0" in after
 
 
+def test_move_component_inplace_single_anchor():
+    from pydiylc import SolderPad
+    from pydiylc.edit import move_component_inplace
+
+    pad = SolderPad("P1", x=1.0, y=2.0)
+    move_component_inplace(pad, 0.5, -0.25)
+    assert pad.x == 1.5 and pad.y == 1.75
+
+
+def test_move_component_inplace_two_pin():
+    from pydiylc import Resistor
+    from pydiylc.edit import move_component_inplace
+
+    r = Resistor("R1", x1=1.0, y1=1.0, x2=1.0, y2=1.5)
+    move_component_inplace(r, 0.5, 0.5)
+    assert (r.x1, r.y1, r.x2, r.y2) == (1.5, 1.5, 1.5, 2.0)
+
+
+def test_move_component_inplace_points_list():
+    from pydiylc import CopperTrace
+    from pydiylc.edit import move_component_inplace
+
+    t = CopperTrace("T1", points=[(0.0, 0.0), (1.0, 0.0)])
+    move_component_inplace(t, 1.0, 2.0)
+    assert t.points == [(1.0, 2.0), (2.0, 2.0)]
+
+
 def test_diff_hunk_lines_pair_old_and_new(tmp_path):
     p = _write(tmp_path, """
         from pydiylc import Project, SolderPad

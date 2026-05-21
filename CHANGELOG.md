@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.2.0 — 2026-05-21
+
+### Viewer: drag-to-move with diff preview (stage 3)
+
+Ctrl+drag a component in the GTK4 viewer to move it. On release, the move is
+snapped to the project grid and:
+
+- If the layout is a `.py` file with keyword-arg components, the viewer
+  computes an AST-surgery source rewrite and shows a diff dialog with an
+  **Apply** button. Applying writes the file; the watcher reloads.
+- Otherwise the move stays in-memory and the new coordinates are reported.
+
+New `pydiylc.edit.move_component_inplace()` shifts a component (single-anchor,
+two-pin, or points-list) by a delta for live drag previews.
+
+### New components (40 total, was 36)
+
+- `TrimmerPotentiometer` (diylc.passive.TrimmerPotentiometer)
+- `TerminalStrip` (diylc.boards.TerminalStrip)
+- `Image` (diylc.misc.Image) — base64 blob passthrough
+- `BOM` (diylc.misc.BOM) — bill-of-materials placeholder
+
+Plus reader aliases for `OpenJack1__4` (double-underscore legacy spelling).
+
+### Corpus recognition: 96.4% → 97.5%
+
+53,366 of 54,727 components across 423 of 425 community files. Remaining
+unknowns are GroundFill, chassis cutouts, PinHeader, Polygon — none core to
+layout work.
+
+### PNG export
+
+`pydiylc render layout.diy --out preview.png` rasterizes via pycairo
+(`pydiylc.cairo_render.render_png`). Falls back with a clear error when
+pycairo isn't installed.
+
+### Packaging
+
+- Builds clean wheel + sdist (`python -m build`), passes `twine check`.
+- `catalog.json` and `LLMS.txt` are bundled in the wheel under
+  `pydiylc/data/`; `bundled_catalog_path()` / `bundled_llms_txt_path()`
+  locate them at runtime.
+- Full PyPI classifiers, project URLs, `PUBLISHING.md` release runbook.
+- Version bumped to 0.2.0.
+
+### Tests
+
+165 passing, 2 skipped (PNG tests need a working pycairo). New: stage-3
+move helper, PNG export + graceful fallback, new-component round-trips.
+
 ## v0.1.0 — 2026-05-21
 
 First tagged release. Pydiylc reaches a usable v1: it emits and reads DIYLC

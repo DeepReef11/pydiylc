@@ -134,6 +134,12 @@ LABEL_POSITION = ("ABOVE", "BELOW")
 # Ground symbol style
 GROUND_SYMBOL_TYPE = ("DEFAULT", "TRIANGLE")
 
+# Trimmer pot package style (horizontal flat or vertical can)
+TRIMMER_TYPE = (
+    "FLAT_SMALL", "FLAT_SMALL2", "FLAT_XSMALL", "FLAT_LARGE", "FLAT_XLARGE",
+    "VERTICAL_INLINE", "VERTICAL_OFFSET", "VERTICAL_OFFSET_BIG_GAP",
+)
+
 
 def check(field: str, value, allowed: tuple[str, ...]) -> None:
     """Raise ValueError listing allowed values when value isn't permitted."""

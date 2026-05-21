@@ -102,12 +102,13 @@ def test_render_with_explicit_out(tmp_path):
     assert out.exists()
 
 
-def test_render_rejects_non_svg_output(tmp_path, capsys):
+def test_render_rejects_unsupported_output(tmp_path, capsys):
+    """render only supports .svg / .png; .jpg etc. is rejected."""
     src = _make_py(tmp_path)
-    rc = cli.main(["render", str(src), "--out", str(tmp_path / "x.png")])
+    rc = cli.main(["render", str(src), "--out", str(tmp_path / "x.jpg")])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "only .svg" in err
+    assert ".svg" in err and ".png" in err
 
 
 def test_info_prints_summary(tmp_path, capsys):

@@ -47,7 +47,7 @@ for _cls in ALL_COMPONENTS:
 
 # A few alternate spellings used by older DIYLC versions that resolve to the
 # same Python class as their modern equivalent.
-from .components import DIL_IC as _DIL_IC, HookupWire as _HookupWire  # noqa: E402
+from .components import DIL_IC as _DIL_IC, HookupWire as _HookupWire, OpenJack1_4 as _OpenJack1_4  # noqa: E402
 
 _TAG_TO_CLASS["diylc.semiconductors.DIL__IC"] = _DIL_IC
 _TAG_TO_CLASS["org.diylc.components.semiconductors.DIL__IC"] = _DIL_IC
@@ -55,6 +55,9 @@ _TAG_TO_CLASS["org.diylc.components.semiconductors.DIL__IC"] = _DIL_IC
 # fidelity loss for the polyline shape (the twist is purely cosmetic).
 _TAG_TO_CLASS["diylc.connectivity.TwistedWire"] = _HookupWire
 _TAG_TO_CLASS["org.diylc.components.connectivity.TwistedWire"] = _HookupWire
+# Older releases wrote OpenJack1_4 as OpenJack1__4 (double underscore).
+_TAG_TO_CLASS["diylc.electromechanical.OpenJack1__4"] = _OpenJack1_4
+_TAG_TO_CLASS["org.diylc.components.electromechanical.OpenJack1__4"] = _OpenJack1_4
 
 # Some upstream child tags don't match our field names cleanly. These are the
 # exceptions; everything else uses _camel_to_snake().
@@ -159,6 +162,7 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         ("diylc.passive.AxialFilmCapacitor", "value"),
         ("diylc.passive.AxialElectrolyticCapacitor", "value"),
         ("diylc.passive.PotentiometerPanel", "resistance"),
+        ("diylc.passive.TrimmerPotentiometer", "resistance"),
         ("diylc.passive.ResistorSymbol", "value"),
         ("diylc.passive.CapacitorSymbol", "value"),
     }
@@ -290,6 +294,11 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
             values["x"], values["y"] = single_point
         else:
             _set_single_anchor(values, pts)
+    elif diylc_class in ("diylc.misc.Image", "diylc.misc.BOM"):
+        if single_point is not None:
+            values["x"], values["y"] = single_point
+        else:
+            _set_single_anchor(values, pts)
     elif diylc_class in (
         "diylc.boards.BlankBoard",
         "diylc.boards.PerfBoard",
@@ -303,9 +312,11 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         "diylc.semiconductors.TransistorTO92",
         "diylc.semiconductors.BJTSymbol",
         "diylc.passive.PotentiometerPanel",
+        "diylc.passive.TrimmerPotentiometer",
         "diylc.electromechanical.MiniToggleSwitch",
         "diylc.electromechanical.PlasticDCJack",
         "diylc.electromechanical.OpenJack1_4",
+        "diylc.boards.TerminalStrip",
         "diylc.tube.TubeSocket",
     ):
         # Single-anchor components — take the first control point.

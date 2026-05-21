@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar, Sequence
 
-from .core import Measure, fmt, hex_color, esc, inches, mm
+from .core import Measure, fmt, hex_color, esc, inches, mm, cm
 from . import enums as E
 
 
@@ -1754,6 +1754,227 @@ class Label(Component):
         )
 
 
+@dataclass
+class TrimmerPotentiometer(Component):
+    """Small board-mount trimmer pot (3-pin).
+
+    XML: ``<diylc.passive.TrimmerPotentiometer>``
+
+    Anchor (`x`, `y`) is lug 1. The geometry of the other lugs depends on
+    `type` (horizontal flat package vs. vertical can). ``resistance`` accepts
+    strings like ``"10K"``, ``"100K"``; bare numbers default to ``"K"``.
+
+    Example::
+
+        p.add(TrimmerPotentiometer("BIAS", x=2.0, y=1.0, resistance="10K"))
+    """
+
+    name: str
+    x: float
+    y: float
+    resistance: str = "10K"
+    orientation: str = "DEFAULT"
+    taper: str = "LIN"
+    type: str = "FLAT_SMALL"
+    alpha: int = 127
+    body_color: str = "ffffe0"
+    border_color: str = "8e8e38"
+    display: str = "BOTH"
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.TrimmerPotentiometer"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "taper": E.POT_TAPER,
+        "type": E.TRIMMER_TYPE,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        # 3 lugs: 2 along one row, 1 offset perpendicular (the wiper).
+        # Use 0.1 in pin spacing — standard for FLAT_* packages.
+        s = 0.1
+        if self.orientation in ("DEFAULT", "_180"):
+            sign = 1 if self.orientation == "DEFAULT" else -1
+            return [
+                (self.x, self.y),
+                (self.x + sign * 2 * s, self.y + sign * s),
+                (self.x, self.y + sign * 2 * s),
+            ]
+        sign = 1 if self.orientation == "_90" else -1
+        return [
+            (self.x, self.y),
+            (self.x + sign * s, self.y + sign * 2 * s),
+            (self.x + sign * 2 * s, self.y),
+        ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.resistance, default_unit="K")
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.passive.TrimmerPotentiometer>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <resistance value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <taper>{self.taper}</taper>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}</diylc.passive.TrimmerPotentiometer>"
+        )
+
+
+@dataclass
+class TerminalStrip(Component):
+    """Terminal strip — multiple turret-style terminals on a board.
+
+    XML: ``<diylc.boards.TerminalStrip>``
+
+    Anchor (`x`, `y`) is the first terminal. The strip extends along the
+    orientation axis. `terminal_count` is the number of terminals per row;
+    the strip has 2 rows by default (top terminals + bottom mounting holes).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    terminal_count: int = 3
+    alpha: int = 127
+    body_color: str = "cd8500"
+    border_color: str = "8f5d00"
+    board_width: Measure = field(default_factory=lambda: inches(0.2))
+    terminal_spacing: Measure = field(default_factory=lambda: inches(0.2))
+    hole_spacing: Measure = field(default_factory=lambda: inches(0.3))
+    center_hole: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.TerminalStrip"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        spacing = _to_inches(self.terminal_spacing)
+        hole = _to_inches(self.hole_spacing)
+        pts: list[Point] = []
+        if self.orientation in ("DEFAULT", "_180"):
+            sign = 1 if self.orientation == "DEFAULT" else -1
+            # Top row (terminals)
+            for i in range(self.terminal_count):
+                pts.append((self.x + sign * i * spacing, self.y))
+            # Bottom row (mounting holes)
+            for i in range(self.terminal_count):
+                pts.append((self.x + sign * i * spacing, self.y - sign * hole))
+        else:
+            sign = 1 if self.orientation == "_90" else -1
+            for i in range(self.terminal_count):
+                pts.append((self.x, self.y + sign * i * spacing))
+            for i in range(self.terminal_count):
+                pts.append((self.x + sign * hole, self.y + sign * i * spacing))
+        return pts
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.boards.TerminalStrip>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <terminalCount>{self.terminal_count}</terminalCount>\n"
+            f"{pad}  <boardWidth {self.board_width.attrs()}/>\n"
+            f"{pad}  <terminalSpacing {self.terminal_spacing.attrs()}/>\n"
+            f"{pad}  <holeSpacing {self.hole_spacing.attrs()}/>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <boardColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <centerHole>{str(self.center_hole).lower()}</centerHole>\n"
+            f"{pad}</diylc.boards.TerminalStrip>"
+        )
+
+
+@dataclass
+class Image(Component):
+    """Embedded raster image annotation.
+
+    XML: ``<diylc.misc.Image>``
+
+    Holds a base64-encoded PNG/JPEG blob. pydiylc passes the data through
+    unmodified on read; emitting requires the caller to provide ``data`` as
+    a base64 string (no MIME prefix).
+    """
+
+    name: str
+    x: float
+    y: float
+    data: str = ""
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.Image"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.misc.Image>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <data>{esc(self.data)}</data>\n"
+            f"{pad}</diylc.misc.Image>"
+        )
+
+
+@dataclass
+class BOM(Component):
+    """Bill of materials placeholder — DIYLC autopopulates this at render time.
+
+    XML: ``<diylc.misc.BOM>``
+
+    No fields beyond name, position, color, size. The BOM contents are
+    derived from the project's other components.
+    """
+
+    name: str
+    x: float
+    y: float
+    size: Measure = field(default_factory=lambda: cm(5.0))
+    color: str = "000000"
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.BOM"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.misc.BOM>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}</diylc.misc.BOM>"
+        )
+
+
+def _to_inches(m: Measure) -> float:
+    if m.unit == "in":
+        return m.value
+    if m.unit == "mm":
+        return m.value / 25.4
+    if m.unit == "cm":
+        return m.value / 2.54
+    return m.value
+
+
 # ---------------------------------------------------------------------------
 # Schematic symbols
 # ---------------------------------------------------------------------------
@@ -2255,6 +2476,7 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     AxialFilmCapacitor,
     AxialElectrolyticCapacitor,
     PotentiometerPanel,
+    TrimmerPotentiometer,
     ResistorSymbol,
     CapacitorSymbol,
     TubeSocket,
@@ -2279,6 +2501,9 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     MiniToggleSwitch,
     PlasticDCJack,
     OpenJack1_4,
+    TerminalStrip,
     Label,
+    Image,
+    BOM,
     GroundSymbol,
 )
