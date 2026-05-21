@@ -1,0 +1,660 @@
+"""Cairo backend for the pydiylc viewer.
+
+Mirrors the shape choices in `pydiylc.svg` but draws directly onto a Cairo
+context. Stays import-safe when Cairo is not installed — viewer code
+imports lazily through ``has_cairo()`` so users without GTK can still use
+the SVG path.
+
+There is intentional duplication with ``svg.py``. Once the per-component
+shapes stabilize, both backends should be refactored to share a
+``Canvas`` protocol; for now the duplication is small and easy to keep
+in lockstep.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import TYPE_CHECKING
+
+from .components import (
+    BlankBoard,
+    Component,
+    CopperTrace,
+    DiodePlastic,
+    DIL_IC,
+    HookupWire,
+    Jumper,
+    Label,
+    LED,
+    MiniToggleSwitch,
+    OpenJack1_4,
+    PerfBoard,
+    PlasticDCJack,
+    PotentiometerPanel,
+    RadialCeramicDiskCapacitor,
+    RadialElectrolytic,
+    RadialFilmCapacitor,
+    Resistor,
+    SolderPad,
+    TraceCut,
+    TransistorTO92,
+    VeroBoard,
+)
+from .core import Measure, Project
+from .svg import PX_PER_INCH
+
+
+if TYPE_CHECKING:  # only for type hints — never imported at runtime
+    import cairo  # type: ignore
+
+
+def has_cairo() -> bool:
+    """Return True if pycairo is importable."""
+    try:
+        import cairo  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _measure_to_inches(m: Measure) -> float:
+    if m.unit == "in":
+        return m.value
+    if m.unit == "mm":
+        return m.value / 25.4
+    if m.unit == "cm":
+        return m.value / 2.54
+    if m.unit == "px":
+        return m.value / PX_PER_INCH
+    return m.value
+
+
+def _hex_to_rgb(hex6: str) -> tuple[float, float, float]:
+    s = hex6.lstrip("#").lower()
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    return int(s[0:2], 16) / 255, int(s[2:4], 16) / 255, int(s[4:6], 16) / 255
+
+
+def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
+                 background: tuple[float, float, float] = (1, 1, 1),
+                 show_grid: bool = True,
+                 selected_name: str | None = None) -> None:
+    """Paint a Project onto an existing Cairo context.
+
+    The caller is responsible for sizing the surface and applying any pan/zoom
+    transforms before calling. ``scale`` is pixels per inch *at the current
+    Cairo transform*; pass 96 for 1:1, or use Cairo's own ``cr.scale(zoom,
+    zoom)`` to magnify.
+    """
+    w_in = project.width_cm / 2.54
+    h_in = project.height_cm / 2.54
+    w = w_in * scale
+    h = h_in * scale
+
+    cr.set_source_rgb(*background)
+    cr.rectangle(0, 0, w, h)
+    cr.fill()
+
+    if show_grid:
+        _draw_grid(cr, w_in, h_in, scale)
+
+    for component in project.components:
+        try:
+            handler = _RENDERERS.get(type(component))
+            if handler is None:
+                _draw_fallback(cr, component, scale)
+            else:
+                handler(cr, component, scale)
+                if selected_name is not None and getattr(component, "name", None) == selected_name:
+                    _draw_selection_box(cr, component, scale)
+        except Exception:
+            # Don't let a bad component blank the canvas
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1) -> None:
+    cr.save()
+    cr.set_source_rgb(0.91, 0.91, 0.91)
+    cr.set_line_width(0.5)
+    n_x = int(w_in / step_in)
+    n_y = int(h_in / step_in)
+    for i in range(n_x + 1):
+        x = i * step_in * scale
+        cr.move_to(x, 0)
+        cr.line_to(x, h_in * scale)
+    for i in range(n_y + 1):
+        y = i * step_in * scale
+        cr.move_to(0, y)
+        cr.line_to(w_in * scale, y)
+    cr.stroke()
+    cr.restore()
+
+
+def _draw_fallback(cr, c: Component, s: float) -> None:
+    x = getattr(c, "x", None)
+    if x is None:
+        x = getattr(c, "x1", 0.0)
+    y = getattr(c, "y", None)
+    if y is None:
+        y = getattr(c, "y1", 0.0)
+    cr.save()
+    cr.set_source_rgb(0.6, 0.6, 0.6)
+    cr.set_dash([2, 2])
+    cr.arc(x * s, y * s, 4, 0, 2 * math.pi)
+    cr.stroke()
+    cr.restore()
+
+
+def _draw_selection_box(cr, c: Component, s: float) -> None:
+    """Draw a dashed outline around a selected component."""
+    bbox = _component_bbox(c, s)
+    if bbox is None:
+        return
+    x1, y1, x2, y2 = bbox
+    pad = 4
+    cr.save()
+    cr.set_source_rgba(0.0, 0.4, 0.9, 0.9)
+    cr.set_line_width(1.5)
+    cr.set_dash([4, 3])
+    cr.rectangle(x1 - pad, y1 - pad, (x2 - x1) + 2 * pad, (y2 - y1) + 2 * pad)
+    cr.stroke()
+    cr.restore()
+
+
+def _component_bbox(c: Component, s: float) -> tuple[float, float, float, float] | None:
+    """Approximate bounding box in pixel coordinates for hit testing + selection."""
+    if hasattr(c, "x1") and hasattr(c, "x2"):
+        return (
+            min(c.x1, c.x2) * s,
+            min(c.y1, c.y2) * s,
+            max(c.x1, c.x2) * s,
+            max(c.y1, c.y2) * s,
+        )
+    if hasattr(c, "points") and c.points:
+        xs = [p[0] for p in c.points]
+        ys = [p[1] for p in c.points]
+        return (min(xs) * s, min(ys) * s, max(xs) * s, max(ys) * s)
+    # Components that auto-generate control points (transistor, pot, switch)
+    if hasattr(c, "_control_points"):
+        pts = c._control_points()
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        return (min(xs) * s, min(ys) * s, max(xs) * s, max(ys) * s)
+    if hasattr(c, "x") and hasattr(c, "y"):
+        x, y = c.x * s, c.y * s
+        return (x - 8, y - 8, x + 8, y + 8)
+    return None
+
+
+def hit_test(project: Project, px: float, py: float, scale: float) -> Component | None:
+    """Return the topmost component whose bbox contains (px, py), or None."""
+    # Iterate in reverse — later-added components are drawn on top.
+    for c in reversed(project.components):
+        bbox = _component_bbox(c, scale)
+        if bbox is None:
+            continue
+        x1, y1, x2, y2 = bbox
+        pad = 6  # hit-test padding for small components
+        if (x1 - pad) <= px <= (x2 + pad) and (y1 - pad) <= py <= (y2 + pad):
+            return c
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Per-component renderers (mirror svg.py shapes)
+# ---------------------------------------------------------------------------
+
+
+def _board_rect(cr, c, s: float) -> tuple[float, float, float, float]:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    cr.set_source_rgb(*_hex_to_rgb(c.board_color))
+    cr.rectangle(x, y, w, h)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    return x, y, w, h
+
+
+def _render_blank_board(cr, c: BlankBoard, s: float) -> None:
+    _board_rect(cr, c, s)
+
+
+def _render_perf_board(cr, c: PerfBoard, s: float) -> None:
+    x, y, w, h = _board_rect(cr, c, s)
+    step = _measure_to_inches(c.spacing) * s
+    nx = int(w / step) + 1
+    ny = int(h / step) + 1
+    cr.set_source_rgb(*_hex_to_rgb(c.pad_color))
+    for i in range(nx):
+        for j in range(ny):
+            cr.arc(x + i * step, y + j * step, 1.6, 0, 2 * math.pi)
+            cr.fill()
+
+
+def _render_vero_board(cr, c: VeroBoard, s: float) -> None:
+    x, y, w, h = _board_rect(cr, c, s)
+    step = _measure_to_inches(c.spacing) * s
+    cr.set_source_rgba(*_hex_to_rgb(c.strip_color), 0.55)
+    cr.set_line_width(3)
+    if c.orientation == "HORIZONTAL":
+        ny = max(1, int(h / step))
+        for i in range(ny):
+            cy = y + (i + 0.5) * step
+            cr.move_to(x, cy)
+            cr.line_to(x + w, cy)
+    else:
+        nx = max(1, int(w / step))
+        for i in range(nx):
+            cx = x + (i + 0.5) * step
+            cr.move_to(cx, y)
+            cr.line_to(cx, y + h)
+    cr.stroke()
+
+
+def _two_pin_body(cr, p1, p2, s, *, body_w_in, body_color, border_color, lead_color="#636363"):
+    x1, y1 = p1[0] * s, p1[1] * s
+    x2, y2 = p2[0] * s, p2[1] * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    cr.set_source_rgb(*_hex_to_rgb(lead_color.lstrip("#")))
+    cr.set_line_width(1.4)
+    cr.move_to(x1, y1)
+    cr.line_to(x2, y2)
+    cr.stroke()
+
+    cr.save()
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    cr.translate(cx, cy)
+    cr.rotate(math.atan2(dy, dx))
+    body_len = length * 0.55
+    body_w = body_w_in * s
+    cr.set_source_rgb(*_hex_to_rgb(body_color))
+    cr.rectangle(-body_len / 2, -body_w / 2, body_len, body_w)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(border_color))
+    cr.set_line_width(0.8)
+    cr.stroke()
+    cr.restore()
+
+
+def _draw_text(cr, x, y, text, *, size=8, anchor="middle", color=(0, 0, 0)):
+    cr.set_source_rgb(*color)
+    cr.set_font_size(size)
+    ext = cr.text_extents(text)
+    if anchor == "middle":
+        dx = -ext.width / 2
+    elif anchor == "end":
+        dx = -ext.width
+    else:
+        dx = 0
+    cr.move_to(x + dx, y)
+    cr.show_text(text)
+
+
+def _value_label(cr, x1, y1, x2, y2, s, name, value, display):
+    if display == "NONE":
+        return
+    if display == "NAME":
+        text = name
+    elif display == "VALUE":
+        text = value or name
+    elif display == "BOTH":
+        text = f"{name} {value}" if value else name
+    else:
+        text = value or name
+    cx = (x1 + x2) / 2 * s
+    cy = (y1 + y2) / 2 * s - 7
+    _draw_text(cr, cx, cy, text)
+
+
+def _render_resistor(cr, c: Resistor, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.1, body_color=c.body_color, border_color=c.border_color,
+    )
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_film_cap(cr, c: RadialFilmCapacitor, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.18, body_color=c.body_color, border_color=c.border_color,
+    )
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_ceramic_cap(cr, c: RadialCeramicDiskCapacitor, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    cr.set_source_rgb(*_hex_to_rgb("#636363"))
+    cr.set_line_width(1.2)
+    cr.move_to(x1, y1)
+    cr.line_to(x2, y2)
+    cr.stroke()
+    r = max(8.0, math.hypot(x2 - x1, y2 - y1) * 0.32)
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.arc(cx, cy, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(0.8)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_electrolytic(cr, c: RadialElectrolytic, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.3, body_color=c.body_color, border_color=c.border_color,
+    )
+    pos = (c.x2, c.y2) if not c.invert else (c.x1, c.y1)
+    cr.set_source_rgb(*_hex_to_rgb("#ff8888"))
+    cr.arc(pos[0] * s, pos[1] * s, 2.5, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb("#aa3333"))
+    cr.set_line_width(0.6)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_pot(cr, c: PotentiometerPanel, s: float) -> None:
+    pts = c._control_points()
+    cx = sum(p[0] for p in pts) / len(pts) * s
+    cy = sum(p[1] for p in pts) / len(pts) * s
+    r = _measure_to_inches(c.body_diameter) * s / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.arc(cx, cy, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(*_hex_to_rgb(c.wafer_color))
+        cr.arc(px * s, py * s, 3, 0, 2 * math.pi)
+        cr.fill_preserve()
+        cr.set_source_rgb(0.27, 0.27, 0.27)
+        cr.set_line_width(0.6)
+        cr.stroke()
+    _draw_text(cr, cx, cy + 4, f"{c.name} {c.resistance}", size=9)
+
+
+def _render_diode(cr, c: DiodePlastic, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.08, body_color=c.body_color, border_color=c.border_color,
+    )
+    # Cathode band
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    bx = x1 + ux * length * 0.7
+    by = y1 + uy * length * 0.7
+    cr.save()
+    cr.translate(bx, by)
+    cr.rotate(math.atan2(dy, dx))
+    cr.set_source_rgb(*_hex_to_rgb(c.marker_color))
+    cr.rectangle(-1.5, -4, 3, 8)
+    cr.fill()
+    cr.restore()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_led(cr, c: LED, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    r = max(_measure_to_inches(c.length) * s / 2, 6.0)
+    cr.set_source_rgb(0.39, 0.39, 0.39)
+    cr.set_line_width(1.2)
+    cr.move_to(x1, y1)
+    cr.line_to(x2, y2)
+    cr.stroke()
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), 0.85)
+    cr.arc(cx, cy, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_transistor(cr, c: TransistorTO92, s: float) -> None:
+    pts = c._control_points()
+    cx = sum(p[0] for p in pts) / len(pts) * s
+    cy = sum(p[1] for p in pts) / len(pts) * s
+    r = 0.12 * s
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.arc(cx, cy, r, math.pi, 2 * math.pi)
+    cr.close_path()
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(*_hex_to_rgb(c.lead_color))
+        cr.set_line_width(1.2)
+        cr.move_to(px * s, py * s)
+        cr.line_to(cx, cy)
+        cr.stroke()
+        cr.set_source_rgb(0, 0, 0)
+        cr.arc(px * s, py * s, 2, 0, 2 * math.pi)
+        cr.fill()
+    _draw_text(cr, cx, cy + 3, c.name, size=8, color=_hex_to_rgb(c.label_color))
+    if c.value:
+        _draw_text(cr, cx, cy + r + 10, c.value, size=8)
+
+
+def _render_dil(cr, c: DIL_IC, s: float) -> None:
+    n_pins = int(c.pin_count.lstrip("_"))
+    rows = n_pins // 2
+    pin_spacing_in = _measure_to_inches(c.pin_spacing)
+    row_spacing_in = _measure_to_inches(c.row_spacing)
+    if c.orientation in ("DEFAULT", "_180"):
+        body_w = row_spacing_in * s
+        body_h = (rows - 1) * pin_spacing_in * s + 0.1 * s
+        body_x = c.x * s - body_w * 0.05
+        body_y = c.y * s - 0.05 * s
+    else:
+        body_w = (rows - 1) * pin_spacing_in * s + 0.1 * s
+        body_h = row_spacing_in * s
+        body_x = c.x * s - 0.05 * s
+        body_y = c.y * s - body_h * 0.05
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.rectangle(body_x, body_y, body_w, body_h)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    cr.set_source_rgb(*_hex_to_rgb(c.indent_color))
+    cr.arc(body_x + 6, body_y + 6, 2, 0, 2 * math.pi)
+    cr.fill()
+    if c.orientation in ("DEFAULT", "_180"):
+        for i in range(rows):
+            y = c.y * s + i * pin_spacing_in * s
+            cr.set_source_rgb(0, 0, 0)
+            cr.arc(c.x * s, y, 2, 0, 2 * math.pi)
+            cr.fill()
+            cr.arc(c.x * s + row_spacing_in * s, y, 2, 0, 2 * math.pi)
+            cr.fill()
+    _draw_text(
+        cr, body_x + body_w / 2, body_y + body_h / 2 + 3,
+        c.value or c.name, size=9, color=_hex_to_rgb(c.label_color)
+    )
+
+
+def _render_trace(cr, c: CopperTrace, s: float) -> None:
+    pts = list(c.points)
+    if len(pts) < 2:
+        return
+    cr.set_source_rgba(*_hex_to_rgb(c.lead_color), 0.85)
+    cr.set_line_width(max(2.0, _measure_to_inches(c.thickness) * s))
+    cr.set_line_cap(1)  # ROUND
+    cr.set_line_join(1)
+    cr.move_to(pts[0][0] * s, pts[0][1] * s)
+    for x, y in pts[1:]:
+        cr.line_to(x * s, y * s)
+    cr.stroke()
+
+
+def _render_jumper(cr, c: Jumper, s: float) -> None:
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.6)
+    if c.style == "DASHED":
+        cr.set_dash([5, 3])
+    elif c.style == "DOTTED":
+        cr.set_dash([1, 3])
+    cr.move_to(c.x1 * s, c.y1 * s)
+    cr.line_to(c.x2 * s, c.y2 * s)
+    cr.stroke()
+    cr.set_dash([])
+
+
+def _render_hookup_wire(cr, c: HookupWire, s: float) -> None:
+    pts = list(c.points)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.8)
+    cr.set_line_cap(1)
+    if len(pts) == 2:
+        cr.move_to(pts[0][0] * s, pts[0][1] * s)
+        cr.line_to(pts[1][0] * s, pts[1][1] * s)
+    else:
+        p0, p1, p2, p3 = pts
+        cr.move_to(p0[0] * s, p0[1] * s)
+        cr.curve_to(p1[0] * s, p1[1] * s, p2[0] * s, p2[1] * s, p3[0] * s, p3[1] * s)
+    cr.stroke()
+
+
+def _render_solder_pad(cr, c: SolderPad, s: float) -> None:
+    r = _measure_to_inches(c.size) * s / 2
+    hole = _measure_to_inches(c.hole_size) * s / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.arc(c.x * s, c.y * s, r, 0, 2 * math.pi)
+    cr.fill()
+    cr.set_source_rgb(1, 1, 1)
+    cr.arc(c.x * s, c.y * s, hole, 0, 2 * math.pi)
+    cr.fill()
+
+
+def _render_trace_cut(cr, c: TraceCut, s: float) -> None:
+    size_px = _measure_to_inches(c.size) * s
+    cr.set_source_rgb(*_hex_to_rgb(c.fill_color))
+    cr.rectangle(c.x * s - size_px / 2, c.y * s - size_px / 2, size_px, size_px)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    _draw_text(cr, c.x * s + size_px / 2 + 8, c.y * s + 3, "cut", size=7, color=(0.5, 0.5, 0.5), anchor="start")
+
+
+def _render_mini_toggle(cr, c: MiniToggleSwitch, s: float) -> None:
+    pts = c._control_points()
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    pad_in = 0.1
+    box_x = (min(xs) - pad_in) * s
+    box_y = (min(ys) - pad_in) * s
+    box_w = (max(xs) - min(xs) + 2 * pad_in) * s
+    box_h = (max(ys) - min(ys) + 2 * pad_in) * s
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), 0.7)
+    cr.rectangle(box_x, box_y, box_w, box_h)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(0.87, 0.87, 0.87)
+        cr.arc(px * s, py * s, 3, 0, 2 * math.pi)
+        cr.fill_preserve()
+        cr.set_source_rgb(0.2, 0.2, 0.2)
+        cr.set_line_width(0.8)
+        cr.stroke()
+    label = c.switch_type.lstrip("_")
+    _draw_text(cr, box_x + box_w / 2, box_y - 4, f"{c.name} {label}", size=9)
+
+
+def _render_dc_jack(cr, c: PlasticDCJack, s: float) -> None:
+    cx = c.x * s + 6
+    cy = c.y * s + 10
+    cr.set_source_rgb(0.13, 0.13, 0.13)
+    cr.rectangle(c.x * s - 4, c.y * s - 4, 24, 28)
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1)
+    cr.stroke()
+    cr.set_source_rgb(0.27, 0.27, 0.27)
+    cr.arc(cx, cy, 6, 0, 2 * math.pi)
+    cr.fill()
+    cr.set_source_rgb(0, 0, 0)
+    cr.arc(cx, cy, 2, 0, 2 * math.pi)
+    cr.fill()
+    _draw_text(cr, c.x * s + 8, c.y * s + 30, f"{c.name} 9V", size=8, anchor="start")
+
+
+def _render_open_jack(cr, c: OpenJack1_4, s: float) -> None:
+    cx, cy = c.x * s, c.y * s + 10
+    cr.set_source_rgb(0.8, 0.8, 0.8)
+    cr.arc(cx, cy, 14, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.27, 0.27, 0.27)
+    cr.set_line_width(1)
+    cr.stroke()
+    cr.set_source_rgb(0.13, 0.13, 0.13)
+    cr.arc(cx, cy, 5, 0, 2 * math.pi)
+    cr.fill()
+    _draw_text(cr, cx, cy + 24, f'{c.name} 1/4"', size=8)
+
+
+def _render_label(cr, c: Label, s: float) -> None:
+    cr.save()
+    weight = 1 if c.font_style in (1, 3) else 0
+    slant = 1 if c.font_style in (2, 3) else 0
+    cr.select_font_face("sans-serif", slant, weight)
+    cr.set_font_size(c.font_size)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    ext = cr.text_extents(c.text)
+    if c.horizontal_alignment == "CENTER":
+        dx = -ext.width / 2
+    elif c.horizontal_alignment == "RIGHT":
+        dx = -ext.width
+    else:
+        dx = 0
+    cr.move_to(c.x * s + dx, c.y * s)
+    cr.show_text(c.text)
+    cr.restore()
+
+
+_RENDERERS: dict[type, callable] = {
+    BlankBoard: _render_blank_board,
+    PerfBoard: _render_perf_board,
+    VeroBoard: _render_vero_board,
+    Resistor: _render_resistor,
+    RadialFilmCapacitor: _render_film_cap,
+    RadialCeramicDiskCapacitor: _render_ceramic_cap,
+    RadialElectrolytic: _render_electrolytic,
+    PotentiometerPanel: _render_pot,
+    DiodePlastic: _render_diode,
+    LED: _render_led,
+    TransistorTO92: _render_transistor,
+    DIL_IC: _render_dil,
+    CopperTrace: _render_trace,
+    Jumper: _render_jumper,
+    HookupWire: _render_hookup_wire,
+    SolderPad: _render_solder_pad,
+    TraceCut: _render_trace_cut,
+    MiniToggleSwitch: _render_mini_toggle,
+    PlasticDCJack: _render_dc_jack,
+    OpenJack1_4: _render_open_jack,
+    Label: _render_label,
+}

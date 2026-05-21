@@ -21,6 +21,13 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# Viewer extras: requires native GTK 4 libs at runtime — install via your
+# system package manager (apt: gir1.2-gtk-4.0, pacman: gtk4, dnf: gtk4).
+# PyGObject pulls in the python bindings.
+viewer = ["pygobject>=3.42", "pycairo>=1.20"]
+
+[project.scripts]
+pydiylc-view = "pydiylc.viewer:main"
 
 [project.urls]
 Homepage = "https://github.com/DeepReef11/pydiylc"

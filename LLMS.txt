@@ -156,6 +156,18 @@ This is a quick-feedback preview, not pixel-identical to DIYLC. For high-fidelit
 diylc -convert layout.diy layout.png
 ```
 
+## GTK4 viewer (`pydiylc-view`)
+
+```bash
+pydiylc-view path/to/layout.py     # opens a Wayland-native window
+```
+
+The viewer auto-reloads on file save (mtime poll), supports mouse drag to
+pan, scroll to zoom, click to select. The script you point it at must
+define either a top-level ``project = Project(...)`` or
+``def build() -> Project``. Requires optional extras: install with
+``pip install pydiylc[viewer]`` plus system GTK 4.
+
 ## What this library does NOT do
 
 - No reading/parsing of existing `.diy` files yet (emit only).

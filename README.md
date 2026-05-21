@@ -30,6 +30,32 @@ render_svg_file(p, "preview.svg")  # open in any browser
 
 See `examples/demo_render_svg.py` for a complete LPB-1 → SVG example.
 
+## GTK4 viewer (Wayland-native)
+
+A native viewer ships with the package. It draws via Cairo (no Java, no Swing,
+no XWayland), reloads when your source file changes, and supports pan/zoom +
+click-to-select.
+
+```bash
+pip install -e ".[viewer]"        # installs PyGObject + pycairo
+# you also need GTK 4 from the system: e.g. `sudo apt install gir1.2-gtk-4.0`
+
+pydiylc-view examples/layout_for_viewer.py
+pydiylc-view examples/layout.json
+```
+
+Keyboard:
+- **R** — manual reload
+- **0** — reset zoom + pan
+- **+/-** — zoom in/out
+- **Q / Esc** — quit
+- **mouse drag** — pan
+- **scroll** — zoom
+- **click** — select component (name shown in header bar)
+
+Your `.py` file should expose either a top-level `project = Project(...)` or
+a `def build() -> Project`. The viewer calls it on every reload.
+
 ## AI-friendly by design
 
 - [`LLMS.txt`](./LLMS.txt) — one-screen overview meant to be fed to a coding
