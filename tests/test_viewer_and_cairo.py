@@ -137,11 +137,20 @@ def test_load_json(tmp_path):
     assert project.title == "jsontest"
 
 
-def test_load_diy_raises(tmp_path):
-    src = tmp_path / "layout.diy"
-    src.write_text("<project/>")
-    with pytest.raises(NotImplementedError):
-        viewer.load(src)
+def test_load_diy_now_works(tmp_path):
+    """Once the reader landed, viewer.load() accepts .diy files."""
+    from pydiylc import Project, Resistor
+
+    out = tmp_path / "layout.diy"
+    p = Project(title="from-diy")
+    p.add(Resistor("R1", 0, 0, 0, 0.5, value="10K"))
+    p.save(out)
+    project, builder = viewer.load(out)
+    assert project.title == "from-diy"
+    assert len(project.components) == 1
+    # builder re-reads
+    p2 = builder()
+    assert p2.title == "from-diy"
 
 
 def test_load_missing(tmp_path):

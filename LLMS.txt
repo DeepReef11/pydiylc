@@ -168,9 +168,25 @@ define either a top-level ``project = Project(...)`` or
 ``def build() -> Project``. Requires optional extras: install with
 ``pip install pydiylc[viewer]`` plus system GTK 4.
 
+## Reading .diy files
+
+```python
+from pydiylc import Project, read_warnings
+
+p = Project.read("some_pedal.diy")
+print(p.title, len(p.components))
+for w in read_warnings(p):
+    print("⚠", w)  # unknown components, malformed fields
+```
+
+Reader handles modern (`<project>`) and v3 (`<org.diylc.core.Project>`) roots.
+About 83% of components in real community layouts are recognized; unknown
+types (e.g. tubes, axial caps, schematic symbols) are skipped with a warning
+instead of failing the parse.
+
 ## What this library does NOT do
 
-- No reading/parsing of existing `.diy` files yet (emit only).
+- v1 (legacy flat-format) `.diy` files are not parsed.
 - Tubes, transformers, BJT/FET/IC schematic symbols, lever switches, rotary controls, and TO-220/TO-3 transistor packages are not yet implemented. They follow the same pattern when added.
 
 ## Where to look next

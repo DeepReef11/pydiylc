@@ -2783,6 +2783,304 @@
       ]
     },
     {
+      "python_class": "Dot",
+      "diylc_class": "diylc.connectivity.Dot",
+      "doc": "Small connection dot (visual marker for net junctions).\n\nXML: ``<diylc.connectivity.Dot>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Eyelet",
+      "diylc_class": "diylc.connectivity.Eyelet",
+      "doc": "Eyelet \u2014 through-hole terminal for point-to-point construction.\n\nXML: ``<diylc.connectivity.Eyelet>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "hole_size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "c3e4ed",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Turret",
+      "diylc_class": "diylc.connectivity.Turret",
+      "doc": "Turret terminal \u2014 a brass post for point-to-point amp wiring.\n\nXML: ``<diylc.connectivity.Turret>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.16,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "hole_size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.0625,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "e0c04c",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Line",
+      "diylc_class": "diylc.connectivity.Line",
+      "doc": "Straight line \u2014 used for annotations and frames.\n\nXML: ``<diylc.connectivity.Line>``\n\nAccepts a list of points; like CopperTrace, a midpoint is auto-added when\nonly two are given.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
       "python_class": "TraceCut",
       "diylc_class": "diylc.connectivity.TraceCut",
       "doc": "Break a stripboard strip at a single hole.\n\nXML: ``<diylc.connectivity.TraceCut>``\n\nPlace one on each strip you want to interrupt. `orientation` should\nmatch the parent VeroBoard's strip orientation: ``\"HORIZONTAL\"`` cuts\nhorizontal strips, ``\"VERTICAL\"`` cuts vertical ones.\n\nExample::\n\n    p.add(TraceCut(\"C1\", x=1.4, y=1.5))",

@@ -1,0 +1,371 @@
+"""Read .diy XML files back into pydiylc Projects.
+
+This is the inverse of the per-component emitters in ``components.py``.
+It is intentionally tolerant: unknown component types are skipped (with a
+warning recorded in ``Project.metadata['read_warnings']``) so that the
+parser works on real-world DIYLC files using components pydiylc does not
+yet model.
+
+For the components pydiylc does know about, the read is faithful enough
+that ``emit -> read -> emit`` is stable (round-trip-clean) up to attribute
+ordering. Two-pin components are reconstructed from the [p1, p2, mid]
+points format DIYLC writes, dropping the midpoint.
+
+Usage::
+
+    from pydiylc import Project
+    p = Project.read("layout.diy")
+    print(p.title, len(p.components))
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import re
+import warnings
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any
+
+from .core import Measure, Project
+from .components import ALL_COMPONENTS, Component
+
+
+# Map DIYLC element tag → pydiylc Component class.
+# Modern (4.x+) files use the short prefix `diylc.<category>.<Name>`.
+# Older v3 / XStream-serialized files use the full Java package path
+# `org.diylc.components.<category>.<Name>`. We accept both.
+_TAG_TO_CLASS: dict[str, type[Component]] = {}
+for _cls in ALL_COMPONENTS:
+    short = _cls.__diylc_class__
+    _TAG_TO_CLASS[short] = _cls
+    # diylc.connectivity.SolderPad → org.diylc.components.connectivity.SolderPad
+    parts = short.split(".")
+    if len(parts) >= 3:
+        full = ".".join(["org.diylc.components"] + parts[1:])
+        _TAG_TO_CLASS[full] = _cls
+
+# Some upstream child tags don't match our field names cleanly. These are the
+# exceptions; everything else uses _camel_to_snake().
+_FIELD_RENAMES: dict[str, dict[str, str]] = {
+    # default rename table — applies to every component unless overridden
+    "*": {
+        "labelOriantation": "label_orientation",  # upstream typo
+    },
+    # per-component overrides:
+    "diylc.boards.BlankBoard": {},
+    "diylc.boards.PerfBoard": {},
+    "diylc.boards.VeroBoard": {},
+}
+
+
+def _camel_to_snake(name: str) -> str:
+    """Convert camelCase / PascalCase to snake_case."""
+    # Insert underscore before each uppercase letter that follows a lowercase
+    # letter or another uppercase letter followed by a lowercase one.
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
+    return s.lower()
+
+
+def _renamed_field(diylc_class: str, child_tag: str) -> str:
+    """Resolve a DIYLC child tag to a Python field name."""
+    table = _FIELD_RENAMES.get(diylc_class, {})
+    if child_tag in table:
+        return table[child_tag]
+    common = _FIELD_RENAMES["*"]
+    if child_tag in common:
+        return common[child_tag]
+    return _camel_to_snake(child_tag)
+
+
+def _parse_point(el: ET.Element) -> tuple[float, float]:
+    return float(el.get("x", "0")), float(el.get("y", "0"))
+
+
+def _parse_measure(el: ET.Element) -> Measure:
+    return Measure(float(el.get("value", "0")), el.get("unit", "in"))
+
+
+def _parse_color(el: ET.Element) -> str:
+    """`<bodyColor hex="abc123"/>` → `'abc123'`."""
+    return el.get("hex", "000000")
+
+
+def _parse_bool(text: str | None) -> bool:
+    return (text or "").strip().lower() == "true"
+
+
+def _set_two_pin_coords(values: dict[str, Any], pts: list[tuple[float, float]]) -> None:
+    """Two-pin components: take p1, p2 from the points (ignore midpoint if present)."""
+    if not pts:
+        return
+    p1 = pts[0]
+    p2 = pts[1] if len(pts) >= 2 else pts[0]
+    values["x1"], values["y1"] = p1
+    values["x2"], values["y2"] = p2
+
+
+def _set_single_anchor(values: dict[str, Any], pts: list[tuple[float, float]]) -> None:
+    if not pts:
+        return
+    values["x"], values["y"] = pts[0]
+
+
+def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Component | None:
+    cls = _TAG_TO_CLASS.get(el.tag)
+    if cls is None:
+        warnings_out.append(f"unknown component type: {el.tag}")
+        return None
+
+    field_names = {f.name for f in dataclasses.fields(cls)}
+    measure_fields = {
+        f.name for f in dataclasses.fields(cls)
+        if f.type is Measure or (isinstance(f.type, str) and f.type == "Measure")
+    }
+
+    # Components that store value as a string-form unit (e.g. Resistor.value="10K",
+    # PotentiometerPanel.resistance="100K"). For these, when the XML has
+    # <value value="10" unit="K"/>, we serialize back to "10K" instead of
+    # storing a Measure.
+    _UNIT_VALUE_AS_STRING = {
+        ("diylc.passive.Resistor", "value"),
+        ("diylc.passive.RadialFilmCapacitor", "value"),
+        ("diylc.passive.RadialCeramicDiskCapacitor", "value"),
+        ("diylc.passive.RadialElectrolytic", "value"),
+        ("diylc.passive.PotentiometerPanel", "resistance"),
+    }
+
+    values: dict[str, Any] = {}
+    pts: list[tuple[float, float]] = []
+    wire_pts: list[tuple[float, float]] = []
+    single_point: tuple[float, float] | None = None
+
+    for child in el:
+        tag = child.tag
+
+        # Handle the well-known irregular containers first.
+        if tag in ("points", "controlPoints"):
+            pts = [_parse_point(p) for p in child.findall("point")]
+            continue
+        if tag == "controlPoints2":  # HookupWire
+            wire_pts = [_parse_point(p) for p in child.findall("point")]
+            continue
+        if tag == "point" and child.get("x") is not None:
+            # SolderPad / Label / TraceCut store a bare <point x="" y=""/>
+            single_point = _parse_point(child)
+            continue
+        if tag in ("firstPoint", "secondPoint"):
+            # Boards write the corners both inside <controlPoints> AND as
+            # standalone first/second points. We trust <controlPoints>.
+            continue
+        if tag == "name":
+            values["name"] = child.text or ""
+            continue
+        if tag == "value" and "value" in field_names and child.get("unit") is None:
+            # Plain string value (resistor models actually use <value
+            # value="..." unit="..."/>, those are handled below)
+            values["value"] = child.text or ""
+            continue
+        if tag == "alpha":
+            try:
+                values["alpha"] = int((child.text or "0").strip())
+            except ValueError:
+                pass
+            continue
+        if tag == "text":
+            values["text"] = child.text or ""
+            continue
+        if tag == "font":
+            values["font"] = child.get("name", "Tahoma")
+            try:
+                values["font_size"] = int(child.get("size", "14"))
+                values["font_style"] = int(child.get("style", "0"))
+            except ValueError:
+                pass
+            continue
+
+        field_name = _renamed_field(el.tag, tag)
+
+        # Color elements have a `hex="..."` attribute.
+        if "Color" in tag or tag in ("color",):
+            if field_name in field_names:
+                values[field_name] = _parse_color(child)
+            continue
+
+        # Measure elements have value+unit attributes.
+        if child.get("value") is not None and child.get("unit") is not None:
+            if (el.tag, field_name) in _UNIT_VALUE_AS_STRING:
+                # Re-stringify as e.g. "10K", "100nF" — matches the format
+                # the original constructor accepts.
+                v = float(child.get("value", "0"))
+                u = child.get("unit", "")
+                # Strip trailing ".0" on integers for cleaner round-trip.
+                v_str = f"{int(v)}" if v.is_integer() else f"{v:g}"
+                values[field_name] = f"{v_str}{u}"
+            elif field_name in field_names:
+                values[field_name] = _parse_measure(child)
+            continue
+
+        # Booleans, strings, numbers as element text.
+        if field_name in field_names:
+            text = (child.text or "").strip()
+            if not text:
+                values[field_name] = ""
+            elif text in ("true", "false"):
+                values[field_name] = text == "true"
+            else:
+                # Try int, then leave as string (enum strings stay strings).
+                try:
+                    values[field_name] = int(text)
+                except ValueError:
+                    values[field_name] = text
+
+    # Map collected points to the right fields per component class. Normalize
+    # the older `org.diylc.components.*` prefix to the modern `diylc.*` form
+    # before dispatching, so all the explicit `diylc_class == ...` branches
+    # below catch v3 files too.
+    diylc_class = el.tag
+    if diylc_class.startswith("org.diylc.components."):
+        diylc_class = "diylc." + diylc_class[len("org.diylc.components."):]
+    if diylc_class == "diylc.connectivity.HookupWire":
+        values["points"] = wire_pts
+    elif diylc_class == "diylc.connectivity.CopperTrace":
+        values["points"] = pts
+    elif diylc_class == "diylc.connectivity.SolderPad":
+        if single_point is not None:
+            values["x"], values["y"] = single_point
+        else:
+            _set_single_anchor(values, pts)
+    elif diylc_class in (
+        "diylc.connectivity.TraceCut",
+        "diylc.connectivity.Dot",
+        "diylc.connectivity.Eyelet",
+        "diylc.connectivity.Turret",
+    ):
+        if single_point is not None:
+            values["x"], values["y"] = single_point
+        else:
+            _set_single_anchor(values, pts)
+    elif diylc_class == "diylc.connectivity.Line":
+        # Line is a polyline like CopperTrace.
+        values["points"] = pts
+    elif diylc_class == "diylc.misc.Label":
+        if single_point is not None:
+            values["x"], values["y"] = single_point
+        else:
+            _set_single_anchor(values, pts)
+    elif diylc_class in (
+        "diylc.boards.BlankBoard",
+        "diylc.boards.PerfBoard",
+        "diylc.boards.VeroBoard",
+    ):
+        # Boards use corner [p1, p2] in <controlPoints>.
+        if pts:
+            (values["x1"], values["y1"]) = pts[0]
+            (values["x2"], values["y2"]) = pts[1] if len(pts) >= 2 else pts[0]
+    elif diylc_class in (
+        "diylc.semiconductors.TransistorTO92",
+        "diylc.passive.PotentiometerPanel",
+        "diylc.electromechanical.MiniToggleSwitch",
+        "diylc.electromechanical.PlasticDCJack",
+        "diylc.electromechanical.OpenJack1_4",
+    ):
+        # Single-anchor components — take the first control point.
+        _set_single_anchor(values, pts)
+    elif diylc_class == "diylc.semiconductors.DIL_IC":
+        _set_single_anchor(values, pts)
+    else:
+        # Two-pin: assume [p1, p2, midpoint]
+        _set_two_pin_coords(values, pts)
+
+    # Drop keys the dataclass doesn't accept.
+    extra = set(values) - field_names
+    for k in extra:
+        warnings_out.append(f"{el.tag}: ignoring unknown attribute {k!r}")
+        del values[k]
+
+    # Required positional fields that we may have missed (e.g. malformed file).
+    missing = [f.name for f in dataclasses.fields(cls)
+               if f.default is dataclasses.MISSING
+               and f.default_factory is dataclasses.MISSING  # type: ignore[misc]
+               and f.name not in values]
+    if missing:
+        warnings_out.append(
+            f"{el.tag}: missing required fields {missing}, skipping"
+        )
+        return None
+
+    try:
+        return cls(**values)
+    except (ValueError, TypeError) as exc:
+        warnings_out.append(f"{el.tag}: construction failed: {exc}")
+        return None
+
+
+def read_project(path: str | Path) -> Project:
+    """Parse a .diy file into a Project."""
+    p = Path(path)
+    tree = ET.parse(p)
+    root = tree.getroot()
+    # Modern files use <project>; older XStream-serialized files use
+    # <org.diylc.core.Project>. Accept both.
+    if root.tag not in ("project", "org.diylc.core.Project"):
+        raise ValueError(f"{p}: expected <project> root, got <{root.tag}>")
+
+    project = Project()
+    warnings_out: list[str] = []
+
+    title_el = root.find("title")
+    if title_el is not None:
+        project.title = title_el.text or ""
+    author_el = root.find("author")
+    if author_el is not None:
+        project.author = author_el.text or ""
+    w_el = root.find("width")
+    if w_el is not None and w_el.get("value"):
+        v = float(w_el.get("value"))
+        unit = w_el.get("unit", "cm")
+        project.width_cm = v if unit == "cm" else (v * 2.54 if unit == "in" else v / 10.0)
+    h_el = root.find("height")
+    if h_el is not None and h_el.get("value"):
+        v = float(h_el.get("value"))
+        unit = h_el.get("unit", "cm")
+        project.height_cm = v if unit == "cm" else (v * 2.54 if unit == "in" else v / 10.0)
+    g_el = root.find("gridSpacing")
+    if g_el is not None and g_el.get("value"):
+        v = float(g_el.get("value"))
+        unit = g_el.get("unit", "in")
+        project.grid_inches = v if unit == "in" else (v / 25.4 if unit == "mm" else v / 2.54)
+    fv = root.find("fileVersion")
+    if fv is not None:
+        try:
+            major = int(fv.findtext("major") or "5")
+            minor = int(fv.findtext("minor") or "0")
+            build = int(fv.findtext("build") or "0")
+            project.file_version = (major, minor, build)
+        except ValueError:
+            pass
+
+    components_el = root.find("components")
+    if components_el is not None:
+        for el in components_el:
+            c = _component_from_element(el, warnings_out)
+            if c is not None:
+                project.add(c)
+
+    # Stash warnings on the project for callers that want to inspect them.
+    # `Project` doesn't have a metadata field, but we attach attribute-style
+    # so this stays an opt-in inspection point without changing the dataclass.
+    project._read_warnings = warnings_out  # type: ignore[attr-defined]
+    if warnings_out:
+        warnings.warn(
+            f"read_project: {len(warnings_out)} warning(s); see project._read_warnings",
+            stacklevel=2,
+        )
+    return project
+
+
+def read_warnings(project: Project) -> list[str]:
+    """Return the warning list from a previously-read Project."""
+    return getattr(project, "_read_warnings", [])

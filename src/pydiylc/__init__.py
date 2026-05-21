@@ -5,6 +5,7 @@ from .loader import (
     project_from_json_file,
     component_from_dict,
 )
+from .reader import read_project, read_warnings
 from .components import (
     Component,
     BlankBoard,
@@ -23,6 +24,10 @@ from .components import (
     Jumper,
     HookupWire,
     SolderPad,
+    Dot,
+    Eyelet,
+    Turret,
+    Line,
     TraceCut,
     MiniToggleSwitch,
     PlasticDCJack,
@@ -40,6 +45,8 @@ __all__ = [
     "project_from_json",
     "project_from_json_file",
     "component_from_dict",
+    "read_project",
+    "read_warnings",
     "Component",
     "BlankBoard",
     "PerfBoard",
@@ -57,6 +64,10 @@ __all__ = [
     "Jumper",
     "HookupWire",
     "SolderPad",
+    "Dot",
+    "Eyelet",
+    "Turret",
+    "Line",
     "TraceCut",
     "MiniToggleSwitch",
     "PlasticDCJack",

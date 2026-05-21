@@ -1011,6 +1011,152 @@ class HookupWire(Component):
 
 
 @dataclass
+class Dot(Component):
+    """Small connection dot (visual marker for net junctions).
+
+    XML: ``<diylc.connectivity.Dot>``
+    """
+
+    name: str
+    x: float
+    y: float
+    size: Measure = field(default_factory=lambda: mm(1.0))
+    color: str = "000000"
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.Dot"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.connectivity.Dot>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}</diylc.connectivity.Dot>"
+        )
+
+
+@dataclass
+class Eyelet(Component):
+    """Eyelet — through-hole terminal for point-to-point construction.
+
+    XML: ``<diylc.connectivity.Eyelet>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    size: Measure = field(default_factory=lambda: inches(0.2))
+    hole_size: Measure = field(default_factory=lambda: inches(0.1))
+    color: str = "c3e4ed"
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.Eyelet"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.connectivity.Eyelet>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f"{pad}  <holeSize {self.hole_size.attrs()}/>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.connectivity.Eyelet>"
+        )
+
+
+@dataclass
+class Turret(Component):
+    """Turret terminal — a brass post for point-to-point amp wiring.
+
+    XML: ``<diylc.connectivity.Turret>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    size: Measure = field(default_factory=lambda: inches(0.16))
+    hole_size: Measure = field(default_factory=lambda: inches(0.0625))
+    color: str = "e0c04c"
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.Turret"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.connectivity.Turret>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f"{pad}  <holeSize {self.hole_size.attrs()}/>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.connectivity.Turret>"
+        )
+
+
+@dataclass
+class Line(Component):
+    """Straight line — used for annotations and frames.
+
+    XML: ``<diylc.connectivity.Line>``
+
+    Accepts a list of points; like CopperTrace, a midpoint is auto-added when
+    only two are given.
+    """
+
+    name: str
+    points: Sequence[Point]
+    alpha: int = 127
+    body_color: str = "ffffff"
+    border_color: str = "000000"
+    label_color: str = "000000"
+    lead_color: str = "cccccc"
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.Line"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if len(self.points) < 2:
+            raise ValueError("Line requires at least 2 points")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = list(self.points)
+        if len(pts) == 2:
+            mx = (pts[0][0] + pts[1][0]) / 2.0
+            my = (pts[0][1] + pts[1][1]) / 2.0
+            pts = [pts[0], pts[1], (mx, my)]
+        return (
+            f"{pad}<diylc.connectivity.Line>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}</diylc.connectivity.Line>"
+        )
+
+
+@dataclass
 class TraceCut(Component):
     """Break a stripboard strip at a single hole.
 
@@ -1440,6 +1586,10 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     Jumper,
     HookupWire,
     SolderPad,
+    Dot,
+    Eyelet,
+    Turret,
+    Line,
     TraceCut,
     MiniToggleSwitch,
     PlasticDCJack,

@@ -31,7 +31,11 @@ from .core import Project, Measure
 from .components import (
     Component,
     BlankBoard,
+    Dot,
+    Eyelet,
+    Line,
     PerfBoard,
+    Turret,
     VeroBoard,
     Resistor,
     RadialFilmCapacitor,
@@ -615,6 +619,51 @@ def _render_open_jack(c: OpenJack1_4, s: float) -> str:
     )
 
 
+def _render_dot(c: Dot, s: float) -> str:
+    r = _measure_to_inches(c.size) * s / 2
+    return (
+        f'<g class="dot" data-name="{_esc(c.name)}">'
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{max(2.0, r):.1f}" '
+        f'fill="{_color(c.color)}"/></g>'
+    )
+
+
+def _render_eyelet(c: Eyelet, s: float) -> str:
+    r = _measure_to_inches(c.size) * s / 2
+    hole_r = _measure_to_inches(c.hole_size) * s / 2
+    return (
+        f'<g class="eyelet" data-name="{_esc(c.name)}">'
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{r:.1f}" '
+        f'fill="{_color(c.color)}" stroke="#444" stroke-width="0.6"/>'
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{hole_r:.1f}" fill="#ffffff"/>'
+        f"</g>"
+    )
+
+
+def _render_turret(c: Turret, s: float) -> str:
+    r = _measure_to_inches(c.size) * s / 2
+    hole_r = _measure_to_inches(c.hole_size) * s / 2
+    return (
+        f'<g class="turret" data-name="{_esc(c.name)}">'
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{r:.1f}" '
+        f'fill="{_color(c.color)}" stroke="#604000" stroke-width="0.6"/>'
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{hole_r:.1f}" fill="#000"/>'
+        f"</g>"
+    )
+
+
+def _render_line(c: Line, s: float) -> str:
+    pts = list(c.points)
+    if len(pts) < 2:
+        return ""
+    d = " ".join(f"{x*s:.1f},{y*s:.1f}" for x, y in pts)
+    return (
+        f'<g class="line" data-name="{_esc(c.name)}">'
+        f'<polyline points="{d}" fill="none" '
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/></g>'
+    )
+
+
 def _render_label(c: Label, s: float) -> str:
     style = ""
     if c.font_style in (1, 3):
@@ -670,6 +719,10 @@ _RENDERERS: dict[type, callable] = {
     Jumper: _render_jumper,
     HookupWire: _render_hookup_wire,
     SolderPad: _render_solder_pad,
+    Dot: _render_dot,
+    Eyelet: _render_eyelet,
+    Turret: _render_turret,
+    Line: _render_line,
     TraceCut: _render_trace_cut,
     MiniToggleSwitch: _render_mini_toggle,
     PlasticDCJack: _render_dc_jack,

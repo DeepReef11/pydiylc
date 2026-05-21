@@ -114,11 +114,17 @@ def load(path: str | Path) -> tuple[Project, Callable[[], Project]]:
     if p.suffix == ".json":
         return _load_json(p)
     if p.suffix == ".diy":
-        raise NotImplementedError(
-            "pydiylc can emit .diy but not yet read it. Open the .py or .json "
-            "that generated it."
-        )
+        return _load_diy(p)
     raise ValueError(f"unknown file type: {p.suffix}")
+
+
+def _load_diy(path: Path) -> tuple[Project, Callable[[], Project]]:
+    from .reader import read_project
+
+    def builder() -> Project:
+        return read_project(path)
+
+    return builder(), builder
 
 
 # ---------------------------------------------------------------------------

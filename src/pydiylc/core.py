@@ -131,6 +131,18 @@ class Project:
 
         return project_from_json(text)
 
+    @classmethod
+    def read(cls, path: str | Path) -> "Project":
+        """Parse a .diy file into a Project.
+
+        Tolerates unknown component types — they're dropped with a warning
+        captured in ``project._read_warnings``. See ``pydiylc.reader`` for
+        details.
+        """
+        from .reader import read_project
+
+        return read_project(path)
+
 
 def fmt(v: float) -> str:
     """Public re-export of the float formatter — useful for component templates."""

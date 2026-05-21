@@ -22,8 +22,11 @@ from .components import (
     CopperTrace,
     DiodePlastic,
     DIL_IC,
+    Dot,
+    Eyelet,
     HookupWire,
     Jumper,
+    Line,
     Label,
     LED,
     MiniToggleSwitch,
@@ -38,6 +41,7 @@ from .components import (
     SolderPad,
     TraceCut,
     TransistorTO92,
+    Turret,
     VeroBoard,
 )
 from .core import Measure, Project
@@ -616,6 +620,53 @@ def _render_open_jack(cr, c: OpenJack1_4, s: float) -> None:
     _draw_text(cr, cx, cy + 24, f'{c.name} 1/4"', size=8)
 
 
+def _render_dot(cr, c: Dot, s: float) -> None:
+    r = max(2.0, _measure_to_inches(c.size) * s / 2)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.arc(c.x * s, c.y * s, r, 0, 2 * math.pi)
+    cr.fill()
+
+
+def _render_eyelet(cr, c: Eyelet, s: float) -> None:
+    r = _measure_to_inches(c.size) * s / 2
+    hole = _measure_to_inches(c.hole_size) * s / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.arc(c.x * s, c.y * s, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.27, 0.27, 0.27)
+    cr.set_line_width(0.6)
+    cr.stroke()
+    cr.set_source_rgb(1, 1, 1)
+    cr.arc(c.x * s, c.y * s, hole, 0, 2 * math.pi)
+    cr.fill()
+
+
+def _render_turret(cr, c: Turret, s: float) -> None:
+    r = _measure_to_inches(c.size) * s / 2
+    hole = _measure_to_inches(c.hole_size) * s / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.arc(c.x * s, c.y * s, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.38, 0.25, 0)
+    cr.set_line_width(0.6)
+    cr.stroke()
+    cr.set_source_rgb(0, 0, 0)
+    cr.arc(c.x * s, c.y * s, hole, 0, 2 * math.pi)
+    cr.fill()
+
+
+def _render_line(cr, c: Line, s: float) -> None:
+    pts = list(c.points)
+    if len(pts) < 2:
+        return
+    cr.set_source_rgb(*_hex_to_rgb(c.lead_color))
+    cr.set_line_width(1.2)
+    cr.move_to(pts[0][0] * s, pts[0][1] * s)
+    for x, y in pts[1:]:
+        cr.line_to(x * s, y * s)
+    cr.stroke()
+
+
 def _render_label(cr, c: Label, s: float) -> None:
     cr.save()
     weight = 1 if c.font_style in (1, 3) else 0
@@ -652,6 +703,10 @@ _RENDERERS: dict[type, callable] = {
     Jumper: _render_jumper,
     HookupWire: _render_hookup_wire,
     SolderPad: _render_solder_pad,
+    Dot: _render_dot,
+    Eyelet: _render_eyelet,
+    Turret: _render_turret,
+    Line: _render_line,
     TraceCut: _render_trace_cut,
     MiniToggleSwitch: _render_mini_toggle,
     PlasticDCJack: _render_dc_jack,
