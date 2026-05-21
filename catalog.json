@@ -260,6 +260,20 @@
       "NONE",
       "CENTER_POSITIVE",
       "CENTER_NEGATIVE"
+    ],
+    "TUBE_BASE": [
+      "B7G",
+      "B8B",
+      "B9A",
+      "OCTAL",
+      "MINIATURE_9",
+      "MAGNOVAL",
+      "B12C",
+      "DUODECAR"
+    ],
+    "TUBE_MOUNT": [
+      "CHASSIS",
+      "PCB"
     ]
   },
   "components": [
@@ -1529,6 +1543,412 @@
       ]
     },
     {
+      "python_class": "AxialFilmCapacitor",
+      "diylc_class": "diylc.passive.AxialFilmCapacitor",
+      "doc": "Axial-lead film capacitor \u2014 the cylindrical \"candy\" style.\n\nXML: ``<diylc.passive.AxialFilmCapacitor>``\n\nTwo-pin with leads coming out the ends. Common in vintage amp builds.\n`value` accepts ``\"100nF\"``, ``\".022uF\"``. Bare numbers default to ``\"nF\"``.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "100nF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_63V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffe303",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "b29e02",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 16.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 7.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "AxialElectrolyticCapacitor",
+      "diylc_class": "diylc.passive.AxialElectrolyticCapacitor",
+      "doc": "Axial-lead electrolytic capacitor \u2014 leads coming out both ends.\n\nXML: ``<diylc.passive.AxialElectrolyticCapacitor>``\n\nFirst point is the positive lead unless ``invert=True``. Common in\nvintage tube amps for cathode bypass.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "10uF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_63V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "6b6dce",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "4a4c90",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "marker_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "8cacea",
+          "required": false
+        },
+        {
+          "name": "tick_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 17.5,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 6.4,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "polarized",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "invert",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
       "python_class": "PotentiometerPanel",
       "diylc_class": "diylc.passive.PotentiometerPanel",
       "doc": "Panel-mount potentiometer with three lug terminals.\n\nXML: ``<diylc.passive.PotentiometerPanel>``\n\nAnchor point (`x`, `y`) is the position of lug 1. The other two lugs\nfollow along the orientation axis at `spacing` apart. `resistance` is a\nstring like ``\"100K\"``, ``\"1M\"``, ``\"10K\"``; bare numbers default to\n``\"K\"``.\n\nExample::\n\n    p.add(PotentiometerPanel(\"VR1\", x=1.0, y=4.0, resistance=\"100K\", taper=\"LOG\"))",
@@ -1694,6 +2114,321 @@
             "kind": "boolean"
           },
           "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TubeSocket",
+      "diylc_class": "diylc.tube.TubeSocket",
+      "doc": "Tube socket \u2014 chassis or PCB mount, 7/8/9/octal/etc pin layouts.\n\nXML: ``<diylc.tube.TubeSocket>``\n\nAnchor (`x`, `y`) is the socket center. Pin positions are arranged\naround it in a circle. The number of pins comes from `base`:\nB9A=9, OCTAL=8, B7G=7. Set `type` to the tube model string\n(``\"12AX7\"``, ``\"EL34\"``, ...) \u2014 it's stored as the upstream `type`\nXML element, displayed as a label.\n\nExample::\n\n    p.add(TubeSocket(\"V1\", x=3.0, y=3.0, base=\"B9A\", tube_type=\"12AX7\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          },
+          "default": "B9A",
+          "required": false,
+          "enum": [
+            "B7G",
+            "B8B",
+            "B9A",
+            "OCTAL",
+            "MINIATURE_9",
+            "MAGNOVAL",
+            "B12C",
+            "DUODECAR"
+          ]
+        },
+        {
+          "name": "tube_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "angle",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "mount",
+          "type": {
+            "kind": "string"
+          },
+          "default": "CHASSIS",
+          "required": false,
+          "enum": [
+            "CHASSIS",
+            "PCB"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f7f7ef",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "acaca7",
+          "required": false
+        },
+        {
+          "name": "electrode_labels",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "pin_circle_diameter",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 20.0,
+            "unit": "mm"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Rectangle",
+      "diylc_class": "diylc.shapes.Rectangle",
+      "doc": "Rectangle annotation \u2014 used for grouping or labelling regions.\n\nXML: ``<diylc.shapes.Rectangle>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 95,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "border_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "edge_radius",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.0,
+            "unit": "mm"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Ellipse",
+      "diylc_class": "diylc.shapes.Ellipse",
+      "doc": "Ellipse annotation.\n\nXML: ``<diylc.shapes.Ellipse>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "border_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "mm"
+          },
           "required": false
         }
       ]

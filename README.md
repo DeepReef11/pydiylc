@@ -11,11 +11,27 @@ rendering engine — pydiylc just produces files it can open.
 Pre-alpha. Current component set:
 
 - **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard` (stripboard)
-- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `PotentiometerPanel`
+- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `AxialFilmCapacitor`, `AxialElectrolyticCapacitor`, `PotentiometerPanel`
 - **Semiconductors**: `DiodePlastic`, `LED`, `TransistorTO92`, `DIL_IC`
 - **Connectivity**: `CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `Dot`, `Eyelet`, `Turret`, `Line`, `TraceCut`
 - **Electromechanical**: `MiniToggleSwitch` (incl. 3PDT bypass), `PlasticDCJack`, `OpenJack1_4`
+- **Tubes**: `TubeSocket` (B7G / B9A / OCTAL / ...)
+- **Shapes**: `Rectangle`, `Ellipse`
 - `Label`
+
+## CLI
+
+```bash
+pydiylc convert layout.py layout.diy          # build from Python
+pydiylc convert layout.diy layout.json        # extract to JSON
+pydiylc render  layout.diy --out preview.svg  # SVG preview
+pydiylc info    layout.diy                    # summary + warnings
+```
+
+`pydiylc convert` accepts `.py`, `.json`, or `.diy` in and writes `.diy`,
+`.json`, or `.svg` out. Full `py → diy → json → diy` round-trip is exercised
+in the test suite. The Python loader recognizes `project = Project(...)`,
+`def build()`, `def main()`, or any top-level Project assignment.
 
 A complete pedal layout — stripboard, transistor, pot, 3PDT bypass, DC and 1/4" jacks — is buildable in code or via JSON (see `examples/demo_lpb1_stripboard.py`).
 

@@ -565,6 +565,181 @@ class RadialElectrolytic(Component):
 
 
 # ---------------------------------------------------------------------------
+# Tubes
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TubeSocket(Component):
+    """Tube socket — chassis or PCB mount, 7/8/9/octal/etc pin layouts.
+
+    XML: ``<diylc.tube.TubeSocket>``
+
+    Anchor (`x`, `y`) is the socket center. Pin positions are arranged
+    around it in a circle. The number of pins comes from `base`:
+    B9A=9, OCTAL=8, B7G=7. Set `type` to the tube model string
+    (``"12AX7"``, ``"EL34"``, ...) — it's stored as the upstream `type`
+    XML element, displayed as a label.
+
+    Example::
+
+        p.add(TubeSocket("V1", x=3.0, y=3.0, base="B9A", tube_type="12AX7"))
+    """
+
+    name: str
+    x: float
+    y: float
+    base: str = "B9A"
+    tube_type: str = ""  # corresponds to upstream <type> element
+    angle: int = 0
+    mount: str = "CHASSIS"
+    alpha: int = 127
+    color: str = "f7f7ef"
+    label_color: str = "acaca7"
+    electrode_labels: str = ""  # e.g. "1,2,3,4,5,6,7,8,9"
+    pin_circle_diameter: Measure = field(default_factory=lambda: mm(20.0))
+
+    __diylc_class__: ClassVar[str] = "diylc.tube.TubeSocket"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "base": E.TUBE_BASE,
+        "mount": E.TUBE_MOUNT,
+    }
+
+    _PINS_PER_BASE: ClassVar[dict[str, int]] = {
+        "B7G": 7, "B8B": 8, "B9A": 9, "OCTAL": 8,
+        "MINIATURE_9": 9, "MAGNOVAL": 9, "B12C": 12, "DUODECAR": 12,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        import math
+
+        n = self._PINS_PER_BASE[self.base]
+        r = self.pin_circle_diameter.value
+        if self.pin_circle_diameter.unit == "mm":
+            r = r / 25.4
+        elif self.pin_circle_diameter.unit == "cm":
+            r = r / 2.54
+        r /= 2.0
+        # Start at the top and go clockwise, leaving a gap at the bottom (the
+        # "key") for B9A/OCTAL conventions. Good enough for layout work.
+        pts: list[Point] = []
+        for i in range(n):
+            theta = -math.pi / 2 + (2 * math.pi * (i + 0.5) / n)
+            px = self.x + r * math.cos(theta)
+            py = self.y + r * math.sin(theta)
+            pts.append((round(px, 3), round(py, 3)))
+        return pts
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.tube.TubeSocket>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <base>{self.base}</base>\n"
+            f"{pad}  <type>{esc(self.tube_type)}</type>\n"
+            f"{pad}  <angle>{self.angle}</angle>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <electrodeLabels>{esc(self.electrode_labels)}</electrodeLabels>\n"
+            f"{pad}  <mount>{self.mount}</mount>\n"
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}</diylc.tube.TubeSocket>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Shapes
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Rectangle(Component):
+    """Rectangle annotation — used for grouping or labelling regions.
+
+    XML: ``<diylc.shapes.Rectangle>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    alpha: int = 95
+    color: str = "ffffff"
+    border_color: str = "0000ff"
+    border_thickness: Measure = field(default_factory=lambda: mm(0.1))
+    edge_radius: Measure = field(default_factory=lambda: mm(0.0))
+
+    __diylc_class__: ClassVar[str] = "diylc.shapes.Rectangle"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.shapes.Rectangle>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}    <point x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <borderThickness {self.border_thickness.attrs()}/>\n"
+            f"{pad}  <edgeRadius {self.edge_radius.attrs()}/>\n"
+            f"{pad}</diylc.shapes.Rectangle>"
+        )
+
+
+@dataclass
+class Ellipse(Component):
+    """Ellipse annotation.
+
+    XML: ``<diylc.shapes.Ellipse>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    alpha: int = 127
+    color: str = "ffffff"
+    border_color: str = "000000"
+    border_thickness: Measure = field(default_factory=lambda: mm(0.2))
+
+    __diylc_class__: ClassVar[str] = "diylc.shapes.Ellipse"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.shapes.Ellipse>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}    <point x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <borderThickness {self.border_thickness.attrs()}/>\n"
+            f"{pad}</diylc.shapes.Ellipse>"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Semiconductors
 # ---------------------------------------------------------------------------
 
@@ -1245,6 +1420,141 @@ class SolderPad(Component):
 
 
 @dataclass
+class AxialFilmCapacitor(Component):
+    """Axial-lead film capacitor — the cylindrical "candy" style.
+
+    XML: ``<diylc.passive.AxialFilmCapacitor>``
+
+    Two-pin with leads coming out the ends. Common in vintage amp builds.
+    `value` accepts ``"100nF"``, ``".022uF"``. Bare numbers default to ``"nF"``.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = "100nF"
+    voltage: str = "_63V"
+    alpha: int = 127
+    body_color: str = "ffe303"
+    border_color: str = "b29e02"
+    label_color: str = "000000"
+    lead_color: str = "cccccc"
+    length: Measure = field(default_factory=lambda: mm(16.0))
+    width: Measure = field(default_factory=lambda: mm(7.0))
+    display: str = "BOTH"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.AxialFilmCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.value, default_unit="nF")
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.AxialFilmCapacitor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f"{pad}</diylc.passive.AxialFilmCapacitor>"
+        )
+
+
+@dataclass
+class AxialElectrolyticCapacitor(Component):
+    """Axial-lead electrolytic capacitor — leads coming out both ends.
+
+    XML: ``<diylc.passive.AxialElectrolyticCapacitor>``
+
+    First point is the positive lead unless ``invert=True``. Common in
+    vintage tube amps for cathode bypass.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = "10uF"
+    voltage: str = "_63V"
+    alpha: int = 127
+    body_color: str = "6b6dce"
+    border_color: str = "4a4c90"
+    label_color: str = "ffffff"
+    lead_color: str = "cccccc"
+    marker_color: str = "8cacea"
+    tick_color: str = "ffffff"
+    length: Measure = field(default_factory=lambda: mm(17.5))
+    width: Measure = field(default_factory=lambda: mm(6.4))
+    display: str = "BOTH"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    polarized: bool = True
+    invert: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.AxialElectrolyticCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.value, default_unit="uF")
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.AxialElectrolyticCapacitor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f'{pad}  <markerColor hex="{hex_color(self.marker_color)}"/>\n'
+            f'{pad}  <tickColor hex="{hex_color(self.tick_color)}"/>\n'
+            f"{pad}  <polarized>{str(self.polarized).lower()}</polarized>\n"
+            f"{pad}</diylc.passive.AxialElectrolyticCapacitor>"
+        )
+
+
+@dataclass
 class PotentiometerPanel(Component):
     """Panel-mount potentiometer with three lug terminals.
 
@@ -1577,7 +1887,12 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
     RadialElectrolytic,
+    AxialFilmCapacitor,
+    AxialElectrolyticCapacitor,
     PotentiometerPanel,
+    TubeSocket,
+    Rectangle,
+    Ellipse,
     DiodePlastic,
     LED,
     TransistorTO92,

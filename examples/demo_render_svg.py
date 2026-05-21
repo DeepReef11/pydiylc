@@ -22,7 +22,7 @@ from pydiylc import (
 from pydiylc.svg import render_svg_file, RenderOptions
 
 
-def main() -> None:
+def build() -> Project:
     p = Project(title="LPB-1", width_cm=18, height_cm=10)
     p.add(VeroBoard("Board1", 1.0, 1.0, 2.2, 1.7, orientation="HORIZONTAL"))
     p.add(TraceCut("Cut1", x=1.5, y=1.3, orientation="HORIZONTAL"))
@@ -51,8 +51,12 @@ def main() -> None:
     p.add(Label("L_vol", x=3.5, y=1.85, text="VOLUME", font_size=11))
     p.add(Label("L_bp", x=5.0, y=2.85, text="BYPASS 3PDT", font_size=10))
 
+    return p
+
+
+def main() -> None:
+    p = build()
     render_svg_file(p, "lpb1.svg")
-    # also a higher-res version
     from pydiylc.svg import render_svg
     from pathlib import Path
 

@@ -17,16 +17,21 @@ import math
 from typing import TYPE_CHECKING
 
 from .components import (
+    AxialElectrolyticCapacitor,
+    AxialFilmCapacitor,
     BlankBoard,
     Component,
     CopperTrace,
     DiodePlastic,
     DIL_IC,
     Dot,
+    Ellipse,
     Eyelet,
     HookupWire,
     Jumper,
     Line,
+    Rectangle,
+    TubeSocket,
     Label,
     LED,
     MiniToggleSwitch,
@@ -667,6 +672,75 @@ def _render_line(cr, c: Line, s: float) -> None:
     cr.stroke()
 
 
+def _render_axial_film_cap(cr, c: AxialFilmCapacitor, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.22, body_color=c.body_color, border_color=c.border_color,
+    )
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_axial_electrolytic(cr, c: AxialElectrolyticCapacitor, s: float) -> None:
+    _two_pin_body(
+        cr, (c.x1, c.y1), (c.x2, c.y2), s,
+        body_w_in=0.22, body_color=c.body_color, border_color=c.border_color,
+    )
+    pos = (c.x2, c.y2) if not c.invert else (c.x1, c.y1)
+    cr.set_source_rgb(*_hex_to_rgb(c.marker_color))
+    cr.arc(pos[0] * s, pos[1] * s, 2.5, 0, 2 * math.pi)
+    cr.fill()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_tube_socket(cr, c: TubeSocket, s: float) -> None:
+    pts = c._control_points()
+    cx = sum(p[0] for p in pts) / len(pts) * s
+    cy = sum(p[1] for p in pts) / len(pts) * s
+    r = _measure_to_inches(c.pin_circle_diameter) * s / 2 + 8
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.arc(cx, cy, r, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.label_color))
+    cr.set_line_width(1)
+    cr.stroke()
+    for px, py in pts:
+        cr.set_source_rgb(0.13, 0.13, 0.13)
+        cr.arc(px * s, py * s, 2.5, 0, 2 * math.pi)
+        cr.fill()
+    label = c.tube_type or c.name
+    _draw_text(cr, cx, cy + 4, label, size=10)
+
+
+def _render_rectangle(cr, c: Rectangle, s: float) -> None:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    cr.set_source_rgba(*_hex_to_rgb(c.color), 0.3)
+    cr.rectangle(x, y, w, h)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_ellipse(cr, c: Ellipse, s: float) -> None:
+    cx = (c.x1 + c.x2) / 2 * s
+    cy = (c.y1 + c.y2) / 2 * s
+    rx = abs(c.x2 - c.x1) / 2 * s
+    ry = abs(c.y2 - c.y1) / 2 * s
+    cr.save()
+    cr.translate(cx, cy)
+    cr.scale(1, ry / rx if rx else 1)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), 0.3)
+    cr.arc(0, 0, rx, 0, 2 * math.pi)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+    cr.restore()
+
+
 def _render_label(cr, c: Label, s: float) -> None:
     cr.save()
     weight = 1 if c.font_style in (1, 3) else 0
@@ -694,7 +768,12 @@ _RENDERERS: dict[type, callable] = {
     RadialFilmCapacitor: _render_film_cap,
     RadialCeramicDiskCapacitor: _render_ceramic_cap,
     RadialElectrolytic: _render_electrolytic,
+    AxialFilmCapacitor: _render_axial_film_cap,
+    AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    TubeSocket: _render_tube_socket,
+    Rectangle: _render_rectangle,
+    Ellipse: _render_ellipse,
     DiodePlastic: _render_diode,
     LED: _render_led,
     TransistorTO92: _render_transistor,

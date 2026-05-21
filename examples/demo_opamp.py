@@ -23,7 +23,7 @@ def grid_snap(v: float, grid: float = 0.1) -> float:
     return round(v / grid) * grid
 
 
-def main() -> None:
+def build() -> Project:
     p = Project(title="TL072 buffer + volume", width_cm=15, height_cm=10)
 
     # 2 x 1.2 inch perfboard
@@ -57,6 +57,11 @@ def main() -> None:
     p.add(Label("L_out", x=2.3, y=1.35, text="OUT", font_size=10))
     p.add(Label("L_vol", x=2.4, y=2.4, text="VOLUME", font_size=10))
 
+    return p
+
+
+def main() -> None:
+    p = build()
     out = p.save("opamp.diy")
     print(f"wrote {out} with {len(p.components)} components")
     print(f"grid_snap(1.234) = {grid_snap(1.234)}")

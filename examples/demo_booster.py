@@ -16,7 +16,7 @@ from pydiylc import (
 )
 
 
-def main() -> None:
+def build() -> Project:
     p = Project(title="pydiylc demo - LPB-1 ish", width_cm=15, height_cm=10)
 
     # 1 in x 0.7 in perfboard at (1, 1)
@@ -46,6 +46,11 @@ def main() -> None:
 
     p.add(Label("L1", x=1.5, y=0.95, text="pydiylc booster", font_size=10))
 
+    return p
+
+
+def main() -> None:
+    p = build()
     out = p.save("booster.diy")
     print(f"wrote {out}")
 

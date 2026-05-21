@@ -59,16 +59,35 @@ def _measure_fields(cls: type[Component]) -> set[str]:
 
 
 def component_from_dict(d: dict[str, Any]) -> Component:
-    """Construct a single component from a dict with a ``type`` key."""
-    if "type" not in d:
-        raise ValueError("component dict needs a 'type' key naming a pydiylc class")
-    type_name = d["type"]
+    """Construct a single component from a dict.
+
+    The component class is taken from ``"_type"`` (preferred) or ``"type"``.
+    The fallback exists because a few components (SolderPad, TraceCut,
+    BlankBoard) have a ``type`` field of their own, so they're serialized
+    with ``"_type"`` to avoid the collision.
+    """
+    if "_type" in d:
+        type_name = d["_type"]
+        kwargs = {k: v for k, v in d.items() if k != "_type"}
+    elif "type" in d:
+        # Only treat `type` as the discriminator when it names a pydiylc class.
+        # Otherwise it's a component field (SolderPad.type="ROUND" etc.) and
+        # the discriminator must be `_type` elsewhere.
+        if d["type"] in _BY_NAME:
+            type_name = d["type"]
+            kwargs = {k: v for k, v in d.items() if k != "type"}
+        else:
+            raise ValueError(
+                "component dict has a 'type' field that doesn't name a "
+                "pydiylc class. Use '_type' for the class discriminator."
+            )
+    else:
+        raise ValueError("component dict needs a 'type' or '_type' key naming a pydiylc class")
     if type_name not in _BY_NAME:
         raise ValueError(
             f"unknown component type {type_name!r}; known types: {sorted(_BY_NAME)}"
         )
     cls = _BY_NAME[type_name]
-    kwargs = {k: v for k, v in d.items() if k != "type"}
 
     measure_fields = _measure_fields(cls)
     for k in list(kwargs):

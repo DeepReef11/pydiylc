@@ -27,7 +27,7 @@ from pydiylc import (
 )
 
 
-def main() -> None:
+def build() -> Project:
     p = Project(title="LPB-1 booster", width_cm=18, height_cm=12)
 
     # 1.2" x 0.7" stripboard (12 cols x 7 rows on 0.1in grid), strips horizontal
@@ -71,6 +71,11 @@ def main() -> None:
     p.add(Label("L_vol", x=3.5, y=1.85, text="VOLUME", font_size=11))
     p.add(Label("L_bp", x=5.0, y=2.85, text="BYPASS 3PDT", font_size=10))
 
+    return p
+
+
+def main() -> None:
+    p = build()
     out = p.save("lpb1_stripboard.diy")
     print(f"wrote {out} with {len(p.components)} components")
 

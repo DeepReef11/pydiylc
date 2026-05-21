@@ -116,6 +116,12 @@ OPEN_JACK_TYPE = ("MONO", "STEREO", "SWITCHED")
 # DC barrel jack polarity
 DC_POLARITY = ("NONE", "CENTER_POSITIVE", "CENTER_NEGATIVE")
 
+# Tube socket base (pin layout standards)
+TUBE_BASE = ("B7G", "B8B", "B9A", "OCTAL", "MINIATURE_9", "MAGNOVAL", "B12C", "DUODECAR")
+
+# Tube socket mount style
+TUBE_MOUNT = ("CHASSIS", "PCB")
+
 
 def check(field: str, value, allowed: tuple[str, ...]) -> None:
     """Raise ValueError listing allowed values when value isn't permitted."""

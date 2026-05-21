@@ -33,12 +33,12 @@ def test_components_get_constructed():
 
 
 def test_unknown_type_raises():
-    with pytest.raises(ValueError, match="unknown component type"):
+    with pytest.raises(ValueError, match="doesn't name a pydiylc class|unknown component type"):
         component_from_dict({"type": "NotAComponent", "name": "x"})
 
 
 def test_missing_type_raises():
-    with pytest.raises(ValueError, match="needs a 'type' key"):
+    with pytest.raises(ValueError, match="needs a 'type' or '_type' key"):
         component_from_dict({"name": "x"})
 
 

@@ -30,11 +30,16 @@ from xml.sax.saxutils import escape as _esc
 from .core import Project, Measure
 from .components import (
     Component,
+    AxialFilmCapacitor,
+    AxialElectrolyticCapacitor,
     BlankBoard,
     Dot,
+    Ellipse,
     Eyelet,
     Line,
     PerfBoard,
+    Rectangle,
+    TubeSocket,
     Turret,
     VeroBoard,
     Resistor,
@@ -664,6 +669,88 @@ def _render_line(c: Line, s: float) -> str:
     )
 
 
+def _render_axial_film_cap(c: AxialFilmCapacitor, s: float) -> str:
+    parts = ['<g class="cap-axial-film" data-name="' + _esc(c.name) + '">']
+    parts += _two_pin_lead(
+        (c.x1, c.y1), (c.x2, c.y2), s,
+        body_color=_color(c.body_color), border_color=_color(c.border_color),
+        body_w_in=0.22,
+    )
+    parts.append(_value_label(c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display))
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_axial_electrolytic(c: AxialElectrolyticCapacitor, s: float) -> str:
+    parts = ['<g class="cap-axial-electro" data-name="' + _esc(c.name) + '">']
+    parts += _two_pin_lead(
+        (c.x1, c.y1), (c.x2, c.y2), s,
+        body_color=_color(c.body_color), border_color=_color(c.border_color),
+        body_w_in=0.22,
+    )
+    pos = (c.x2, c.y2) if not c.invert else (c.x1, c.y1)
+    parts.append(
+        f'<circle cx="{pos[0]*s:.1f}" cy="{pos[1]*s:.1f}" r="2.5" '
+        f'fill="{_color(c.marker_color)}" stroke="#444" stroke-width="0.6"/>'
+    )
+    parts.append(_value_label(c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display))
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_tube_socket(c: TubeSocket, s: float) -> str:
+    pts = c._control_points()
+    cx = sum(p[0] for p in pts) / len(pts) * s
+    cy = sum(p[1] for p in pts) / len(pts) * s
+    r = _measure_to_inches(c.pin_circle_diameter) * s / 2 + 8
+    parts = ['<g class="tube-socket" data-name="' + _esc(c.name) + '">']
+    parts.append(
+        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
+        f'fill="{_color(c.color)}" stroke="{_color(c.label_color)}" stroke-width="1"/>'
+    )
+    for px, py in pts:
+        parts.append(
+            f'<circle cx="{px*s:.1f}" cy="{py*s:.1f}" r="2.5" '
+            f'fill="#222" stroke="#000" stroke-width="0.4"/>'
+        )
+    label = c.tube_type or c.name
+    parts.append(
+        f'<text x="{cx:.1f}" y="{cy+4:.1f}" font-size="10" text-anchor="middle" '
+        f'fill="#000" font-weight="bold">{_esc(label)}</text>'
+    )
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_rectangle(c: Rectangle, s: float) -> str:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    rx = _measure_to_inches(c.edge_radius) * s
+    return (
+        f'<g class="rectangle" data-name="{_esc(c.name)}">'
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'rx="{rx:.1f}" fill="{_color(c.color)}" stroke="{_color(c.border_color)}" '
+        f'stroke-width="1.2" fill-opacity="0.3"/>'
+        f"</g>"
+    )
+
+
+def _render_ellipse(c: Ellipse, s: float) -> str:
+    cx = (c.x1 + c.x2) / 2 * s
+    cy = (c.y1 + c.y2) / 2 * s
+    rx = abs(c.x2 - c.x1) / 2 * s
+    ry = abs(c.y2 - c.y1) / 2 * s
+    return (
+        f'<g class="ellipse" data-name="{_esc(c.name)}">'
+        f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" '
+        f'fill="{_color(c.color)}" stroke="{_color(c.border_color)}" '
+        f'stroke-width="1.2" fill-opacity="0.3"/>'
+        f"</g>"
+    )
+
+
 def _render_label(c: Label, s: float) -> str:
     style = ""
     if c.font_style in (1, 3):
@@ -710,7 +797,12 @@ _RENDERERS: dict[type, callable] = {
     RadialFilmCapacitor: _render_film_cap,
     RadialCeramicDiskCapacitor: _render_ceramic_cap,
     RadialElectrolytic: _render_electrolytic,
+    AxialFilmCapacitor: _render_axial_film_cap,
+    AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    TubeSocket: _render_tube_socket,
+    Rectangle: _render_rectangle,
+    Ellipse: _render_ellipse,
     DiodePlastic: _render_diode,
     LED: _render_led,
     TransistorTO92: _render_transistor,

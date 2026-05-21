@@ -65,6 +65,11 @@ All component constructors are dataclasses — every field has a sensible defaul
 | `MiniToggleSwitch` | `diylc.electromechanical.MiniToggleSwitch` | Toggle / 3PDT bypass foot switch |
 | `PlasticDCJack` | `diylc.electromechanical.PlasticDCJack` | 2.1mm DC barrel (pedal power) |
 | `OpenJack1_4` | `diylc.electromechanical.OpenJack1_4` | Open-frame 1/4" guitar jack |
+| `AxialFilmCapacitor` | `diylc.passive.AxialFilmCapacitor` | Axial-lead film cap (vintage amps) |
+| `AxialElectrolyticCapacitor` | `diylc.passive.AxialElectrolyticCapacitor` | Axial-lead electrolytic |
+| `TubeSocket` | `diylc.tube.TubeSocket` | Tube socket (B9A/OCTAL/B7G/...) |
+| `Rectangle` | `diylc.shapes.Rectangle` | Rectangle annotation |
+| `Ellipse` | `diylc.shapes.Ellipse` | Ellipse annotation |
 | `Label` | `diylc.misc.Label` | Free-floating text |
 
 For exact field lists, defaults, types, and allowed enum values, load **`catalog.json`** at repo root. It is the canonical machine-readable schema.
@@ -155,6 +160,20 @@ This is a quick-feedback preview, not pixel-identical to DIYLC. For high-fidelit
 ```
 diylc -convert layout.diy layout.png
 ```
+
+## Command-line interface
+
+```bash
+pydiylc convert layout.py layout.diy
+pydiylc convert layout.diy layout.json
+pydiylc convert layout.json layout.svg
+pydiylc render layout.diy --out preview.svg --dpi 144
+pydiylc info layout.diy   # title, count, by-type breakdown, warnings
+```
+
+Sources: `.py` (`project=` or `build()` or `main()` returning a Project),
+`.json` (the same schema documented above), or `.diy`. Targets: `.diy`,
+`.json`, `.svg`.
 
 ## GTK4 viewer (`pydiylc-view`)
 

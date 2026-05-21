@@ -34,9 +34,12 @@ DOC = {
 }
 
 
+def build() -> Project:
+    return Project.from_dict(DOC)
+
+
 def main() -> None:
-    # Could equivalently be: Project.from_json(json.dumps(DOC))
-    p = Project.from_dict(DOC)
+    p = build()
     out = p.save("from_json.diy")
     print(f"wrote {out} from a {len(json.dumps(DOC))}-byte JSON doc")
     print(f"  -> {len(p.components)} components")

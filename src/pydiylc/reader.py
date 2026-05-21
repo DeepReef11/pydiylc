@@ -56,6 +56,11 @@ _FIELD_RENAMES: dict[str, dict[str, str]] = {
     "diylc.boards.BlankBoard": {},
     "diylc.boards.PerfBoard": {},
     "diylc.boards.VeroBoard": {},
+    "diylc.tube.TubeSocket": {
+        # Upstream <type> conflicts with Python builtin; we expose it as
+        # `tube_type` on the dataclass.
+        "type": "tube_type",
+    },
 }
 
 
@@ -69,8 +74,15 @@ def _camel_to_snake(name: str) -> str:
 
 
 def _renamed_field(diylc_class: str, child_tag: str) -> str:
-    """Resolve a DIYLC child tag to a Python field name."""
-    table = _FIELD_RENAMES.get(diylc_class, {})
+    """Resolve a DIYLC child tag to a Python field name.
+
+    ``diylc_class`` is normalized to the short ``diylc.*`` prefix so per-class
+    overrides apply uniformly to old and new XStream formats.
+    """
+    short = diylc_class
+    if short.startswith("org.diylc.components."):
+        short = "diylc." + short[len("org.diylc.components."):]
+    table = _FIELD_RENAMES.get(short, {})
     if child_tag in table:
         return table[child_tag]
     common = _FIELD_RENAMES["*"]
@@ -133,6 +145,8 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         ("diylc.passive.RadialFilmCapacitor", "value"),
         ("diylc.passive.RadialCeramicDiskCapacitor", "value"),
         ("diylc.passive.RadialElectrolytic", "value"),
+        ("diylc.passive.AxialFilmCapacitor", "value"),
+        ("diylc.passive.AxialElectrolyticCapacitor", "value"),
         ("diylc.passive.PotentiometerPanel", "resistance"),
     }
 
@@ -195,7 +209,10 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
 
         # Measure elements have value+unit attributes.
         if child.get("value") is not None and child.get("unit") is not None:
-            if (el.tag, field_name) in _UNIT_VALUE_AS_STRING:
+            tag_short = el.tag
+            if tag_short.startswith("org.diylc.components."):
+                tag_short = "diylc." + tag_short[len("org.diylc.components."):]
+            if (tag_short, field_name) in _UNIT_VALUE_AS_STRING:
                 # Re-stringify as e.g. "10K", "100nF" — matches the format
                 # the original constructor accepts.
                 v = float(child.get("value", "0"))
@@ -270,11 +287,17 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         "diylc.electromechanical.MiniToggleSwitch",
         "diylc.electromechanical.PlasticDCJack",
         "diylc.electromechanical.OpenJack1_4",
+        "diylc.tube.TubeSocket",
     ):
         # Single-anchor components — take the first control point.
         _set_single_anchor(values, pts)
     elif diylc_class == "diylc.semiconductors.DIL_IC":
         _set_single_anchor(values, pts)
+    elif diylc_class in ("diylc.shapes.Rectangle", "diylc.shapes.Ellipse"):
+        # Two-corner shapes — same as boards.
+        if pts:
+            values["x1"], values["y1"] = pts[0]
+            values["x2"], values["y2"] = pts[1] if len(pts) >= 2 else pts[0]
     else:
         # Two-pin: assume [p1, p2, midpoint]
         _set_two_pin_coords(values, pts)

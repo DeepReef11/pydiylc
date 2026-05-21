@@ -89,6 +89,13 @@ def _load_python(path: Path) -> tuple[Project, Callable[[], Project]]:
         candidates = [v for v in vars(module).values() if isinstance(v, Project)]
         if candidates:
             return candidates[-1]
+        if hasattr(module, "main") and callable(module.main):
+            try:
+                result = module.main()
+            except TypeError:
+                result = None
+            if isinstance(result, Project):
+                return result
         raise RuntimeError(
             f"{path}: define a top-level `project = Project(...)` or "
             "`def build() -> Project` so the viewer can find your layout"
