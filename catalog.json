@@ -145,6 +145,90 @@
       "A",
       "mA",
       "uA"
+    ],
+    "ORIENTATION": [
+      "DEFAULT",
+      "_90",
+      "_180",
+      "_270"
+    ],
+    "TRANSISTOR_DISPLAY": [
+      "NAME",
+      "VALUE",
+      "NONE",
+      "BOTH",
+      "PINOUT"
+    ],
+    "TRANSISTOR_PINOUT": [
+      "BJT_EBC",
+      "BJT_CBE",
+      "BJT_BCE",
+      "BJT_ECB",
+      "JFET_DSG",
+      "JFET_GSD",
+      "JFET_DGS",
+      "JFET_SGD",
+      "JFET_GDS",
+      "MOSFET_DSG",
+      "MOSFET_GSD",
+      "MOSFET_DGS",
+      "MOSFET_SGD",
+      "MOSFET_GDS",
+      "REGULATOR_IGO",
+      "REGULATOR_OGI",
+      "REGULATOR_GOI",
+      "REGULATOR_AOI",
+      "REGULATOR_GIO"
+    ],
+    "DIL_PIN_COUNT": [
+      "_4",
+      "_6",
+      "_8",
+      "_10",
+      "_12",
+      "_14",
+      "_16",
+      "_18",
+      "_20",
+      "_22",
+      "_24",
+      "_26",
+      "_28",
+      "_30",
+      "_32",
+      "_34",
+      "_36",
+      "_38",
+      "_40",
+      "_42",
+      "_44",
+      "_46",
+      "_48",
+      "_50"
+    ],
+    "DIL_DISPLAY_NUMBERS": [
+      "No",
+      "DIP",
+      "Connector",
+      "DIP_MIRROR",
+      "CONNECTOR_MIRROR"
+    ],
+    "POT_TAPER": [
+      "LIN",
+      "LOG",
+      "REV_LOG",
+      "W",
+      "S",
+      "M",
+      "N"
+    ],
+    "POT_TYPE": [
+      "ThroughHole",
+      "PCB"
+    ],
+    "POT_VIEW": [
+      "ShaftDown",
+      "ShaftUp"
     ]
   },
   "components": [
@@ -1240,6 +1324,837 @@
           },
           "default": false,
           "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PotentiometerPanel",
+      "diylc_class": "diylc.passive.PotentiometerPanel",
+      "doc": "Panel-mount potentiometer with three lug terminals.\n\nXML: ``<diylc.passive.PotentiometerPanel>``\n\nAnchor point (`x`, `y`) is the position of lug 1. The other two lugs\nfollow along the orientation axis at `spacing` apart. `resistance` is a\nstring like ``\"100K\"``, ``\"1M\"``, ``\"10K\"``; bare numbers default to\n``\"K\"``.\n\nExample::\n\n    p.add(PotentiometerPanel(\"VR1\", x=1.0, y=4.0, resistance=\"100K\", taper=\"LOG\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "resistance",
+          "type": {
+            "kind": "string"
+          },
+          "default": "100K",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "taper",
+          "type": {
+            "kind": "string"
+          },
+          "default": "LIN",
+          "required": false,
+          "enum": [
+            "LIN",
+            "LOG",
+            "REV_LOG",
+            "W",
+            "S",
+            "M",
+            "N"
+          ]
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ThroughHole",
+          "required": false,
+          "enum": [
+            "ThroughHole",
+            "PCB"
+          ]
+        },
+        {
+          "name": "view",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ShaftDown",
+          "required": false,
+          "enum": [
+            "ShaftDown",
+            "ShaftUp"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "b6b6b6",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "wafer_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cd8500",
+          "required": false
+        },
+        {
+          "name": "body_diameter",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 17.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "lug_diameter",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.15,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "show_shaft",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "DiodePlastic",
+      "diylc_class": "diylc.semiconductors.DiodePlastic",
+      "doc": "Plastic-bodied through-hole diode (e.g. 1N4148, 1N400x).\n\nXML: ``<diylc.semiconductors.DiodePlastic>``\n\nCathode is the second point (the marked band end).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "404040",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "2c2c2c",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "marker_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "dddddd",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "LED",
+      "diylc_class": "diylc.semiconductors.LED",
+      "doc": "Through-hole LED.\n\nXML: ``<diylc.semiconductors.LED>``\n\nFirst point is the anode (long lead) unless `hide_short_leads=True`.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ff6666",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ff0033",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 5.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 5.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "hide_short_leads",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TransistorTO92",
+      "diylc_class": "diylc.semiconductors.TransistorTO92",
+      "doc": "Through-hole transistor in TO-92 package (3 pins).\n\nXML: ``<diylc.semiconductors.TransistorTO92>``\n\nPass the position of pin 1 (`x`, `y`) and an orientation. The component\nexpands to three control points along the chosen orientation, separated\nby `pin_spacing`. `pinout` describes which physical pin is E/B/C\n(or D/S/G for JFET/MOSFET) \u2014 most BJTs are BJT_EBC.\n\nExample::\n\n    p.add(TransistorTO92(\"Q1\", x=1.5, y=1.5, value=\"2N5088\", pinout=\"BJT_EBC\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "pinout",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BJT_EBC",
+          "required": false,
+          "enum": [
+            "BJT_EBC",
+            "BJT_CBE",
+            "BJT_BCE",
+            "BJT_ECB",
+            "JFET_DSG",
+            "JFET_GSD",
+            "JFET_DGS",
+            "JFET_SGD",
+            "JFET_GDS",
+            "MOSFET_DSG",
+            "MOSFET_GSD",
+            "MOSFET_DGS",
+            "MOSFET_SGD",
+            "MOSFET_GDS",
+            "REGULATOR_IGO",
+            "REGULATOR_OGI",
+            "REGULATOR_GOI",
+            "REGULATOR_AOI",
+            "REGULATOR_GIO"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "404040",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "2c2c2c",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH",
+            "PINOUT"
+          ]
+        },
+        {
+          "name": "folded",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "DIL_IC",
+      "diylc_class": "diylc.semiconductors.DIL_IC",
+      "doc": "Dual-inline-package (DIP) integrated circuit.\n\nXML: ``<diylc.semiconductors.DIL_IC>``\n\nAnchor point (`x`, `y`) is pin 1 (top-left when `orientation=\"DEFAULT\"`).\n\nExample::\n\n    p.add(DIL_IC(\"U1\", x=2.0, y=1.5, value=\"TL072\", pin_count=\"_8\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "pin_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_8",
+          "required": false,
+          "enum": [
+            "_4",
+            "_6",
+            "_8",
+            "_10",
+            "_12",
+            "_14",
+            "_16",
+            "_18",
+            "_20",
+            "_22",
+            "_24",
+            "_26",
+            "_28",
+            "_30",
+            "_32",
+            "_34",
+            "_36",
+            "_38",
+            "_40",
+            "_42",
+            "_44",
+            "_46",
+            "_48",
+            "_50"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "row_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.3,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "595959",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "404040",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "indent_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "262626",
+          "required": false
+        },
+        {
+          "name": "display_numbers",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DIP",
+          "required": false,
+          "enum": [
+            "No",
+            "DIP",
+            "Connector",
+            "DIP_MIRROR",
+            "CONNECTOR_MIRROR"
+          ]
         }
       ]
     },

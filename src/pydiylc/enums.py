@@ -67,6 +67,35 @@ CAPACITANCE_UNIT = ("pF", "nF", "uF", "mF", "F")
 VOLTAGE_UNIT = ("V", "kV", "mV")
 CURRENT_UNIT = ("A", "mA", "uA")
 
+# Standard 4-way rotation used by transistors, DIL ICs, pots, labels
+ORIENTATION = ("DEFAULT", "_90", "_180", "_270")
+
+# Transistor-specific display field (adds PINOUT)
+TRANSISTOR_DISPLAY = ("NAME", "VALUE", "NONE", "BOTH", "PINOUT")
+
+# TransistorTO92 pinout (BJT layouts cover 99% of pedal/amp use cases)
+TRANSISTOR_PINOUT = (
+    "BJT_EBC", "BJT_CBE", "BJT_BCE", "BJT_ECB",
+    "JFET_DSG", "JFET_GSD", "JFET_DGS", "JFET_SGD", "JFET_GDS",
+    "MOSFET_DSG", "MOSFET_GSD", "MOSFET_DGS", "MOSFET_SGD", "MOSFET_GDS",
+    "REGULATOR_IGO", "REGULATOR_OGI", "REGULATOR_GOI", "REGULATOR_AOI", "REGULATOR_GIO",
+)
+
+# DIL IC pin count (4..50 even, written as "_8", "_14", "_16", ...)
+DIL_PIN_COUNT = tuple(f"_{n}" for n in range(4, 52, 2))
+
+# DIL IC pin-number display
+DIL_DISPLAY_NUMBERS = ("No", "DIP", "Connector", "DIP_MIRROR", "CONNECTOR_MIRROR")
+
+# Potentiometer taper
+POT_TAPER = ("LIN", "LOG", "REV_LOG", "W", "S", "M", "N")
+
+# Potentiometer panel type
+POT_TYPE = ("ThroughHole", "PCB")
+
+# Potentiometer view orientation
+POT_VIEW = ("ShaftDown", "ShaftUp")
+
 
 def check(field: str, value, allowed: tuple[str, ...]) -> None:
     """Raise ValueError listing allowed values when value isn't permitted."""

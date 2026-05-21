@@ -8,9 +8,11 @@ rendering engine — pydiylc just produces files it can open.
 
 ## Status
 
-Pre-alpha. First-cut component set: `PerfBoard`, `BlankBoard`, `Resistor`,
-`RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`,
-`CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `Label`.
+Pre-alpha. Current component set: boards (`BlankBoard`, `PerfBoard`),
+passives (`Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`,
+`RadialElectrolytic`, `PotentiometerPanel`), semiconductors (`DiodePlastic`,
+`LED`, `TransistorTO92`, `DIL_IC`), connectivity (`CopperTrace`, `Jumper`,
+`HookupWire`, `SolderPad`), and `Label`.
 
 ## AI-friendly by design
 
@@ -33,7 +35,7 @@ pip install -e .
 ## Use
 
 ```python
-from pydiylc import Project, PerfBoard, Resistor, SolderPad, CopperTrace, inches
+from pydiylc import Project, PerfBoard, Resistor, SolderPad, CopperTrace
 
 p = Project(title="Booster", width_cm=10, height_cm=8)
 p.add(PerfBoard("Board1", x1=1.0, y1=1.0, x2=3.0, y2=2.5))
@@ -42,6 +44,20 @@ p.add(SolderPad("P1", x=1.2, y=1.2))
 p.add(SolderPad("P2", x=1.2, y=1.8))
 p.add(CopperTrace("T1", points=[(1.2, 1.8), (2.0, 1.8)]))
 p.save("booster.diy")
+```
+
+Or from JSON (the preferred path for LLMs / external tools):
+
+```python
+from pydiylc import Project
+
+Project.from_dict({
+    "title": "Booster",
+    "components": [
+        {"type": "PerfBoard", "name": "Board1", "x1": 1.0, "y1": 1.0, "x2": 3.0, "y2": 2.5},
+        {"type": "Resistor", "name": "R1", "x1": 1.2, "y1": 1.2, "x2": 1.2, "y2": 1.8, "value": "10K"},
+    ],
+}).save("booster.diy")
 ```
 
 Open `booster.diy` in DIYLC.

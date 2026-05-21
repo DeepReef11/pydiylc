@@ -39,7 +39,7 @@ Project(
 
 `p.add(component)` appends; `p.save(path)` writes XML.
 
-## Components (v0.0.1)
+## Components
 
 All component constructors are dataclasses — every field has a sensible default except positional anchors (`name`, coordinates).
 
@@ -51,6 +51,11 @@ All component constructors are dataclasses — every field has a sensible defaul
 | `RadialFilmCapacitor` | `diylc.passive.RadialFilmCapacitor` | Film cap (two-pin, default unit `nF`) |
 | `RadialCeramicDiskCapacitor` | `diylc.passive.RadialCeramicDiskCapacitor` | Ceramic disk cap (two-pin, default unit `pF`) |
 | `RadialElectrolytic` | `diylc.passive.RadialElectrolytic` | Polarized electrolytic (two-pin, default unit `uF`) |
+| `PotentiometerPanel` | `diylc.passive.PotentiometerPanel` | 3-lug panel-mount pot |
+| `DiodePlastic` | `diylc.semiconductors.DiodePlastic` | Plastic diode (e.g. 1N4148) |
+| `LED` | `diylc.semiconductors.LED` | Through-hole LED |
+| `TransistorTO92` | `diylc.semiconductors.TransistorTO92` | TO-92 3-pin transistor |
+| `DIL_IC` | `diylc.semiconductors.DIL_IC` | DIP IC (4–50 pin) |
 | `CopperTrace` | `diylc.connectivity.CopperTrace` | Polyline trace |
 | `Jumper` | `diylc.connectivity.Jumper` | Insulated jumper wire (two-pin) |
 | `HookupWire` | `diylc.connectivity.HookupWire` | Curved insulated wire (2 or 4 control points) |
@@ -58,6 +63,33 @@ All component constructors are dataclasses — every field has a sensible defaul
 | `Label` | `diylc.misc.Label` | Free-floating text |
 
 For exact field lists, defaults, types, and allowed enum values, load **`catalog.json`** at repo root. It is the canonical machine-readable schema.
+
+## JSON ingestion (preferred path for LLMs)
+
+You don't have to write Python. Emit a JSON document and call `Project.from_dict(...)` or `Project.from_json(...)`:
+
+```python
+from pydiylc import Project
+
+p = Project.from_dict({
+    "title": "Booster",
+    "width_cm": 10, "height_cm": 8,
+    "components": [
+        {"type": "PerfBoard", "name": "Board1", "x1": 1.0, "y1": 1.0, "x2": 3.0, "y2": 2.5},
+        {"type": "TransistorTO92", "name": "Q1", "x": 1.5, "y": 1.3,
+         "value": "2N5088", "pinout": "BJT_EBC"},
+        {"type": "Resistor", "name": "R1", "x1": 1.5, "y1": 1.3,
+         "x2": 1.5, "y2": 1.0, "value": "1M"},
+        {"type": "DIL_IC", "name": "U1", "x": 2.0, "y": 1.5,
+         "value": "TL072", "pin_count": "_8"},
+        {"type": "PotentiometerPanel", "name": "VR1", "x": 1.0, "y": 4.0,
+         "resistance": "100K", "taper": "LOG"}
+    ]
+})
+p.save("booster.diy")
+```
+
+Each component dict needs a `type` field naming a pydiylc class. The rest are kwargs. Measure fields (`length`, `width`, `pin_spacing`, etc.) accept either `{"value": 0.1, "unit": "in"}` or a bare number (interpreted as inches).
 
 ## Value strings
 
@@ -74,7 +106,12 @@ Two-pin components parse their `value` string as `number + unit`:
 
 - `power` (Resistor): `QUARTER`, `HALF`, `ONE`, `TWO`
 - `voltage` (Capacitors): `_4V`, `_6V3`, `_10V`, `_16V`, `_25V`, `_35V`, `_50V`, `_63V`, `_100V`, `_160V`, `_200V`, `_250V`, `_400V`, `_450V`, `_600V`, `_1kV`
-- `display`: `NAME`, `VALUE`, `NONE`, `BOTH`
+- `display`: `NAME`, `VALUE`, `NONE`, `BOTH` (transistors also accept `PINOUT`)
+- `orientation` (TransistorTO92, DIL_IC, PotentiometerPanel, Label): `DEFAULT`, `_90`, `_180`, `_270`
+- `pinout` (TransistorTO92): `BJT_EBC`, `BJT_CBE`, `BJT_BCE`, `BJT_ECB`, `JFET_*`, `MOSFET_*`, `REGULATOR_*` — see catalog for the full list
+- `pin_count` (DIL_IC): `_4`, `_6`, `_8`, `_10`, ... `_50` (even values only)
+- `taper` (PotentiometerPanel): `LIN`, `LOG`, `REV_LOG`, `W`, `S`, `M`, `N`
+- `view` (PotentiometerPanel): `ShaftDown`, `ShaftUp`
 - `gauge` (HookupWire AWG): `_12` ... `_30`
 - `type` (SolderPad): `ROUND`, `SQUARE`, `OVAL_HORIZONTAL`, `OVAL_VERTICAL`
 - `style` (Jumper, HookupWire): `SOLID`, `DASHED`, `DOTTED`
@@ -100,7 +137,7 @@ Anywhere a color is accepted, pass a 6- or 3-char hex string (no `#`) or an int.
 - No reading/parsing of existing `.diy` files yet (emit only).
 - No rendering — DIYLC renders. To get a preview image, run DIYLC headless:
   `diylc -convert input.diy output.png`
-- Semiconductors (diodes, LEDs, transistors, ICs), potentiometers, switches, tubes, and stripboard are not yet implemented. They follow the same pattern when added.
+- Switches, jacks, tubes, transformers, BJT/FET/IC schematic symbols, stripboard, and rotary controls are not yet implemented. They follow the same pattern when added.
 
 ## Where to look next
 

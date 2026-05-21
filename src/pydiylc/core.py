@@ -113,6 +113,24 @@ class Project:
         p.write_text(self.to_xml(), encoding="utf-8")
         return p
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "Project":
+        """Build a Project from a dict matching the LLM-facing schema.
+
+        See ``pydiylc.loader`` for the full schema. Convenience wrapper around
+        ``pydiylc.project_from_dict``.
+        """
+        from .loader import project_from_dict
+
+        return project_from_dict(data)
+
+    @classmethod
+    def from_json(cls, text: str) -> "Project":
+        """Build a Project from a JSON string."""
+        from .loader import project_from_json
+
+        return project_from_json(text)
+
 
 def fmt(v: float) -> str:
     """Public re-export of the float formatter — useful for component templates."""
