@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pydiylc"
+version = "0.0.1"
+description = "Python emitter for DIYLC (.diy) circuit layout files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "DeepReef11" }]
+keywords = ["diylc", "electronics", "perfboard", "stripboard", "circuit"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/DeepReef11/pydiylc"
+Upstream = "https://github.com/bancika/diy-layout-creator"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pydiylc"]
