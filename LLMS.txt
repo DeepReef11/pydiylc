@@ -141,11 +141,24 @@ All enum violations raise `ValueError` with the full allowed list in the message
 
 Anywhere a color is accepted, pass a 6- or 3-char hex string (no `#`) or an int. Examples: `"ffe303"`, `"abc"`, `0xff0000`.
 
+## Native SVG preview
+
+```python
+from pydiylc.svg import render_svg, render_svg_file
+
+render_svg_file(project, "preview.svg")   # open in any browser
+svg_text = render_svg(project)            # or get the string
+```
+
+This is a quick-feedback preview, not pixel-identical to DIYLC. For high-fidelity output, run DIYLC headless on the saved `.diy`:
+
+```
+diylc -convert layout.diy layout.png
+```
+
 ## What this library does NOT do
 
 - No reading/parsing of existing `.diy` files yet (emit only).
-- No rendering — DIYLC renders. To get a preview image, run DIYLC headless:
-  `diylc -convert input.diy output.png`
 - Tubes, transformers, BJT/FET/IC schematic symbols, lever switches, rotary controls, and TO-220/TO-3 transistor packages are not yet implemented. They follow the same pattern when added.
 
 ## Where to look next

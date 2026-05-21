@@ -19,6 +19,17 @@ Pre-alpha. Current component set:
 
 A complete pedal layout — stripboard, transistor, pot, 3PDT bypass, DC and 1/4" jacks — is buildable in code or via JSON (see `examples/demo_lpb1_stripboard.py`).
 
+## Native SVG preview
+
+`pydiylc.svg.render_svg(project)` produces a quick-preview SVG of the layout. Component shape, position, and color are right; it is not pixel-identical to DIYLC's renderer. Good for iterating in a browser without launching DIYLC.
+
+```python
+from pydiylc.svg import render_svg_file
+render_svg_file(p, "preview.svg")  # open in any browser
+```
+
+See `examples/demo_render_svg.py` for a complete LPB-1 → SVG example.
+
 ## AI-friendly by design
 
 - [`LLMS.txt`](./LLMS.txt) — one-screen overview meant to be fed to a coding
