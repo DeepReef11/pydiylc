@@ -18,6 +18,8 @@ from .components import (
     AxialFilmCapacitor,
     AxialElectrolyticCapacitor,
     PotentiometerPanel,
+    ResistorSymbol,
+    CapacitorSymbol,
     TubeSocket,
     Rectangle,
     Ellipse,
@@ -25,7 +27,10 @@ from .components import (
     LED,
     TransistorTO92,
     DIL_IC,
+    DiodeSymbol,
+    BJTSymbol,
     CopperTrace,
+    CurvedTrace,
     Jumper,
     HookupWire,
     SolderPad,
@@ -38,6 +43,7 @@ from .components import (
     PlasticDCJack,
     OpenJack1_4,
     Label,
+    GroundSymbol,
 )
 
 __all__ = [
@@ -63,6 +69,8 @@ __all__ = [
     "AxialFilmCapacitor",
     "AxialElectrolyticCapacitor",
     "PotentiometerPanel",
+    "ResistorSymbol",
+    "CapacitorSymbol",
     "TubeSocket",
     "Rectangle",
     "Ellipse",
@@ -70,7 +78,10 @@ __all__ = [
     "LED",
     "TransistorTO92",
     "DIL_IC",
+    "DiodeSymbol",
+    "BJTSymbol",
     "CopperTrace",
+    "CurvedTrace",
     "Jumper",
     "HookupWire",
     "SolderPad",
@@ -83,6 +94,7 @@ __all__ = [
     "PlasticDCJack",
     "OpenJack1_4",
     "Label",
+    "GroundSymbol",
 ]
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"

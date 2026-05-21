@@ -45,6 +45,17 @@ for _cls in ALL_COMPONENTS:
         full = ".".join(["org.diylc.components"] + parts[1:])
         _TAG_TO_CLASS[full] = _cls
 
+# A few alternate spellings used by older DIYLC versions that resolve to the
+# same Python class as their modern equivalent.
+from .components import DIL_IC as _DIL_IC, HookupWire as _HookupWire  # noqa: E402
+
+_TAG_TO_CLASS["diylc.semiconductors.DIL__IC"] = _DIL_IC
+_TAG_TO_CLASS["org.diylc.components.semiconductors.DIL__IC"] = _DIL_IC
+# TwistedWire is a HookupWire variant; we render it as a hookup wire with no
+# fidelity loss for the polyline shape (the twist is purely cosmetic).
+_TAG_TO_CLASS["diylc.connectivity.TwistedWire"] = _HookupWire
+_TAG_TO_CLASS["org.diylc.components.connectivity.TwistedWire"] = _HookupWire
+
 # Some upstream child tags don't match our field names cleanly. These are the
 # exceptions; everything else uses _camel_to_snake().
 _FIELD_RENAMES: dict[str, dict[str, str]] = {
@@ -148,6 +159,8 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         ("diylc.passive.AxialFilmCapacitor", "value"),
         ("diylc.passive.AxialElectrolyticCapacitor", "value"),
         ("diylc.passive.PotentiometerPanel", "resistance"),
+        ("diylc.passive.ResistorSymbol", "value"),
+        ("diylc.passive.CapacitorSymbol", "value"),
     }
 
     values: dict[str, Any] = {}
@@ -162,7 +175,7 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         if tag in ("points", "controlPoints"):
             pts = [_parse_point(p) for p in child.findall("point")]
             continue
-        if tag == "controlPoints2":  # HookupWire
+        if tag == "controlPoints2":  # HookupWire and CurvedTrace
             wire_pts = [_parse_point(p) for p in child.findall("point")]
             continue
         if tag == "point" and child.get("x") is not None:
@@ -239,13 +252,13 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
                     values[field_name] = text
 
     # Map collected points to the right fields per component class. Normalize
-    # the older `org.diylc.components.*` prefix to the modern `diylc.*` form
-    # before dispatching, so all the explicit `diylc_class == ...` branches
-    # below catch v3 files too.
-    diylc_class = el.tag
-    if diylc_class.startswith("org.diylc.components."):
-        diylc_class = "diylc." + diylc_class[len("org.diylc.components."):]
+    # both the older `org.diylc.components.*` prefix and any alternate
+    # spellings (DIL__IC, TwistedWire) to the canonical class's
+    # `__diylc_class__` before dispatching.
+    diylc_class = cls.__diylc_class__
     if diylc_class == "diylc.connectivity.HookupWire":
+        values["points"] = wire_pts
+    elif diylc_class == "diylc.connectivity.CurvedTrace":
         values["points"] = wire_pts
     elif diylc_class == "diylc.connectivity.CopperTrace":
         values["points"] = pts
@@ -272,6 +285,11 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
             values["x"], values["y"] = single_point
         else:
             _set_single_anchor(values, pts)
+    elif diylc_class == "diylc.misc.GroundSymbol":
+        if single_point is not None:
+            values["x"], values["y"] = single_point
+        else:
+            _set_single_anchor(values, pts)
     elif diylc_class in (
         "diylc.boards.BlankBoard",
         "diylc.boards.PerfBoard",
@@ -283,6 +301,7 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
             (values["x2"], values["y2"]) = pts[1] if len(pts) >= 2 else pts[0]
     elif diylc_class in (
         "diylc.semiconductors.TransistorTO92",
+        "diylc.semiconductors.BJTSymbol",
         "diylc.passive.PotentiometerPanel",
         "diylc.electromechanical.MiniToggleSwitch",
         "diylc.electromechanical.PlasticDCJack",

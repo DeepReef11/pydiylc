@@ -19,18 +19,24 @@ from typing import TYPE_CHECKING
 from .components import (
     AxialElectrolyticCapacitor,
     AxialFilmCapacitor,
+    BJTSymbol,
     BlankBoard,
+    CapacitorSymbol,
     Component,
     CopperTrace,
+    CurvedTrace,
     DiodePlastic,
     DIL_IC,
+    DiodeSymbol,
     Dot,
     Ellipse,
     Eyelet,
+    GroundSymbol,
     HookupWire,
     Jumper,
     Line,
     Rectangle,
+    ResistorSymbol,
     TubeSocket,
     Label,
     LED,
@@ -741,6 +747,142 @@ def _render_ellipse(cr, c: Ellipse, s: float) -> None:
     cr.restore()
 
 
+def _render_resistor_symbol(cr, c: ResistorSymbol, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    amp = 5.0
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.5)
+    cr.move_to(x1, y1)
+    sx = x1 + ux * length * 0.2
+    sy = y1 + uy * length * 0.2
+    cr.line_to(sx, sy)
+    for i in range(6):
+        t = 0.2 + 0.6 * (i + 1) / 7
+        side = 1 if i % 2 == 0 else -1
+        cr.line_to(x1 + ux * length * t + nx * amp * side,
+                   y1 + uy * length * t + ny * amp * side)
+    cr.line_to(x1 + ux * length * 0.8, y1 + uy * length * 0.8)
+    cr.line_to(x2, y2)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_capacitor_symbol(cr, c: CapacitorSymbol, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    gap = 4.0
+    half_plate = 7.0
+    p1x, p1y = cx - ux * gap / 2, cy - uy * gap / 2
+    p2x, p2y = cx + ux * gap / 2, cy + uy * gap / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.lead_color))
+    cr.set_line_width(1.2)
+    cr.move_to(x1, y1); cr.line_to(p1x, p1y); cr.stroke()
+    cr.move_to(p2x, p2y); cr.line_to(x2, y2); cr.stroke()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(2)
+    cr.move_to(p1x - nx * half_plate, p1y - ny * half_plate)
+    cr.line_to(p1x + nx * half_plate, p1y + ny * half_plate)
+    cr.stroke()
+    cr.move_to(p2x - nx * half_plate, p2y - ny * half_plate)
+    cr.line_to(p2x + nx * half_plate, p2y + ny * half_plate)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_diode_symbol(cr, c: DiodeSymbol, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    cr.set_source_rgb(*_hex_to_rgb(c.lead_color))
+    cr.set_line_width(1.2)
+    cr.move_to(x1, y1); cr.line_to(x2, y2); cr.stroke()
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.move_to(cx - ux * 6, cy - uy * 6)
+    cr.line_to(cx + nx * 5, cy + ny * 5)
+    cr.line_to(cx - nx * 5, cy - ny * 5)
+    cr.close_path()
+    cr.fill()
+    cr.set_line_width(2)
+    cr.move_to(cx + nx * 5, cy + ny * 5)
+    cr.line_to(cx - nx * 5, cy - ny * 5)
+    cr.stroke()
+    _value_label(cr, c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display)
+
+
+def _render_bjt_symbol(cr, c: BJTSymbol, s: float) -> None:
+    pts = c._control_points()
+    base, col, emi, _ = pts
+    bx, by = base[0] * s, base[1] * s
+    cx, cy = col[0] * s, col[1] * s
+    ex, ey = emi[0] * s, emi[1] * s
+    jx, jy = (bx + cx + ex) / 3, (by + cy + ey) / 3
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    cr.arc(jx, jy, 12, 0, 2 * math.pi)
+    cr.stroke()
+    for pt in [(cx, cy), (ex, ey)]:
+        cr.move_to(pt[0], pt[1])
+        cr.line_to(jx, jy)
+        cr.stroke()
+    cr.move_to(bx, by)
+    cr.line_to(jx - 6, jy)
+    cr.stroke()
+    arrow = (ex, ey) if c.polarity == "NPN" else (jx, jy)
+    cr.arc(arrow[0], arrow[1], 2.5, 0, 2 * math.pi)
+    cr.fill()
+    label = c.value or c.name
+    _draw_text(cr, jx + 14, jy + 4, f"{label} {c.polarity}", size=9, anchor="start")
+
+
+def _render_ground_symbol(cr, c: GroundSymbol, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    size_px = _measure_to_inches(c.size) * s
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    cr.move_to(x, y); cr.line_to(x, y + size_px * 0.4); cr.stroke()
+    if c.type == "TRIANGLE":
+        cr.move_to(x - size_px * 0.5, y + size_px * 0.4)
+        cr.line_to(x + size_px * 0.5, y + size_px * 0.4)
+        cr.line_to(x, y + size_px)
+        cr.close_path()
+        cr.fill()
+    else:
+        cr.set_line_width(1.5)
+        for off, w in [(0.4, 0.5), (0.6, 0.3), (0.8, 0.15)]:
+            cr.move_to(x - size_px * w, y + size_px * off)
+            cr.line_to(x + size_px * w, y + size_px * off)
+            cr.stroke()
+
+
+def _render_curved_trace(cr, c: CurvedTrace, s: float) -> None:
+    pts = list(c.points)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(max(2.0, _measure_to_inches(c.size) * s))
+    cr.set_line_cap(1)
+    if len(pts) == 2:
+        cr.move_to(pts[0][0] * s, pts[0][1] * s)
+        cr.line_to(pts[1][0] * s, pts[1][1] * s)
+    else:
+        p0, p1, p2, p3 = pts
+        cr.move_to(p0[0] * s, p0[1] * s)
+        cr.curve_to(p1[0] * s, p1[1] * s, p2[0] * s, p2[1] * s, p3[0] * s, p3[1] * s)
+    cr.stroke()
+
+
 def _render_label(cr, c: Label, s: float) -> None:
     cr.save()
     weight = 1 if c.font_style in (1, 3) else 0
@@ -771,6 +913,12 @@ _RENDERERS: dict[type, callable] = {
     AxialFilmCapacitor: _render_axial_film_cap,
     AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    ResistorSymbol: _render_resistor_symbol,
+    CapacitorSymbol: _render_capacitor_symbol,
+    DiodeSymbol: _render_diode_symbol,
+    BJTSymbol: _render_bjt_symbol,
+    GroundSymbol: _render_ground_symbol,
+    CurvedTrace: _render_curved_trace,
     TubeSocket: _render_tube_socket,
     Rectangle: _render_rectangle,
     Ellipse: _render_ellipse,

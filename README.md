@@ -17,7 +17,10 @@ Pre-alpha. Current component set:
 - **Electromechanical**: `MiniToggleSwitch` (incl. 3PDT bypass), `PlasticDCJack`, `OpenJack1_4`
 - **Tubes**: `TubeSocket` (B7G / B9A / OCTAL / ...)
 - **Shapes**: `Rectangle`, `Ellipse`
-- `Label`
+- **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
+- **Misc**: `Label`, `GroundSymbol`
+
+**Corpus coverage:** 96.4% component recognition on the DIYLC regression corpus (52,858 of 54,841 components across 423 of 425 real community layouts).
 
 ## CLI
 
@@ -79,6 +82,19 @@ Keyboard:
 
 Your `.py` file should expose either a top-level `project = Project(...)` or
 a `def build() -> Project`. The viewer calls it on every reload.
+
+## MCP server
+
+For LLM clients (Claude Desktop, Claude Code, mcp-cli, etc.):
+
+```bash
+pip install -e ".[mcp]"
+pydiylc-mcp                  # stdio transport
+```
+
+Exposes `list_component_types`, `create_project`, `add_component`, `save`,
+`render_svg`, `read_diy`, and friends. Project state lives in-process keyed
+by a `project_id` argument so a client can manage multiple parallel layouts.
 
 ## AI-friendly by design
 

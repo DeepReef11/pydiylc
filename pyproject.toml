@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pydiylc"
-version = "0.0.1"
+version = "0.1.0"
 description = "Python emitter for DIYLC (.diy) circuit layout files"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,10 +25,13 @@ dev = ["pytest>=7"]
 # system package manager (apt: gir1.2-gtk-4.0, pacman: gtk4, dnf: gtk4).
 # PyGObject pulls in the python bindings.
 viewer = ["pygobject>=3.42", "pycairo>=1.20"]
+# MCP server extras: expose pydiylc as a tool surface for MCP-capable LLMs.
+mcp = ["mcp>=1.0"]
 
 [project.scripts]
 pydiylc = "pydiylc.cli:main"
 pydiylc-view = "pydiylc.viewer:main"
+pydiylc-mcp = "pydiylc.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/DeepReef11/pydiylc"

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pydiylc_version": "0.0.1",
+  "pydiylc_version": "0.1.0",
   "diylc_file_version_target": "5.7.0",
   "coordinate_units": "inches by default (project grid is 0.1 in)",
   "enum_pool": {
@@ -274,6 +274,23 @@
     "TUBE_MOUNT": [
       "CHASSIS",
       "PCB"
+    ],
+    "BJT_POLARITY": [
+      "NPN",
+      "PNP"
+    ],
+    "SYMBOL_FLIPPING": [
+      "NONE",
+      "X",
+      "Y"
+    ],
+    "LABEL_POSITION": [
+      "ABOVE",
+      "BELOW"
+    ],
+    "GROUND_SYMBOL_TYPE": [
+      "DEFAULT",
+      "TRIANGLE"
     ]
   },
   "components": [
@@ -2119,6 +2136,384 @@
       ]
     },
     {
+      "python_class": "ResistorSymbol",
+      "diylc_class": "diylc.passive.ResistorSymbol",
+      "doc": "Schematic-style resistor symbol (zigzag or rectangle).\n\nXML: ``<diylc.passive.ResistorSymbol>``\n\nTwo-point symbol. `value` accepts ``\"470K\"``, ``\"10K\"`` etc. Bare numbers\ndefault to ``\"K\"``.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "10K",
+          "required": false
+        },
+        {
+          "name": "power",
+          "type": {
+            "kind": "string"
+          },
+          "default": "HALF",
+          "required": false,
+          "enum": [
+            "QUARTER",
+            "HALF",
+            "ONE",
+            "TWO"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.3,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.08,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_position",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ABOVE",
+          "required": false,
+          "enum": [
+            "ABOVE",
+            "BELOW"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "CapacitorSymbol",
+      "diylc_class": "diylc.passive.CapacitorSymbol",
+      "doc": "Schematic-style capacitor symbol (parallel plates).\n\nXML: ``<diylc.passive.CapacitorSymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "100nF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_63V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "polarized",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.05,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.15,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_position",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ABOVE",
+          "required": false,
+          "enum": [
+            "ABOVE",
+            "BELOW"
+          ]
+        }
+      ]
+    },
+    {
       "python_class": "TubeSocket",
       "diylc_class": "diylc.tube.TubeSocket",
       "doc": "Tube socket \u2014 chassis or PCB mount, 7/8/9/octal/etc pin layouts.\n\nXML: ``<diylc.tube.TubeSocket>``\n\nAnchor (`x`, `y`) is the socket center. Pin positions are arranged\naround it in a circle. The number of pins comes from `base`:\nB9A=9, OCTAL=8, B7G=7. Set `type` to the tube model string\n(``\"12AX7\"``, ``\"EL34\"``, ...) \u2014 it's stored as the upstream `type`\nXML element, displayed as a label.\n\nExample::\n\n    p.add(TubeSocket(\"V1\", x=3.0, y=3.0, base=\"B9A\", tube_type=\"12AX7\"))",
@@ -3095,6 +3490,279 @@
       ]
     },
     {
+      "python_class": "DiodeSymbol",
+      "diylc_class": "diylc.semiconductors.DiodeSymbol",
+      "doc": "Schematic-style diode symbol (triangle + bar).\n\nXML: ``<diylc.semiconductors.DiodeSymbol>``\n\nFirst point is anode, second point is cathode.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_position",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ABOVE",
+          "required": false,
+          "enum": [
+            "ABOVE",
+            "BELOW"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "BJTSymbol",
+      "diylc_class": "diylc.semiconductors.BJTSymbol",
+      "doc": "Schematic-style BJT transistor symbol.\n\nXML: ``<diylc.semiconductors.BJTSymbol>``\n\nAnchor (`x`, `y`) is the base lead. The collector and emitter points are\nplaced automatically based on `orientation`. `polarity` toggles between\nNPN (arrow out) and PNP (arrow in).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "polarity",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NPN",
+          "required": false,
+          "enum": [
+            "NPN",
+            "PNP"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "flip",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NONE",
+          "required": false,
+          "enum": [
+            "NONE",
+            "X",
+            "Y"
+          ]
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
       "python_class": "CopperTrace",
       "diylc_class": "diylc.connectivity.CopperTrace",
       "doc": "Straight or polyline copper trace.\n\nXML: ``<diylc.connectivity.CopperTrace>``\n\nPass at least two points. Two-point traces get a midpoint added,\nmatching how DIYLC stores them.\n\nExample::\n\n    p.add(CopperTrace(\"T1\", points=[(1.0, 1.0), (2.0, 1.0)]))",
@@ -3196,6 +3864,88 @@
           },
           "default": false,
           "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "CurvedTrace",
+      "diylc_class": "diylc.connectivity.CurvedTrace",
+      "doc": "Bezier-curved copper trace with 4 control points.\n\nXML: ``<diylc.connectivity.CurvedTrace>``\n\nPass 4 control points for a cubic Bezier curve, or 2 endpoints that get\nauto-interpolated into a gentle S-curve.\n\nExample::\n\n    p.add(CurvedTrace(\"T1\", points=[(1.0, 1.0), (2.0, 1.0)]))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "6666ff",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "layer",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_1",
+          "required": false
+        },
+        {
+          "name": "smooth",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "point_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "FOUR",
+          "required": false,
+          "enum": [
+            "TWO",
+            "THREE",
+            "FOUR",
+            "FIVE",
+            "SEVEN"
+          ]
         }
       ]
     },
@@ -4284,6 +5034,69 @@
             "_180",
             "_270"
           ]
+        }
+      ]
+    },
+    {
+      "python_class": "GroundSymbol",
+      "diylc_class": "diylc.misc.GroundSymbol",
+      "doc": "Schematic ground symbol (single-point reference to ground).\n\nXML: ``<diylc.misc.GroundSymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "TRIANGLE"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.15,
+            "unit": "in"
+          },
+          "required": false
         }
       ]
     }

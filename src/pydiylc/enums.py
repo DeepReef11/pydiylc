@@ -122,6 +122,18 @@ TUBE_BASE = ("B7G", "B8B", "B9A", "OCTAL", "MINIATURE_9", "MAGNOVAL", "B12C", "D
 # Tube socket mount style
 TUBE_MOUNT = ("CHASSIS", "PCB")
 
+# Schematic-symbol BJT polarity
+BJT_POLARITY = ("NPN", "PNP")
+
+# Schematic-symbol flipping (BJT and similar)
+SYMBOL_FLIPPING = ("NONE", "X", "Y")
+
+# Schematic-symbol label position (above/below the body)
+LABEL_POSITION = ("ABOVE", "BELOW")
+
+# Ground symbol style
+GROUND_SYMBOL_TYPE = ("DEFAULT", "TRIANGLE")
+
 
 def check(field: str, value, allowed: tuple[str, ...]) -> None:
     """Raise ValueError listing allowed values when value isn't permitted."""

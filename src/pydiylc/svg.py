@@ -32,13 +32,19 @@ from .components import (
     Component,
     AxialFilmCapacitor,
     AxialElectrolyticCapacitor,
+    BJTSymbol,
     BlankBoard,
+    CapacitorSymbol,
+    CurvedTrace,
+    DiodeSymbol,
     Dot,
     Ellipse,
     Eyelet,
+    GroundSymbol,
     Line,
     PerfBoard,
     Rectangle,
+    ResistorSymbol,
     TubeSocket,
     Turret,
     VeroBoard,
@@ -751,6 +757,216 @@ def _render_ellipse(c: Ellipse, s: float) -> str:
     )
 
 
+def _render_resistor_symbol(c: ResistorSymbol, s: float) -> str:
+    """Schematic resistor: a zigzag between the two endpoints."""
+    import math
+
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux  # perpendicular
+    amp = 5.0
+    parts = ['<g class="resistor-symbol" data-name="' + _esc(c.name) + '">']
+    # Zigzag with 6 segments inside the middle 60% of the lead
+    start_t = 0.2
+    end_t = 0.8
+    n_zigs = 6
+    pts: list[str] = [f"{x1:.1f},{y1:.1f}"]
+    sx = x1 + ux * length * start_t
+    sy = y1 + uy * length * start_t
+    pts.append(f"{sx:.1f},{sy:.1f}")
+    for i in range(n_zigs):
+        t = start_t + (end_t - start_t) * (i + 1) / (n_zigs + 1)
+        side = 1 if i % 2 == 0 else -1
+        px = x1 + ux * length * t + nx * amp * side
+        py = y1 + uy * length * t + ny * amp * side
+        pts.append(f"{px:.1f},{py:.1f}")
+    ex = x1 + ux * length * end_t
+    ey = y1 + uy * length * end_t
+    pts.append(f"{ex:.1f},{ey:.1f}")
+    pts.append(f"{x2:.1f},{y2:.1f}")
+    parts.append(
+        f'<polyline points="{" ".join(pts)}" fill="none" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1.5"/>'
+    )
+    parts.append(_value_label(c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display))
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_capacitor_symbol(c: CapacitorSymbol, s: float) -> str:
+    """Schematic capacitor: two parallel plates perpendicular to the lead."""
+    import math
+
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    half_plate = 7.0
+    gap = 4.0
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    p1x = cx - ux * gap / 2
+    p1y = cy - uy * gap / 2
+    p2x = cx + ux * gap / 2
+    p2y = cy + uy * gap / 2
+    parts = ['<g class="capacitor-symbol" data-name="' + _esc(c.name) + '">']
+    parts.append(
+        f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{p1x:.1f}" y2="{p1y:.1f}" '
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/>'
+        f'<line x1="{p2x:.1f}" y1="{p2y:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/>'
+    )
+    # Plates
+    parts.append(
+        f'<line x1="{p1x - nx*half_plate:.1f}" y1="{p1y - ny*half_plate:.1f}" '
+        f'x2="{p1x + nx*half_plate:.1f}" y2="{p1y + ny*half_plate:.1f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="2"/>'
+        f'<line x1="{p2x - nx*half_plate:.1f}" y1="{p2y - ny*half_plate:.1f}" '
+        f'x2="{p2x + nx*half_plate:.1f}" y2="{p2y + ny*half_plate:.1f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="2"/>'
+    )
+    parts.append(_value_label(c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display))
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_diode_symbol(c: DiodeSymbol, s: float) -> str:
+    """Schematic diode: triangle pointing to cathode + perpendicular bar."""
+    import math
+
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    tri_back = 6
+    tri_w = 5
+    bar_offset = 0
+    a = (cx - ux * tri_back, cy - uy * tri_back)
+    b1 = (cx + nx * tri_w, cy + ny * tri_w)
+    b2 = (cx - nx * tri_w, cy - ny * tri_w)
+    bar_a = (cx + nx * tri_w + ux * bar_offset, cy + ny * tri_w + uy * bar_offset)
+    bar_b = (cx - nx * tri_w + ux * bar_offset, cy - ny * tri_w + uy * bar_offset)
+    color = _color(c.body_color)
+    parts = ['<g class="diode-symbol" data-name="' + _esc(c.name) + '">']
+    parts.append(
+        f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/>'
+    )
+    parts.append(
+        f'<polygon points="{a[0]:.1f},{a[1]:.1f} {b1[0]:.1f},{b1[1]:.1f} '
+        f'{b2[0]:.1f},{b2[1]:.1f}" fill="{color}" stroke="{color}"/>'
+    )
+    parts.append(
+        f'<line x1="{bar_a[0]:.1f}" y1="{bar_a[1]:.1f}" '
+        f'x2="{bar_b[0]:.1f}" y2="{bar_b[1]:.1f}" stroke="{color}" stroke-width="2"/>'
+    )
+    parts.append(_value_label(c.x1, c.y1, c.x2, c.y2, s, c.name, c.value, c.display))
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_bjt_symbol(c: BJTSymbol, s: float) -> str:
+    pts = c._control_points()
+    base, col, emi, _lbl = pts
+    bx, by = base[0] * s, base[1] * s
+    cx, cy = col[0] * s, col[1] * s
+    ex, ey = emi[0] * s, emi[1] * s
+    # Junction circle
+    jx, jy = (bx + cx + ex) / 3, (by + cy + ey) / 3
+    color = _color(c.color)
+    parts = ['<g class="bjt-symbol" data-name="' + _esc(c.name) + '">']
+    parts.append(
+        f'<circle cx="{jx:.1f}" cy="{jy:.1f}" r="12" fill="none" '
+        f'stroke="{color}" stroke-width="1.2"/>'
+    )
+    for pt in [(cx, cy), (ex, ey)]:
+        parts.append(
+            f'<line x1="{pt[0]:.1f}" y1="{pt[1]:.1f}" x2="{jx:.1f}" y2="{jy:.1f}" '
+            f'stroke="{color}" stroke-width="1.2"/>'
+        )
+    parts.append(
+        f'<line x1="{bx:.1f}" y1="{by:.1f}" x2="{jx - 6:.1f}" y2="{jy:.1f}" '
+        f'stroke="{color}" stroke-width="1.2"/>'
+    )
+    # Polarity arrow on the emitter
+    arrow_tip = (ex, ey) if c.polarity == "NPN" else (jx, jy)
+    parts.append(
+        f'<circle cx="{arrow_tip[0]:.1f}" cy="{arrow_tip[1]:.1f}" r="2.5" '
+        f'fill="{color}"/>'
+    )
+    label = c.value or c.name
+    parts.append(
+        f'<text x="{jx + 14:.1f}" y="{jy + 4:.1f}" font-size="9" fill="#000">'
+        f'{_esc(label)} {_esc(c.polarity)}</text>'
+    )
+    parts.append("</g>")
+    return "\n".join(parts)
+
+
+def _render_ground_symbol(c: GroundSymbol, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    size_px = _measure_to_inches(c.size) * s
+    color = _color(c.color)
+    if c.type == "TRIANGLE":
+        return (
+            f'<g class="ground" data-name="{_esc(c.name)}">'
+            f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x:.1f}" y2="{y+size_px*0.4:.1f}" '
+            f'stroke="{color}" stroke-width="1.2"/>'
+            f'<polygon points="{x-size_px*0.5:.1f},{y+size_px*0.4:.1f} '
+            f'{x+size_px*0.5:.1f},{y+size_px*0.4:.1f} '
+            f'{x:.1f},{y+size_px:.1f}" fill="{color}"/></g>'
+        )
+    return (
+        f'<g class="ground" data-name="{_esc(c.name)}">'
+        f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x:.1f}" y2="{y+size_px*0.4:.1f}" '
+        f'stroke="{color}" stroke-width="1.2"/>'
+        f'<line x1="{x-size_px*0.5:.1f}" y1="{y+size_px*0.4:.1f}" '
+        f'x2="{x+size_px*0.5:.1f}" y2="{y+size_px*0.4:.1f}" '
+        f'stroke="{color}" stroke-width="1.5"/>'
+        f'<line x1="{x-size_px*0.3:.1f}" y1="{y+size_px*0.6:.1f}" '
+        f'x2="{x+size_px*0.3:.1f}" y2="{y+size_px*0.6:.1f}" '
+        f'stroke="{color}" stroke-width="1.5"/>'
+        f'<line x1="{x-size_px*0.15:.1f}" y1="{y+size_px*0.8:.1f}" '
+        f'x2="{x+size_px*0.15:.1f}" y2="{y+size_px*0.8:.1f}" '
+        f'stroke="{color}" stroke-width="1.5"/>'
+        f"</g>"
+    )
+
+
+def _render_curved_trace(c: CurvedTrace, s: float) -> str:
+    pts = list(c.points)
+    if len(pts) == 2:
+        x1, y1 = pts[0]
+        x2, y2 = pts[1]
+        return (
+            f'<g class="curved-trace" data-name="{_esc(c.name)}">'
+            f'<line x1="{x1*s:.1f}" y1="{y1*s:.1f}" x2="{x2*s:.1f}" y2="{y2*s:.1f}" '
+            f'stroke="{_color(c.color)}" stroke-width="2" stroke-linecap="round"/></g>'
+        )
+    p0, p1, p2, p3 = pts
+    thickness_px = max(2.0, _measure_to_inches(c.size) * s)
+    d = (
+        f"M {p0[0]*s:.1f},{p0[1]*s:.1f} "
+        f"C {p1[0]*s:.1f},{p1[1]*s:.1f} "
+        f"{p2[0]*s:.1f},{p2[1]*s:.1f} "
+        f"{p3[0]*s:.1f},{p3[1]*s:.1f}"
+    )
+    return (
+        f'<g class="curved-trace" data-name="{_esc(c.name)}">'
+        f'<path d="{d}" fill="none" stroke="{_color(c.color)}" '
+        f'stroke-width="{thickness_px:.1f}" stroke-linecap="round"/></g>'
+    )
+
+
 def _render_label(c: Label, s: float) -> str:
     style = ""
     if c.font_style in (1, 3):
@@ -800,6 +1016,12 @@ _RENDERERS: dict[type, callable] = {
     AxialFilmCapacitor: _render_axial_film_cap,
     AxialElectrolyticCapacitor: _render_axial_electrolytic,
     PotentiometerPanel: _render_pot,
+    ResistorSymbol: _render_resistor_symbol,
+    CapacitorSymbol: _render_capacitor_symbol,
+    DiodeSymbol: _render_diode_symbol,
+    BJTSymbol: _render_bjt_symbol,
+    GroundSymbol: _render_ground_symbol,
+    CurvedTrace: _render_curved_trace,
     TubeSocket: _render_tube_socket,
     Rectangle: _render_rectangle,
     Ellipse: _render_ellipse,

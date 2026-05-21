@@ -1385,6 +1385,65 @@ class TraceCut(Component):
 
 
 @dataclass
+class CurvedTrace(Component):
+    """Bezier-curved copper trace with 4 control points.
+
+    XML: ``<diylc.connectivity.CurvedTrace>``
+
+    Pass 4 control points for a cubic Bezier curve, or 2 endpoints that get
+    auto-interpolated into a gentle S-curve.
+
+    Example::
+
+        p.add(CurvedTrace("T1", points=[(1.0, 1.0), (2.0, 1.0)]))
+    """
+
+    name: str
+    points: Sequence[Point]
+    color: str = "6666ff"
+    size: Measure = field(default_factory=lambda: mm(1.0))
+    layer: str = "_1"
+    smooth: bool = True
+    alpha: int = 127
+    point_count: str = "FOUR"
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.CurvedTrace"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "point_count": E.WIRE_POINT_COUNT,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if len(self.points) not in (2, 4):
+            raise ValueError("CurvedTrace needs 2 or 4 points")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = list(self.points)
+        if len(pts) == 2:
+            (x1, y1), (x2, y2) = pts
+            pts = [
+                (x1, y1),
+                (x1 + (x2 - x1) / 3.0, y1 + (y2 - y1) / 3.0),
+                (x1 + 2 * (x2 - x1) / 3.0, y1 + 2 * (y2 - y1) / 3.0),
+                (x2, y2),
+            ]
+        return (
+            f"{pad}<diylc.connectivity.CurvedTrace>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints2', pts, indent + 2)}\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <pointCount>{self.point_count}</pointCount>\n"
+            f"{pad}  <smooth>{str(self.smooth).lower()}</smooth>\n"
+            f"{pad}  <lastUpdatePointIndex>-1</lastUpdatePointIndex>\n"
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f"{pad}  <layer>{self.layer}</layer>\n"
+            f"{pad}</diylc.connectivity.CurvedTrace>"
+        )
+
+
+@dataclass
 class SolderPad(Component):
     """Single solder pad / drilled hole.
 
@@ -1696,6 +1755,312 @@ class Label(Component):
 
 
 # ---------------------------------------------------------------------------
+# Schematic symbols
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ResistorSymbol(Component):
+    """Schematic-style resistor symbol (zigzag or rectangle).
+
+    XML: ``<diylc.passive.ResistorSymbol>``
+
+    Two-point symbol. `value` accepts ``"470K"``, ``"10K"`` etc. Bare numbers
+    default to ``"K"``.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = "10K"
+    power: str = "HALF"
+    alpha: int = 127
+    border_color: str = "0000ff"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.3))
+    width: Measure = field(default_factory=lambda: inches(0.08))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    label_position: str = "ABOVE"
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.ResistorSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "power": E.POWER,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+        "label_position": E.LABEL_POSITION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.value, default_unit="K")
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.ResistorSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <labelPosition>{self.label_position}</labelPosition>\n"
+            f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <power>{self.power}</power>\n"
+            f"{pad}</diylc.passive.ResistorSymbol>"
+        )
+
+
+@dataclass
+class CapacitorSymbol(Component):
+    """Schematic-style capacitor symbol (parallel plates).
+
+    XML: ``<diylc.passive.CapacitorSymbol>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = "100nF"
+    voltage: str = "_63V"
+    polarized: bool = False
+    alpha: int = 127
+    border_color: str = "0000ff"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.05))
+    width: Measure = field(default_factory=lambda: inches(0.15))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    label_position: str = "ABOVE"
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.CapacitorSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+        "label_position": E.LABEL_POSITION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.value, default_unit="nF")
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.CapacitorSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <labelPosition>{self.label_position}</labelPosition>\n"
+            f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f"{pad}  <polarized>{str(self.polarized).lower()}</polarized>\n"
+            f"{pad}</diylc.passive.CapacitorSymbol>"
+        )
+
+
+@dataclass
+class DiodeSymbol(Component):
+    """Schematic-style diode symbol (triangle + bar).
+
+    XML: ``<diylc.semiconductors.DiodeSymbol>``
+
+    First point is anode, second point is cathode.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    alpha: int = 127
+    body_color: str = "0000ff"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.1))
+    width: Measure = field(default_factory=lambda: inches(0.1))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    label_position: str = "ABOVE"
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.DiodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+        "label_position": E.LABEL_POSITION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.semiconductors.DiodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <labelPosition>{self.label_position}</labelPosition>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.semiconductors.DiodeSymbol>"
+        )
+
+
+@dataclass
+class BJTSymbol(Component):
+    """Schematic-style BJT transistor symbol.
+
+    XML: ``<diylc.semiconductors.BJTSymbol>``
+
+    Anchor (`x`, `y`) is the base lead. The collector and emitter points are
+    placed automatically based on `orientation`. `polarity` toggles between
+    NPN (arrow out) and PNP (arrow in).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    polarity: str = "NPN"
+    orientation: str = "DEFAULT"
+    flip: str = "NONE"
+    display: str = "BOTH"
+    color: str = "000000"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.BJTSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "polarity": E.BJT_POLARITY,
+        "orientation": E.ORIENTATION,
+        "flip": E.SYMBOL_FLIPPING,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        # 4 control points: base, collector, emitter, label-anchor (~center).
+        # Placement here is a sane default; DIYLC stores actual rendered
+        # positions but we re-derive on emit.
+        if self.orientation == "DEFAULT":
+            base = (self.x, self.y)
+            col = (self.x + 0.2, self.y - 0.2)
+            emi = (self.x + 0.2, self.y + 0.2)
+            lbl = (self.x + 0.15, self.y)
+        elif self.orientation == "_90":
+            base = (self.x, self.y)
+            col = (self.x + 0.2, self.y + 0.2)
+            emi = (self.x - 0.2, self.y + 0.2)
+            lbl = (self.x, self.y + 0.15)
+        elif self.orientation == "_180":
+            base = (self.x, self.y)
+            col = (self.x - 0.2, self.y + 0.2)
+            emi = (self.x - 0.2, self.y - 0.2)
+            lbl = (self.x - 0.15, self.y)
+        else:  # _270
+            base = (self.x, self.y)
+            col = (self.x - 0.2, self.y - 0.2)
+            emi = (self.x + 0.2, self.y - 0.2)
+            lbl = (self.x, self.y - 0.15)
+        return [base, col, emi, lbl]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.semiconductors.BJTSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <flip>{self.flip}</flip>\n"
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <polarity>{self.polarity}</polarity>\n"
+            f"{pad}</diylc.semiconductors.BJTSymbol>"
+        )
+
+
+@dataclass
+class GroundSymbol(Component):
+    """Schematic ground symbol (single-point reference to ground).
+
+    XML: ``<diylc.misc.GroundSymbol>``
+    """
+
+    name: str
+    x: float
+    y: float
+    type: str = "DEFAULT"
+    color: str = "000000"
+    size: Measure = field(default_factory=lambda: inches(0.15))
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.GroundSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "type": E.GROUND_SYMBOL_TYPE,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.misc.GroundSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <size {self.size.attrs()}/>\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}</diylc.misc.GroundSymbol>"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Electromechanical
 # ---------------------------------------------------------------------------
 
@@ -1890,6 +2255,8 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     AxialFilmCapacitor,
     AxialElectrolyticCapacitor,
     PotentiometerPanel,
+    ResistorSymbol,
+    CapacitorSymbol,
     TubeSocket,
     Rectangle,
     Ellipse,
@@ -1897,7 +2264,10 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     LED,
     TransistorTO92,
     DIL_IC,
+    DiodeSymbol,
+    BJTSymbol,
     CopperTrace,
+    CurvedTrace,
     Jumper,
     HookupWire,
     SolderPad,
@@ -1910,4 +2280,5 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     PlasticDCJack,
     OpenJack1_4,
     Label,
+    GroundSymbol,
 )
