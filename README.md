@@ -12,6 +12,18 @@ Pre-alpha. First-cut component set: `PerfBoard`, `BlankBoard`, `Resistor`,
 `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`,
 `CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `Label`.
 
+## AI-friendly by design
+
+- [`LLMS.txt`](./LLMS.txt) — one-screen overview meant to be fed to a coding
+  assistant. Lists every component, the values its enum fields accept, and the
+  value-string parsing rules.
+- [`catalog.json`](./catalog.json) — machine-readable schema of every
+  component, regenerated with `python -m pydiylc.catalog`. Fields, types,
+  defaults, enum choices, and Measure units. Use this for codegen,
+  prompt-stuffing, or downstream validation.
+- Every component validates its enum fields at construction with a clear
+  `ValueError` listing the allowed values.
+
 ## Install
 
 ```bash

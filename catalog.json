@@ -1,0 +1,1789 @@
+{
+  "schema_version": 1,
+  "pydiylc_version": "0.0.1",
+  "diylc_file_version_target": "5.7.0",
+  "coordinate_units": "inches by default (project grid is 0.1 in)",
+  "enum_pool": {
+    "POWER": [
+      "QUARTER",
+      "HALF",
+      "ONE",
+      "TWO"
+    ],
+    "RESISTOR_COLOR_CODE": [
+      "NONE",
+      "_4_BAND",
+      "_5_BAND",
+      "_6_BAND"
+    ],
+    "RESISTOR_SHAPE": [
+      "Standard",
+      "Tubular"
+    ],
+    "VOLTAGE": [
+      "_4V",
+      "_6V3",
+      "_10V",
+      "_16V",
+      "_25V",
+      "_35V",
+      "_50V",
+      "_63V",
+      "_100V",
+      "_160V",
+      "_200V",
+      "_250V",
+      "_400V",
+      "_450V",
+      "_600V",
+      "_1kV"
+    ],
+    "DISPLAY": [
+      "NAME",
+      "VALUE",
+      "NONE",
+      "BOTH"
+    ],
+    "LABEL_ORIENTATION": [
+      "Directional",
+      "Horizontal"
+    ],
+    "BOARD_TYPE": [
+      "SQUARE",
+      "ROUND"
+    ],
+    "COORDINATE_AXIS": [
+      "Numbers",
+      "Letters"
+    ],
+    "COORDINATE_ORIGIN": [
+      "Top_Left",
+      "Top_Right",
+      "Bottom_Left",
+      "Bottom_Right"
+    ],
+    "COORDINATE_DISPLAY": [
+      "None",
+      "One_Side",
+      "Both_Sides"
+    ],
+    "LINE_STYLE": [
+      "SOLID",
+      "DASHED",
+      "DOTTED"
+    ],
+    "WIRE_GAUGE": [
+      "_12",
+      "_14",
+      "_16",
+      "_18",
+      "_20",
+      "_22",
+      "_24",
+      "_26",
+      "_28",
+      "_30"
+    ],
+    "WIRE_POINT_COUNT": [
+      "TWO",
+      "THREE",
+      "FOUR",
+      "FIVE",
+      "SEVEN"
+    ],
+    "PAD_TYPE": [
+      "ROUND",
+      "SQUARE",
+      "OVAL_HORIZONTAL",
+      "OVAL_VERTICAL"
+    ],
+    "BOARD_MODE": [
+      "TwoPoints",
+      "Explicit"
+    ],
+    "HORIZONTAL_ALIGNMENT": [
+      "LEFT",
+      "CENTER",
+      "RIGHT"
+    ],
+    "VERTICAL_ALIGNMENT": [
+      "TOP",
+      "CENTER",
+      "BOTTOM"
+    ],
+    "LABEL_ORIENTATION_4": [
+      "DEFAULT",
+      "_90",
+      "_180",
+      "_270"
+    ],
+    "LENGTH_UNIT": [
+      "mm",
+      "cm",
+      "in",
+      "px"
+    ],
+    "RESISTANCE_UNIT": [
+      "R",
+      "K",
+      "M",
+      "G"
+    ],
+    "CAPACITANCE_UNIT": [
+      "pF",
+      "nF",
+      "uF",
+      "mF",
+      "F"
+    ],
+    "VOLTAGE_UNIT": [
+      "V",
+      "kV",
+      "mV"
+    ],
+    "CURRENT_UNIT": [
+      "A",
+      "mA",
+      "uA"
+    ]
+  },
+  "components": [
+    {
+      "python_class": "BlankBoard",
+      "diylc_class": "diylc.boards.BlankBoard",
+      "doc": "Blank rectangular board.\n\nXML: ``<diylc.boards.BlankBoard>``\n\nExample::\n\n    p.add(BlankBoard(\"Board1\", x1=1.0, y1=1.0, x2=2.0, y2=1.7))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ccffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "66ccff",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "SQUARE",
+          "required": false,
+          "enum": [
+            "SQUARE",
+            "ROUND"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "PerfBoard",
+      "diylc_class": "diylc.boards.PerfBoard",
+      "doc": "Perfboard with through-hole pads on a grid.\n\nXML: ``<diylc.boards.PerfBoard>``\n\nExample::\n\n    p.add(PerfBoard(\"Board1\", x1=1.0, y1=1.0, x2=3.0, y2=2.5))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 62,
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f8ebb3",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ada47d",
+          "required": false
+        },
+        {
+          "name": "pad_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "da8a67",
+          "required": false
+        },
+        {
+          "name": "coordinate_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "b6b6b6",
+          "required": false
+        },
+        {
+          "name": "spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "x_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Numbers",
+          "required": false,
+          "enum": [
+            "Numbers",
+            "Letters"
+          ]
+        },
+        {
+          "name": "y_type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Letters",
+          "required": false,
+          "enum": [
+            "Numbers",
+            "Letters"
+          ]
+        },
+        {
+          "name": "coordinate_origin",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Top_Left",
+          "required": false,
+          "enum": [
+            "Top_Left",
+            "Top_Right",
+            "Bottom_Left",
+            "Bottom_Right"
+          ]
+        },
+        {
+          "name": "coordinate_display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "One_Side",
+          "required": false,
+          "enum": [
+            "None",
+            "One_Side",
+            "Both_Sides"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "Resistor",
+      "diylc_class": "diylc.passive.Resistor",
+      "doc": "Through-hole resistor between two points.\n\nXML: ``<diylc.passive.Resistor>``\n\n`value` accepts strings like ``\"4.7K\"``, ``\"1M\"``, ``\"470R\"``. Bare numbers\ndefault to ``\"K\"``.\n\nExample::\n\n    p.add(Resistor(\"R1\", x1=1.0, y1=1.0, x2=1.0, y2=1.5, value=\"10K\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "1K",
+          "required": false
+        },
+        {
+          "name": "power",
+          "type": {
+            "kind": "string"
+          },
+          "default": "HALF",
+          "required": false,
+          "enum": [
+            "QUARTER",
+            "HALF",
+            "ONE",
+            "TWO"
+          ]
+        },
+        {
+          "name": "color_code",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_5_BAND",
+          "required": false,
+          "enum": [
+            "NONE",
+            "_4_BAND",
+            "_5_BAND",
+            "_6_BAND"
+          ]
+        },
+        {
+          "name": "shape",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Standard",
+          "required": false,
+          "enum": [
+            "Standard",
+            "Tubular"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "82cffd",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "5b90b1",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.5,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.125,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RadialFilmCapacitor",
+      "diylc_class": "diylc.passive.RadialFilmCapacitor",
+      "doc": "Radial-lead film capacitor (e.g. polyester box).\n\nXML: ``<diylc.passive.RadialFilmCapacitor>``\n\n`value` accepts ``\"100nF\"``, ``\"470n\"``, ``\"1uF\"``. Bare numbers default\nto ``\"nF\"``.\n\nExample::\n\n    p.add(RadialFilmCapacitor(\"C1\", x1=1.0, y1=1.0, x2=1.0, y2=1.1,\n                               value=\"100nF\", voltage=\"_63V\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "100nF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_63V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffe303",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "b29e02",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 7.5,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 6.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "show_outer_foil",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RadialCeramicDiskCapacitor",
+      "diylc_class": "diylc.passive.RadialCeramicDiskCapacitor",
+      "doc": "Ceramic disk capacitor.\n\nXML: ``<diylc.passive.RadialCeramicDiskCapacitor>``\n\n`value` accepts ``\"100pF\"``, ``\"1000pF\"``, ``\".01uF\"``. Bare numbers\ndefault to ``\"pF\"``.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "100pF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_63V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "f0e68c",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "a8a162",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.4,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.125,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RadialElectrolytic",
+      "diylc_class": "diylc.passive.RadialElectrolytic",
+      "doc": "Polarized radial electrolytic capacitor.\n\nXML: ``<diylc.passive.RadialElectrolytic>``\n\n`value` accepts ``\"22uF\"``, ``\"470uF\"``. Bare numbers default to ``\"uF\"``.\nFirst point is the positive lead unless ``invert=True``.\n\nExample::\n\n    p.add(RadialElectrolytic(\"C1\", 1.0, 1.0, 1.0, 1.1, value=\"22uF\", voltage=\"_25V\"))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "10uF",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_25V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "eaadea",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "a379a3",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 16.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.4,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "marker_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "tick_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "polarized",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "folded",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "invert",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "CopperTrace",
+      "diylc_class": "diylc.connectivity.CopperTrace",
+      "doc": "Straight or polyline copper trace.\n\nXML: ``<diylc.connectivity.CopperTrace>``\n\nPass at least two points. Two-point traces get a midpoint added,\nmatching how DIYLC stores them.\n\nExample::\n\n    p.add(CopperTrace(\"T1\", points=[(1.0, 1.0), (2.0, 1.0)]))",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 2.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Jumper",
+      "diylc_class": "diylc.connectivity.Jumper",
+      "doc": "Insulated jumper wire between two pads.\n\nXML: ``<diylc.connectivity.Jumper>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "string"
+          },
+          "default": "SOLID",
+          "required": false,
+          "enum": [
+            "SOLID",
+            "DASHED",
+            "DOTTED"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "HookupWire",
+      "diylc_class": "diylc.connectivity.HookupWire",
+      "doc": "Curved insulated hookup wire with 4 control points.\n\nXML: ``<diylc.connectivity.HookupWire>``\n\nPass 2 endpoints (interpolated to 4) or 4 control points directly.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "gauge",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_22",
+          "required": false,
+          "enum": [
+            "_12",
+            "_14",
+            "_16",
+            "_18",
+            "_20",
+            "_22",
+            "_24",
+            "_26",
+            "_28",
+            "_30"
+          ]
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "string"
+          },
+          "default": "SOLID",
+          "required": false,
+          "enum": [
+            "SOLID",
+            "DASHED",
+            "DOTTED"
+          ]
+        },
+        {
+          "name": "striped",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "smooth",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "point_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "FOUR",
+          "required": false,
+          "enum": [
+            "TWO",
+            "THREE",
+            "FOUR",
+            "FIVE",
+            "SEVEN"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "SolderPad",
+      "diylc_class": "diylc.connectivity.SolderPad",
+      "doc": "Single solder pad / drilled hole.\n\nXML: ``<diylc.connectivity.SolderPad>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 3.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ROUND",
+          "required": false,
+          "enum": [
+            "ROUND",
+            "SQUARE",
+            "OVAL_HORIZONTAL",
+            "OVAL_VERTICAL"
+          ]
+        },
+        {
+          "name": "hole_size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.8,
+            "unit": "mm"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Label",
+      "diylc_class": "diylc.misc.Label",
+      "doc": "Free-floating text label.\n\nXML: ``<diylc.misc.Label>``\n\n`font_style`: 0=plain, 1=bold, 2=italic, 3=bold+italic.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "font",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Tahoma",
+          "required": false
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 14,
+          "required": false
+        },
+        {
+          "name": "font_style",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "center",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "horizontal_alignment",
+          "type": {
+            "kind": "string"
+          },
+          "default": "CENTER",
+          "required": false,
+          "enum": [
+            "LEFT",
+            "CENTER",
+            "RIGHT"
+          ]
+        },
+        {
+          "name": "vertical_alignment",
+          "type": {
+            "kind": "string"
+          },
+          "default": "CENTER",
+          "required": false,
+          "enum": [
+            "TOP",
+            "CENTER",
+            "BOTTOM"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        }
+      ]
+    }
+  ]
+}

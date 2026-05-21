@@ -1,9 +1,26 @@
+"""DIYLC component emitters.
+
+Every component class:
+- Has `__diylc_class__` set to the exact XML element it emits.
+- Lists enum-valued fields in `__enums__` (field -> tuple of allowed values).
+- Validates enums in `__post_init__` with helpful errors.
+- Has a docstring with a one-line purpose, the XML element, and an example.
+
+This metadata is what makes pydiylc AI-friendly: see `pydiylc.catalog` for
+machine-readable schema, and `LLMS.txt` for the assistant-facing doc.
+
+Coordinates are floats in DIYLC's project units (default inches; the
+project's grid is 0.1 in). Two-pin components accept `x1,y1,x2,y2` and
+emit a `[p1, p2, midpoint]` triplet, which is how DIYLC writes them.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import ClassVar, Sequence
 
 from .core import Measure, fmt, hex_color, esc, inches, mm
+from . import enums as E
 
 
 Point = tuple[float, float]
@@ -32,10 +49,17 @@ def _two_point_with_mid(p1: Point, p2: Point) -> list[Point]:
 
 @dataclass
 class Component:
-    """Base — subclasses override `to_xml(indent)`."""
+    """Base class. Subclasses set `__diylc_class__` and emit XML via `to_xml`."""
+
+    __diylc_class__: ClassVar[str] = ""
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {}
 
     def to_xml(self, indent: int = 4) -> str:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def _validate_enums(self) -> None:
+        for field_name, allowed in self.__enums__.items():
+            E.check(f"{type(self).__name__}.{field_name}", getattr(self, field_name), allowed)
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +69,15 @@ class Component:
 
 @dataclass
 class BlankBoard(Component):
+    """Blank rectangular board.
+
+    XML: ``<diylc.boards.BlankBoard>``
+
+    Example::
+
+        p.add(BlankBoard("Board1", x1=1.0, y1=1.0, x2=2.0, y2=1.7))
+    """
+
     name: str
     x1: float
     y1: float
@@ -56,10 +89,14 @@ class BlankBoard(Component):
     border_color: str = "66ccff"
     type: str = "SQUARE"
 
+    __diylc_class__: ClassVar[str] = "diylc.boards.BlankBoard"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"type": E.BOARD_TYPE}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        bc = hex_color(self.board_color)
-        bd = hex_color(self.border_color)
         return (
             f"{pad}<diylc.boards.BlankBoard>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -71,8 +108,8 @@ class BlankBoard(Component):
             f"{pad}  </controlPoints>\n"
             f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
             f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
-            f'{pad}  <boardColor hex="{bc}"/>\n'
-            f'{pad}  <borderColor hex="{bd}"/>\n'
+            f'{pad}  <boardColor hex="{hex_color(self.board_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
             f"{pad}  <mode>TwoPoints</mode>\n"
             f"{pad}  <type>{self.type}</type>\n"
             f"{pad}</diylc.boards.BlankBoard>"
@@ -81,6 +118,15 @@ class BlankBoard(Component):
 
 @dataclass
 class PerfBoard(Component):
+    """Perfboard with through-hole pads on a grid.
+
+    XML: ``<diylc.boards.PerfBoard>``
+
+    Example::
+
+        p.add(PerfBoard("Board1", x1=1.0, y1=1.0, x2=3.0, y2=2.5))
+    """
+
     name: str
     x1: float
     y1: float
@@ -97,6 +143,17 @@ class PerfBoard(Component):
     y_type: str = "Letters"
     coordinate_origin: str = "Top_Left"
     coordinate_display: str = "One_Side"
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.PerfBoard"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "x_type": E.COORDINATE_AXIS,
+        "y_type": E.COORDINATE_AXIS,
+        "coordinate_origin": E.COORDINATE_ORIGIN,
+        "coordinate_display": E.COORDINATE_DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -132,13 +189,25 @@ class PerfBoard(Component):
 
 @dataclass
 class Resistor(Component):
+    """Through-hole resistor between two points.
+
+    XML: ``<diylc.passive.Resistor>``
+
+    `value` accepts strings like ``"4.7K"``, ``"1M"``, ``"470R"``. Bare numbers
+    default to ``"K"``.
+
+    Example::
+
+        p.add(Resistor("R1", x1=1.0, y1=1.0, x2=1.0, y2=1.5, value="10K"))
+    """
+
     name: str
     x1: float
     y1: float
     x2: float
     y2: float
-    value: str = "1K"  # "1K", "4.7K", "10K", "1M"
-    power: str = "HALF"  # QUARTER | HALF | ONE | TWO
+    value: str = "1K"
+    power: str = "HALF"
     color_code: str = "_5_BAND"
     shape: str = "Standard"
     alpha: int = 127
@@ -152,6 +221,18 @@ class Resistor(Component):
     flip_standing: bool = False
     label_orientation: str = "Directional"
     move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.Resistor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "power": E.POWER,
+        "color_code": E.RESISTOR_COLOR_CODE,
+        "shape": E.RESISTOR_SHAPE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -181,11 +262,7 @@ class Resistor(Component):
 
 
 def _split_value(s: str, default_unit: str) -> tuple[float, str]:
-    """Parse strings like "4.7K", "470nF", "22uF", "10pF" into (value, unit).
-
-    Recognized R/C unit suffixes are passed through. If the string is a bare
-    number, default_unit is used.
-    """
+    """Parse strings like "4.7K", "470nF", "22uF" into (value, unit)."""
     import re
 
     m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*([A-Za-z]+)?\s*$", s)
@@ -197,13 +274,26 @@ def _split_value(s: str, default_unit: str) -> tuple[float, str]:
 
 
 @dataclass
-class _RadialCapBase(Component):
+class RadialFilmCapacitor(Component):
+    """Radial-lead film capacitor (e.g. polyester box).
+
+    XML: ``<diylc.passive.RadialFilmCapacitor>``
+
+    `value` accepts ``"100nF"``, ``"470n"``, ``"1uF"``. Bare numbers default
+    to ``"nF"``.
+
+    Example::
+
+        p.add(RadialFilmCapacitor("C1", x1=1.0, y1=1.0, x2=1.0, y2=1.1,
+                                   value="100nF", voltage="_63V"))
+    """
+
     name: str
     x1: float
     y1: float
     x2: float
     y2: float
-    value: str  # e.g. "470nF", "22uF", "1000pF"
+    value: str = "100nF"
     voltage: str = "_63V"
     alpha: int = 127
     body_color: str = "ffe303"
@@ -217,20 +307,24 @@ class _RadialCapBase(Component):
     flip_standing: bool = False
     label_orientation: str = "Directional"
     move_label: bool = False
+    show_outer_foil: bool = False
 
-    _tag: str = ""  # set by subclass
-    _default_unit: str = "nF"
-    _extra: str = ""  # subclass-specific extra elements (raw XML)
+    __diylc_class__: ClassVar[str] = "diylc.passive.RadialFilmCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        val, unit = _split_value(self.value, default_unit=self._default_unit)
+        val, unit = _split_value(self.value, default_unit="nF")
         pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
-        extra = ""
-        if self._extra:
-            extra = "\n".join(f"{pad}  {ln}" for ln in self._extra.splitlines()) + "\n"
         return (
-            f"{pad}<{self._tag}>\n"
+            f"{pad}<diylc.passive.RadialFilmCapacitor>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
             f"{pad}  <alpha>{self.alpha}</alpha>\n"
             f"{pad}  <length {self.length.attrs()}/>\n"
@@ -246,41 +340,98 @@ class _RadialCapBase(Component):
             f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
             f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
             f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f"{pad}  <showOuterFoil>{str(self.show_outer_foil).lower()}</showOuterFoil>\n"
             f"{pad}  <pinSpacing {self.pin_spacing.attrs()}/>\n"
-            f"{extra}"
-            f"{pad}</{self._tag}>"
+            f"{pad}</diylc.passive.RadialFilmCapacitor>"
         )
 
 
 @dataclass
-class RadialFilmCapacitor(_RadialCapBase):
-    show_outer_foil: bool = False
-    _tag: str = "diylc.passive.RadialFilmCapacitor"
-    _default_unit: str = "nF"
+class RadialCeramicDiskCapacitor(Component):
+    """Ceramic disk capacitor.
 
-    def to_xml(self, indent: int = 4) -> str:
-        self._extra = f"<showOuterFoil>{str(self.show_outer_foil).lower()}</showOuterFoil>"
-        return super().to_xml(indent)
+    XML: ``<diylc.passive.RadialCeramicDiskCapacitor>``
 
+    `value` accepts ``"100pF"``, ``"1000pF"``, ``".01uF"``. Bare numbers
+    default to ``"pF"``.
+    """
 
-@dataclass
-class RadialCeramicDiskCapacitor(_RadialCapBase):
-    body_color: str = "f0e68c"
-    border_color: str = "a8a162"
-    length: Measure = field(default_factory=lambda: inches(0.4))
-    width: Measure = field(default_factory=lambda: inches(0.125))
-    _tag: str = "diylc.passive.RadialCeramicDiskCapacitor"
-    _default_unit: str = "pF"
-
-
-@dataclass
-class RadialElectrolytic(Component):
     name: str
     x1: float
     y1: float
     x2: float
     y2: float
-    value: str  # e.g. "22uF"
+    value: str = "100pF"
+    voltage: str = "_63V"
+    alpha: int = 127
+    body_color: str = "f0e68c"
+    border_color: str = "a8a162"
+    label_color: str = "000000"
+    lead_color: str = "636363"
+    length: Measure = field(default_factory=lambda: inches(0.4))
+    width: Measure = field(default_factory=lambda: inches(0.125))
+    pin_spacing: Measure = field(default_factory=lambda: inches(0.1))
+    display: str = "VALUE"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.RadialCeramicDiskCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        val, unit = _split_value(self.value, default_unit="pF")
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.RadialCeramicDiskCapacitor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <pinSpacing {self.pin_spacing.attrs()}/>\n"
+            f'{pad}  <value value="{fmt(val)}" unit="{unit}"/>\n'
+            f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f"{pad}</diylc.passive.RadialCeramicDiskCapacitor>"
+        )
+
+
+@dataclass
+class RadialElectrolytic(Component):
+    """Polarized radial electrolytic capacitor.
+
+    XML: ``<diylc.passive.RadialElectrolytic>``
+
+    `value` accepts ``"22uF"``, ``"470uF"``. Bare numbers default to ``"uF"``.
+    First point is the positive lead unless ``invert=True``.
+
+    Example::
+
+        p.add(RadialElectrolytic("C1", 1.0, 1.0, 1.0, 1.1, value="22uF", voltage="_25V"))
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = "10uF"
     voltage: str = "_25V"
     alpha: int = 127
     body_color: str = "eaadea"
@@ -299,6 +450,16 @@ class RadialElectrolytic(Component):
     polarized: bool = True
     folded: bool = False
     invert: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.RadialElectrolytic"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -338,6 +499,18 @@ class RadialElectrolytic(Component):
 
 @dataclass
 class CopperTrace(Component):
+    """Straight or polyline copper trace.
+
+    XML: ``<diylc.connectivity.CopperTrace>``
+
+    Pass at least two points. Two-point traces get a midpoint added,
+    matching how DIYLC stores them.
+
+    Example::
+
+        p.add(CopperTrace("T1", points=[(1.0, 1.0), (2.0, 1.0)]))
+    """
+
     name: str
     points: Sequence[Point]
     thickness: Measure = field(default_factory=lambda: mm(2.0))
@@ -350,12 +523,18 @@ class CopperTrace(Component):
     flip_standing: bool = False
     move_label: bool = False
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.CopperTrace"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"display": E.DISPLAY}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
         if len(self.points) < 2:
             raise ValueError("CopperTrace requires at least 2 points")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
         pts = list(self.points)
-        if len(pts) == 2:  # add midpoint, like DIYLC
+        if len(pts) == 2:
             mx = (pts[0][0] + pts[1][0]) / 2.0
             my = (pts[0][1] + pts[1][1]) / 2.0
             pts = [pts[0], pts[1], (mx, my)]
@@ -378,6 +557,11 @@ class CopperTrace(Component):
 
 @dataclass
 class Jumper(Component):
+    """Insulated jumper wire between two pads.
+
+    XML: ``<diylc.connectivity.Jumper>``
+    """
+
     name: str
     x1: float
     y1: float
@@ -393,6 +577,15 @@ class Jumper(Component):
     display: str = "NAME"
     flip_standing: bool = False
     move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.Jumper"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "style": E.LINE_STYLE,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -417,21 +610,39 @@ class Jumper(Component):
 
 @dataclass
 class HookupWire(Component):
+    """Curved insulated hookup wire with 4 control points.
+
+    XML: ``<diylc.connectivity.HookupWire>``
+
+    Pass 2 endpoints (interpolated to 4) or 4 control points directly.
+    """
+
     name: str
-    points: Sequence[Point]  # exactly 4 control points (Bezier-ish)
+    points: Sequence[Point]
     color: str = "000000"
-    gauge: str = "_22"  # AWG: _20, _22, _24
+    gauge: str = "_22"
     style: str = "SOLID"
     striped: bool = False
     smooth: bool = True
     alpha: int = 127
     point_count: str = "FOUR"
 
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.HookupWire"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "gauge": E.WIRE_GAUGE,
+        "style": E.LINE_STYLE,
+        "point_count": E.WIRE_POINT_COUNT,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if len(self.points) not in (2, 4):
+            raise ValueError("HookupWire needs 2 or 4 points")
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
         pts = list(self.points)
         if len(pts) == 2:
-            # interpolate two intermediate control points along the segment
             (x1, y1), (x2, y2) = pts
             pts = [
                 (x1, y1),
@@ -439,8 +650,6 @@ class HookupWire(Component):
                 (x1 + 2 * (x2 - x1) / 3.0, y1 + 2 * (y2 - y1) / 3.0),
                 (x2, y2),
             ]
-        if len(pts) != 4:
-            raise ValueError("HookupWire needs 2 or 4 points")
         return (
             f"{pad}<diylc.connectivity.HookupWire>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -459,13 +668,24 @@ class HookupWire(Component):
 
 @dataclass
 class SolderPad(Component):
+    """Single solder pad / drilled hole.
+
+    XML: ``<diylc.connectivity.SolderPad>``
+    """
+
     name: str
     x: float
     y: float
     size: Measure = field(default_factory=lambda: mm(3.0))
     color: str = "000000"
-    type: str = "ROUND"  # ROUND | SQUARE
+    type: str = "ROUND"
     hole_size: Measure = field(default_factory=lambda: mm(0.8))
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.SolderPad"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"type": E.PAD_TYPE}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -488,18 +708,39 @@ class SolderPad(Component):
 
 @dataclass
 class Label(Component):
+    """Free-floating text label.
+
+    XML: ``<diylc.misc.Label>``
+
+    `font_style`: 0=plain, 1=bold, 2=italic, 3=bold+italic.
+    """
+
     name: str
     x: float
     y: float
     text: str
     font: str = "Tahoma"
     font_size: int = 14
-    font_style: int = 0  # 0=plain, 1=bold, 2=italic, 3=bold-italic
+    font_style: int = 0
     color: str = "000000"
     center: bool = True
     horizontal_alignment: str = "CENTER"
     vertical_alignment: str = "CENTER"
     orientation: str = "DEFAULT"
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.Label"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "horizontal_alignment": E.HORIZONTAL_ALIGNMENT,
+        "vertical_alignment": E.VERTICAL_ALIGNMENT,
+        "orientation": E.LABEL_ORIENTATION_4,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if self.font_style not in (0, 1, 2, 3):
+            raise ValueError(
+                f"Label.font_style: expected 0..3 (0=plain,1=bold,2=italic,3=bold+italic), got {self.font_style!r}"
+            )
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -516,3 +757,20 @@ class Label(Component):
             f"{pad}  <orientation>{self.orientation}</orientation>\n"
             f"{pad}</diylc.misc.Label>"
         )
+
+
+# Public registry of every Component subclass — used by `pydiylc.catalog`
+# to build the machine-readable schema.
+ALL_COMPONENTS: tuple[type[Component], ...] = (
+    BlankBoard,
+    PerfBoard,
+    Resistor,
+    RadialFilmCapacitor,
+    RadialCeramicDiskCapacitor,
+    RadialElectrolytic,
+    CopperTrace,
+    Jumper,
+    HookupWire,
+    SolderPad,
+    Label,
+)

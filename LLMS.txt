@@ -1,0 +1,110 @@
+# pydiylc
+
+Python emitter for DIYLC (DIY Layout Creator) `.diy` circuit-layout files. Write layouts in Python, open them in DIYLC. This document is the AI-friendly entry point — everything an assistant needs to use the library without browsing the repo.
+
+## What this library is
+
+- Source of truth: the Java app at https://github.com/bancika/diy-layout-creator
+- pydiylc writes the same XML format DIYLC writes natively. Target: DIYLC 5.x (file format compatible back to v3).
+- Coordinates are floats in **inches** by default. The DIYLC editor grid is **0.1 in**. Round positions to multiples of 0.1 unless you have a reason not to.
+- Sizes (length, width, pin spacing, board spacing, hole size, etc.) are `Measure(value, unit)`. Helper constructors: `inches(v)`, `mm(v)`, `cm(v)`.
+
+## Minimal example
+
+```python
+from pydiylc import Project, PerfBoard, Resistor, SolderPad, CopperTrace
+
+p = Project(title="Booster", width_cm=10, height_cm=8)
+p.add(PerfBoard("Board1", x1=1.0, y1=1.0, x2=3.0, y2=2.5))
+p.add(SolderPad("P1", x=1.2, y=1.2))
+p.add(SolderPad("P2", x=1.2, y=1.8))
+p.add(Resistor("R1", x1=1.2, y1=1.2, x2=1.2, y2=1.8, value="10K"))
+p.add(CopperTrace("T1", points=[(1.2, 1.8), (2.0, 1.8)]))
+p.save("booster.diy")
+```
+
+## Project
+
+```python
+Project(
+    title: str = "New Project",
+    author: str = "",
+    width_cm: float = 29.0,
+    height_cm: float = 21.0,
+    grid_inches: float = 0.1,
+    dot_spacing: int = 1,
+    file_version: tuple[int, int, int] = (5, 7, 0),
+)
+```
+
+`p.add(component)` appends; `p.save(path)` writes XML.
+
+## Components (v0.0.1)
+
+All component constructors are dataclasses — every field has a sensible default except positional anchors (`name`, coordinates).
+
+| Python | DIYLC class | Purpose |
+|---|---|---|
+| `BlankBoard` | `diylc.boards.BlankBoard` | Plain rectangular board |
+| `PerfBoard` | `diylc.boards.PerfBoard` | Perfboard with through-hole grid |
+| `Resistor` | `diylc.passive.Resistor` | Through-hole resistor (two-pin) |
+| `RadialFilmCapacitor` | `diylc.passive.RadialFilmCapacitor` | Film cap (two-pin, default unit `nF`) |
+| `RadialCeramicDiskCapacitor` | `diylc.passive.RadialCeramicDiskCapacitor` | Ceramic disk cap (two-pin, default unit `pF`) |
+| `RadialElectrolytic` | `diylc.passive.RadialElectrolytic` | Polarized electrolytic (two-pin, default unit `uF`) |
+| `CopperTrace` | `diylc.connectivity.CopperTrace` | Polyline trace |
+| `Jumper` | `diylc.connectivity.Jumper` | Insulated jumper wire (two-pin) |
+| `HookupWire` | `diylc.connectivity.HookupWire` | Curved insulated wire (2 or 4 control points) |
+| `SolderPad` | `diylc.connectivity.SolderPad` | Single pad / drilled hole |
+| `Label` | `diylc.misc.Label` | Free-floating text |
+
+For exact field lists, defaults, types, and allowed enum values, load **`catalog.json`** at repo root. It is the canonical machine-readable schema.
+
+## Value strings
+
+Two-pin components parse their `value` string as `number + unit`:
+
+- Resistor: `"4.7K"`, `"1M"`, `"470R"`. Bare number → `K`.
+- Film cap: `"100nF"`, `"1uF"`. Bare → `nF`.
+- Ceramic cap: `"100pF"`, `"1000pF"`. Bare → `pF`.
+- Electrolytic: `"22uF"`, `"470uF"`. Bare → `uF`.
+
+## Enums — the values you must respect
+
+(Subset; see `catalog.json` `enum_pool` for the full list.)
+
+- `power` (Resistor): `QUARTER`, `HALF`, `ONE`, `TWO`
+- `voltage` (Capacitors): `_4V`, `_6V3`, `_10V`, `_16V`, `_25V`, `_35V`, `_50V`, `_63V`, `_100V`, `_160V`, `_200V`, `_250V`, `_400V`, `_450V`, `_600V`, `_1kV`
+- `display`: `NAME`, `VALUE`, `NONE`, `BOTH`
+- `gauge` (HookupWire AWG): `_12` ... `_30`
+- `type` (SolderPad): `ROUND`, `SQUARE`, `OVAL_HORIZONTAL`, `OVAL_VERTICAL`
+- `style` (Jumper, HookupWire): `SOLID`, `DASHED`, `DOTTED`
+- `horizontal_alignment` (Label): `LEFT`, `CENTER`, `RIGHT`
+- `vertical_alignment` (Label): `TOP`, `CENTER`, `BOTTOM`
+
+All enum violations raise `ValueError` with the full allowed list in the message.
+
+## Coordinate conventions
+
+- Origin top-left.
+- Y increases downward (matches DIYLC's editor).
+- Two-pin components take `x1,y1,x2,y2`. The library inserts the midpoint automatically.
+- `CopperTrace` takes a list of `(x, y)` tuples; ≥ 2 points required.
+- `HookupWire` takes 2 endpoints (auto-interpolated to 4) or 4 explicit control points.
+
+## Colors
+
+Anywhere a color is accepted, pass a 6- or 3-char hex string (no `#`) or an int. Examples: `"ffe303"`, `"abc"`, `0xff0000`.
+
+## What this library does NOT do
+
+- No reading/parsing of existing `.diy` files yet (emit only).
+- No rendering — DIYLC renders. To get a preview image, run DIYLC headless:
+  `diylc -convert input.diy output.png`
+- Semiconductors (diodes, LEDs, transistors, ICs), potentiometers, switches, tubes, and stripboard are not yet implemented. They follow the same pattern when added.
+
+## Where to look next
+
+- `catalog.json` — full schema for codegen / validation
+- `examples/demo_booster.py` — a complete working file
+- `src/pydiylc/components.py` — every component's docstring + XML it emits
+- `src/pydiylc/enums.py` — single source of truth for enum values
