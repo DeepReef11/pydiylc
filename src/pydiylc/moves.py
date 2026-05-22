@@ -241,3 +241,66 @@ def move_node_to(
     new = (_clean(x), _clean(y))
     _set_point(comp, point_index, new[0], new[1])
     return MoveResult([PointShift(component_index, point_index, (cp.x, cp.y), new)])
+
+
+# Orientation enum cycles. Cycling forward = 90° clockwise (or H<->V).
+_ORIENT_4 = ("DEFAULT", "_90", "_180", "_270")
+_ORIENT_HV = ("HORIZONTAL", "VERTICAL")
+
+
+@dataclass
+class RotateResult:
+    """What a rotation changed. The component is already mutated."""
+
+    component_index: int
+    kind: str  # "enum" or "coords"
+    field: str | None = None  # the orientation field, when kind == "enum"
+    old_value: str | None = None
+    new_value: str | None = None
+
+
+def rotate_component(
+    project: Project, component_index: int, *, clockwise: bool = True
+) -> RotateResult:
+    """Rotate a component 90°.
+
+    Strategy depends on the component:
+
+    - Has a 4-way ``orientation`` (DEFAULT/_90/_180/_270): cycle the enum, so
+      derived pins re-orient cleanly. This is the right primitive for pots,
+      transistors, ICs, jacks, labels, etc.
+    - Has a 2-way ``orientation`` (HORIZONTAL/VERTICAL): toggle it.
+    - Otherwise (two-pin, points-list): rotate the raw coordinates 90° about
+      the component's centroid.
+    """
+    comp = project.components[component_index]
+    orientation = getattr(comp, "orientation", None)
+
+    if orientation in _ORIENT_4:
+        idx = _ORIENT_4.index(orientation)
+        new = _ORIENT_4[(idx + (1 if clockwise else -1)) % 4]
+        comp.orientation = new
+        return RotateResult(component_index, "enum", "orientation", orientation, new)
+
+    if orientation in _ORIENT_HV:
+        new = _ORIENT_HV[(_ORIENT_HV.index(orientation) + 1) % 2]
+        comp.orientation = new
+        return RotateResult(component_index, "enum", "orientation", orientation, new)
+
+    # Coordinate rotation about the centroid of the component's points.
+    pts = control_points_of(comp, component_index)
+    if not pts:
+        return RotateResult(component_index, "coords")
+    cx = sum(p.x for p in pts) / len(pts)
+    cy = sum(p.y for p in pts) / len(pts)
+    for cp in pts:
+        # 90° CW about (cx, cy): (x, y) -> (cx + (y - cy), cy - (x - cx))
+        # 90° CCW: (x, y) -> (cx - (y - cy), cy + (x - cx))
+        if clockwise:
+            nx = cx + (cp.y - cy)
+            ny = cy - (cp.x - cx)
+        else:
+            nx = cx - (cp.y - cy)
+            ny = cy + (cp.x - cx)
+        _set_point(comp, cp.point_index, _clean(nx), _clean(ny))
+    return RotateResult(component_index, "coords")

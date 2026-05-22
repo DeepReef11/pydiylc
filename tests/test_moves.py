@@ -170,3 +170,75 @@ def test_move_results_are_grid_clean():
     # 1.0 + 0.1 in binary is 1.1 only after rounding; assert clean repr.
     assert repr(pad.x) == "1.1"
     assert repr(pad.y) == "1.2"
+
+
+# ---------------------------------------------------------------------------
+# Rotation
+# ---------------------------------------------------------------------------
+
+
+def test_rotate_4way_enum_cycles_clockwise():
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(TransistorTO92("Q1", x=2.0, y=2.0, orientation="DEFAULT"))
+    r = rotate_component(p, 0, clockwise=True)
+    assert r.kind == "enum"
+    assert p.components[0].orientation == "_90"
+    rotate_component(p, 0)
+    assert p.components[0].orientation == "_180"
+
+
+def test_rotate_4way_enum_wraps():
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(TransistorTO92("Q1", x=2.0, y=2.0, orientation="_270"))
+    rotate_component(p, 0, clockwise=True)
+    assert p.components[0].orientation == "DEFAULT"
+
+
+def test_rotate_4way_counterclockwise():
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(TransistorTO92("Q1", x=2.0, y=2.0, orientation="DEFAULT"))
+    rotate_component(p, 0, clockwise=False)
+    assert p.components[0].orientation == "_270"
+
+
+def test_rotate_hv_enum_toggles():
+    from pydiylc.moves import rotate_component
+    from pydiylc import MiniToggleSwitch
+
+    p = Project()
+    p.add(MiniToggleSwitch("SW1", x=2.0, y=2.0, orientation="VERTICAL"))
+    rotate_component(p, 0)
+    assert p.components[0].orientation == "HORIZONTAL"
+    rotate_component(p, 0)
+    assert p.components[0].orientation == "VERTICAL"
+
+
+def test_rotate_two_pin_rotates_coords():
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    # Horizontal resistor centered at (1.5, 1.0), endpoints (1.0,1.0)-(2.0,1.0)
+    p.add(Resistor("R1", x1=1.0, y1=1.0, x2=2.0, y2=1.0))
+    rotate_component(p, 0, clockwise=True)
+    r = p.components[0]
+    # After 90° CW about centroid (1.5, 1.0): becomes vertical.
+    assert r.x1 == r.x2 == 1.5
+    assert {r.y1, r.y2} == {0.5, 1.5}
+
+
+def test_rotate_coords_clean_floats():
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(Resistor("R1", x1=1.0, y1=1.0, x2=1.3, y2=1.0))
+    rotate_component(p, 0)
+    r = p.components[0]
+    for v in (r.x1, r.y1, r.x2, r.y2):
+        # No long binary tails.
+        assert len(repr(v).split(".")[-1]) <= 4

@@ -102,6 +102,29 @@ Keyboard:
 Your `.py` file should expose either a top-level `project = Project(...)` or
 a `def build() -> Project`. The viewer calls it on every reload.
 
+### Keyboard tree editor (press `T`)
+
+A side panel lists components; each two-pin/points component expands to its
+individual nodes. Fully keyboard-driven:
+
+- **↑ / ↓** — previous / next component
+- **→ / ←** — enter component's nodes / back to header
+- **Tab / Shift-Tab** — walk nodes within the focused component
+- **Ctrl+arrows** — nudge by one grid step; **Ctrl+Shift+arrows** — fine (1/10)
+- **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
+  parts, rotates coordinates otherwise)
+- **Enter** — commit the focused component's position to source (diff dialog)
+- **Esc / Q** — exit tree mode
+
+Moves are connection-aware: moving a board drags the components mounted on it,
+and moving a part stretches any wires attached to it (the wire's far end stays
+put). A node-level move (Tab into a node, then Ctrl+arrow) detaches that point
+from its junction. See `docs/keyboard-tree-editor.md` for the full design.
+
+> **Note:** the tree-editor GTK UI is built against a fully unit-tested core
+> (graph, move engine, rotation, navigation — 60+ tests) but the GTK panel and
+> key wiring themselves haven't yet been run on real hardware. Report issues.
+
 ## MCP server
 
 For LLM clients (Claude Desktop, Claude Code, mcp-cli, etc.):

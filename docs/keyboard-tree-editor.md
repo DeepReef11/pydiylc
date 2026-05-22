@@ -165,4 +165,40 @@ Components built with positional coords still fall back to the read-only
 Steps 1–3 are headless and land first with full test coverage. Steps 4–6 need
 a GTK host to iterate on (the sandbox can't run them), so they'll be built
 against the tested core and verified on real hardware.
+
+## Implementation status
+
+- **Step 1 — connectivity graph** (`pydiylc.graph`): done, tested.
+- **Step 2 — move engine** (`pydiylc.moves`): done, tested. `move_component`,
+  `move_node`, `move_node_to`.
+- **Step 3 — per-node AST edits** (`pydiylc.edit.propose_point_move`): done,
+  tested.
+- **Step 6 — rotation** (`pydiylc.moves.rotate_component`): done, tested.
+  Enum-cycle for oriented components, coordinate rotation otherwise.
+- **Steps 4–5 — tree model + nav + GTK panel/keys**: model and navigation
+  (`pydiylc.tree_editor`) done and tested headless. The GTK side panel and
+  key controllers (in `viewer.py`) are written but **not yet verified on
+  hardware** — the sandbox has no display. Toggle with `T`.
+
+### Implemented keybindings (tree mode, press `T` to enter)
+
+| Key | Action |
+|---|---|
+| T | toggle tree-editor panel |
+| ↑ / ↓ | previous / next component |
+| → | enter the component's nodes |
+| ← | back to the component header |
+| Tab / Shift-Tab | next / prev node within the focused component |
+| Ctrl+arrows | nudge focused component/node by one grid step |
+| Ctrl+Shift+arrows | nudge by 1/10 grid step (fine) |
+| R / Shift+R | rotate 90° CW / CCW |
+| Enter | commit the focused component's position to source (diff dialog) |
+| Esc / Q | exit tree mode |
+
+### Not yet built
+
+- Jump-to-target move mode (vim-flash-style destination overlay on plain
+  arrows). Currently plain arrows navigate the tree; literal nudge is
+  Ctrl+arrows. The jump overlay needs canvas-space candidate rendering.
+- Shared-node "n / p jump to neighbor component" keys.
 ```

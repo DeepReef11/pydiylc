@@ -197,7 +197,19 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         canvas.add_controller(scroll)
 
         sw.set_child(canvas)
-        win.set_child(sw)
+
+        # Side panel (tree editor) + canvas in a horizontal Paned. The panel
+        # is built collapsed/hidden; pressing T toggles it.
+        panel = _build_tree_panel(state)
+        state.tree_panel = panel
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        paned.set_start_child(panel)
+        paned.set_end_child(sw)
+        paned.set_position(260)
+        paned.set_resize_start_child(False)
+        state.paned = paned
+        panel.set_visible(False)  # hidden until T
+        win.set_child(paned)
 
         # Keyboard shortcuts
         key = Gtk.EventControllerKey()
@@ -235,10 +247,16 @@ class _ViewerState:
         self.moving_component = None
         self.moving_orig_anchor: tuple[float, float] | None = None
         self.last_drag_delta: tuple[float, float] = (0.0, 0.0)
+        # Tree-editor mode.
+        self.tree_mode: bool = False
+        self.nav = None  # tree_editor.NavState, lazily built
         # Filled in by show()
         self.canvas = None
         self.status_lbl = None
         self.window = None
+        self.tree_panel = None
+        self.paned = None
+        self.tree_listbox = None
         self.error_msg: str | None = None
 
 
@@ -620,6 +638,175 @@ def _locate_dialog(state: _ViewerState, loc, new_anchor: tuple[float, float]) ->
     close_btn.grab_focus()
 
 
+# ---------------------------------------------------------------------------
+# Tree-editor panel
+# ---------------------------------------------------------------------------
+
+
+def _build_tree_panel(state: _ViewerState):
+    """Build the side panel: a scrolled list of tree rows."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    box.set_margin_top(6); box.set_margin_bottom(6)
+    box.set_margin_start(6); box.set_margin_end(6)
+
+    title = Gtk.Label(label="Components  (T to close)")
+    title.set_xalign(0.0)
+    title.add_css_class("heading")
+    box.append(title)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    listbox = Gtk.ListBox()
+    listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+    state.tree_listbox = listbox
+    sw.set_child(listbox)
+    box.append(sw)
+
+    hint = Gtk.Label(
+        label="↑↓ component · Tab node · Ctrl+arrows move\nShift+Ctrl finer · R rotate · Enter commit"
+    )
+    hint.add_css_class("dim-label")
+    hint.set_wrap(True)
+    box.append(hint)
+    return box
+
+
+def _enter_tree_mode(state: _ViewerState) -> None:
+    from .tree_editor import build_tree, NavState
+
+    state.nav = NavState(build_tree(state.project))
+    state.tree_mode = True
+    if state.tree_panel is not None:
+        state.tree_panel.set_visible(True)
+    _refresh_tree_panel(state)
+
+
+def _exit_tree_mode(state: _ViewerState) -> None:
+    state.tree_mode = False
+    if state.tree_panel is not None:
+        state.tree_panel.set_visible(False)
+
+
+def _refresh_tree_panel(state: _ViewerState) -> None:
+    """Rebuild the listbox rows from nav state and sync canvas selection."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    lb = state.tree_listbox
+    nav = state.nav
+    if lb is None or nav is None:
+        return
+    # Clear existing rows.
+    child = lb.get_first_child()
+    while child is not None:
+        nxt = child.get_next_sibling()
+        lb.remove(child)
+        child = nxt
+    # Repopulate.
+    selected_row = None
+    for i, row in enumerate(nav.rows):
+        lbl = Gtk.Label(label=("  " + row.label) if row.is_node else row.label)
+        lbl.set_xalign(0.0)
+        if row.is_node and not row.movable:
+            lbl.add_css_class("dim-label")
+        lr = Gtk.ListBoxRow()
+        lr.set_child(lbl)
+        lb.append(lr)
+        if i == nav.cursor:
+            selected_row = lr
+    if selected_row is not None:
+        lb.select_row(selected_row)
+    # Sync the canvas highlight to the focused component.
+    cur = nav.current
+    if cur is not None:
+        comp = state.project.components[cur.component_index]
+        state.selected_name = getattr(comp, "name", None)
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+    _refresh_status(state)
+
+
+def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
+    """Apply a literal nudge to the focused component or node."""
+    from . import moves
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    cur = nav.current
+    if cur.is_node and cur.movable:
+        moves.move_node(state.project, cur.component_index, cur.point_index, dx, dy)
+    else:
+        # Header row, single-anchor, or read-only multinode pin → move body.
+        moves.move_component(state.project, cur.component_index, dx, dy)
+    nav.rebuild(state.project)
+    _refresh_tree_panel(state)
+
+
+def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
+    from . import moves
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    moves.rotate_component(state.project, nav.current.component_index, clockwise=clockwise)
+    nav.rebuild(state.project)
+    _refresh_tree_panel(state)
+
+
+def _tree_commit(state: _ViewerState) -> None:
+    """Commit the focused component's current position to source via a dialog."""
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    cur = nav.current
+    comp = state.project.components[cur.component_index]
+    name = getattr(comp, "name", None)
+    if not name or state.watch_path is None or state.watch_path.suffix.lower() != ".py":
+        _info_dialog(
+            state.window, "Can't commit",
+            "Committing edits to source needs a .py layout with named "
+            "components. The move is applied in-memory only.",
+        )
+        return
+    from .edit import propose_move, propose_point_move, locate_component
+    from . import graph as _g
+
+    try:
+        if cur.is_node and cur.movable and hasattr(comp, "points"):
+            anchor = (cur.x, cur.y)
+            proposal = propose_point_move(
+                state.watch_path, name, cur.point_index, anchor[0], anchor[1]
+            )
+        elif cur.is_node and cur.movable and hasattr(comp, "x2"):
+            cps = _g.control_points_of(comp, cur.component_index)
+            pt = next(p for p in cps if p.point_index == cur.point_index)
+            proposal = propose_move(
+                state.watch_path, name, pt.x, pt.y,
+                second_point=(cur.point_index == 1),
+            )
+        else:
+            anchor = _current_anchor(comp)
+            proposal = propose_move(state.watch_path, name, anchor[0], anchor[1])
+    except LookupError as exc:
+        _info_dialog(state.window, "Can't auto-apply", str(exc))
+        return
+    except NotImplementedError:
+        try:
+            loc = locate_component(state.watch_path, name)
+        except LookupError as exc:
+            _info_dialog(state.window, "Can't auto-apply", str(exc))
+            return
+        _locate_dialog(state, loc, _current_anchor(comp))
+        return
+    _apply_dialog(state, proposal)
+
+
 def _format_diff(hunk: list[tuple[int, str, str]]) -> str:
     """Render a (line_no, old, new) hunk as a line-numbered unified diff."""
     out = []
@@ -663,7 +850,26 @@ def _make_key_handler(state: _ViewerState, canvas, win):
     from gi.repository import Gdk
 
     def on_key(controller, keyval, keycode, modifiers):
+        ctrl = bool(modifiers & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(modifiers & Gdk.ModifierType.SHIFT_MASK)
+
+        # T toggles tree-editor mode (works in or out of it).
+        if keyval in (Gdk.KEY_t, Gdk.KEY_T):
+            if state.tree_mode:
+                _exit_tree_mode(state)
+            else:
+                _enter_tree_mode(state)
+            return True
+
+        # In tree mode, navigation/move/rotate/commit keys take over.
+        if state.tree_mode and state.nav is not None:
+            if _handle_tree_key(state, canvas, keyval, ctrl, shift):
+                return True
+
         if keyval in (Gdk.KEY_q, Gdk.KEY_Q, Gdk.KEY_Escape):
+            if state.tree_mode:
+                _exit_tree_mode(state)
+                return True
             win.close()
             return True
         if keyval in (Gdk.KEY_r, Gdk.KEY_R):
@@ -689,6 +895,64 @@ def _make_key_handler(state: _ViewerState, canvas, win):
             return True
         return False
     return on_key
+
+
+def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: bool) -> bool:
+    """Handle a key while in tree-editor mode. Returns True if consumed."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gdk
+
+    nav = state.nav
+    grid = state.project.grid_inches or 0.1
+    step = grid if not shift else grid / 10.0  # Shift = finer
+
+    # Ctrl+arrow = literal nudge of the focused component/node.
+    if ctrl and keyval in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Up, Gdk.KEY_Down):
+        dx = -step if keyval == Gdk.KEY_Left else step if keyval == Gdk.KEY_Right else 0.0
+        dy = -step if keyval == Gdk.KEY_Up else step if keyval == Gdk.KEY_Down else 0.0
+        _tree_move(state, dx, dy)
+        return True
+
+    # Plain arrows: up/down navigate components; left/right collapse/expand.
+    if not ctrl:
+        if keyval == Gdk.KEY_Down:
+            nav.next_component()
+            _refresh_tree_panel(state)
+            return True
+        if keyval == Gdk.KEY_Up:
+            nav.prev_component()
+            _refresh_tree_panel(state)
+            return True
+        if keyval == Gdk.KEY_Right:
+            nav.first_node()
+            _refresh_tree_panel(state)
+            return True
+        if keyval == Gdk.KEY_Left:
+            nav.to_header()
+            _refresh_tree_panel(state)
+            return True
+
+    # Tab / Shift-Tab walk nodes within the focused component.
+    if keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+        if shift or keyval == Gdk.KEY_ISO_Left_Tab:
+            nav.prev_node()
+        else:
+            nav.next_node()
+        _refresh_tree_panel(state)
+        return True
+
+    # R / Shift+R rotate.
+    if keyval in (Gdk.KEY_r, Gdk.KEY_R):
+        _tree_rotate(state, clockwise=not shift)
+        return True
+
+    # Enter commits the focused component's position to source.
+    if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+        _tree_commit(state)
+        return True
+
+    return False
 
 
 def _make_poller(state: _ViewerState):
