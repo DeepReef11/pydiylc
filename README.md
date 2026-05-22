@@ -107,9 +107,9 @@ a `def build() -> Project`. The viewer calls it on every reload.
 A side panel lists components; each two-pin/points component expands to its
 individual nodes. Fully keyboard-driven:
 
-- **↑ / ↓** — previous / next component
-- **→ / ←** — enter component's nodes / back to header
-- **Tab / Shift-Tab** — walk nodes within the focused component
+- **Tab / Shift-Tab** — next / previous component; once you drill in, walks
+  the focused component's nodes
+- **Space** — drill into the focused component's nodes / pop back out
 - **Ctrl+arrows** — nudge by one grid step; **Ctrl+Shift+arrows** — fine (1/10)
 - **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
   parts, rotates coordinates otherwise)

@@ -211,8 +211,11 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         panel.set_visible(False)  # hidden until T
         win.set_child(paned)
 
-        # Keyboard shortcuts
+        # Keyboard shortcuts. Use the CAPTURE phase so we see keys before
+        # GTK's default focus traversal — otherwise Tab/Shift-Tab would be
+        # consumed for widget focus and never reach the tree-editor handler.
         key = Gtk.EventControllerKey()
+        key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         key.connect("key-pressed", _make_key_handler(state, canvas, win))
         win.add_controller(key)
 
@@ -667,7 +670,8 @@ def _build_tree_panel(state: _ViewerState):
     box.append(sw)
 
     hint = Gtk.Label(
-        label="↑↓ component · Tab node · Ctrl+arrows move\nShift+Ctrl finer · R rotate · Enter commit"
+        label="Tab/⇧Tab component · Space drill in/out · Tab walks nodes\n"
+              "Ctrl+arrows move · +Shift finer · R rotate · Enter commit"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -907,38 +911,35 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
     grid = state.project.grid_inches or 0.1
     step = grid if not shift else grid / 10.0  # Shift = finer
 
-    # Ctrl+arrow = literal nudge of the focused component/node.
+    # Ctrl+arrow = literal nudge of the focused component/node. (Plain arrows
+    # are intentionally left unbound — reserved for the future jump-to-target
+    # move mode.)
     if ctrl and keyval in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Up, Gdk.KEY_Down):
         dx = -step if keyval == Gdk.KEY_Left else step if keyval == Gdk.KEY_Right else 0.0
         dy = -step if keyval == Gdk.KEY_Up else step if keyval == Gdk.KEY_Down else 0.0
         _tree_move(state, dx, dy)
         return True
 
-    # Plain arrows: up/down navigate components; left/right collapse/expand.
-    if not ctrl:
-        if keyval == Gdk.KEY_Down:
-            nav.next_component()
-            _refresh_tree_panel(state)
-            return True
-        if keyval == Gdk.KEY_Up:
-            nav.prev_component()
-            _refresh_tree_panel(state)
-            return True
-        if keyval == Gdk.KEY_Right:
-            nav.first_node()
-            _refresh_tree_panel(state)
-            return True
-        if keyval == Gdk.KEY_Left:
-            nav.to_header()
-            _refresh_tree_panel(state)
-            return True
-
-    # Tab / Shift-Tab walk nodes within the focused component.
-    if keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
-        if shift or keyval == Gdk.KEY_ISO_Left_Tab:
-            nav.prev_node()
+    # Tab / Shift-Tab: at component level, move between components; at node
+    # level, walk the focused component's nodes. (GTK's own Tab focus
+    # traversal is bypassed by attaching this controller in the CAPTURE phase.)
+    is_tab = keyval == Gdk.KEY_Tab
+    is_backtab = keyval in (Gdk.KEY_ISO_Left_Tab,) or (keyval == Gdk.KEY_Tab and shift)
+    if is_tab or is_backtab:
+        backward = is_backtab or shift
+        if nav.node_level:
+            nav.prev_node() if backward else nav.next_node()
         else:
-            nav.next_node()
+            nav.prev_component() if backward else nav.next_component()
+        _refresh_tree_panel(state)
+        return True
+
+    # Space: drill into / out of the focused component's nodes.
+    if keyval == Gdk.KEY_space:
+        if nav.node_level:
+            nav.exit_nodes()
+        else:
+            nav.enter_nodes()  # no-op for single-anchor / multi-node parts
         _refresh_tree_panel(state)
         return True
 

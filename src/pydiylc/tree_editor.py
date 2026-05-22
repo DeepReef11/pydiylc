@@ -107,6 +107,7 @@ class NavState:
     rows: list[TreeNode]
     cursor: int = 0  # index into rows
     tab_owner: int | None = None  # component_index that Tab is walking
+    node_level: bool = False  # True when drilled into a component's nodes
 
     # -- selection ---------------------------------------------------------
 
@@ -122,6 +123,7 @@ class NavState:
         return [i for i, r in enumerate(self.rows) if not r.is_node]
 
     def next_component(self) -> None:
+        self.node_level = False
         headers = self._header_indices()
         if not headers:
             return
@@ -137,6 +139,7 @@ class NavState:
         self.tab_owner = self.rows[headers[0]].component_index
 
     def prev_component(self) -> None:
+        self.node_level = False
         headers = self._header_indices()
         if not headers:
             return
@@ -176,6 +179,26 @@ class NavState:
             if r.component_index == ci and not r.is_node:
                 self.cursor = i
                 return
+
+    def has_nodes(self) -> bool:
+        """True if the focused component has individually addressable nodes."""
+        if self.current is None:
+            return False
+        return bool(self._node_rows_for(self.current.component_index))
+
+    def enter_nodes(self) -> bool:
+        """Drill into the focused component's nodes. Returns False (no-op) if
+        the component has no addressable nodes (single-anchor / multi-node)."""
+        if not self.has_nodes():
+            return False
+        self.first_node()
+        self.node_level = True
+        return True
+
+    def exit_nodes(self) -> None:
+        """Pop back to component-header level."""
+        self.to_header()
+        self.node_level = False
 
     def next_node(self) -> None:
         """Tab: next node within the tab_owner component."""

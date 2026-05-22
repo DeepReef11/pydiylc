@@ -185,15 +185,21 @@ against the tested core and verified on real hardware.
 | Key | Action |
 |---|---|
 | T | toggle tree-editor panel |
-| ↑ / ↓ | previous / next component |
-| → | enter the component's nodes |
-| ← | back to the component header |
-| Tab / Shift-Tab | next / prev node within the focused component |
+| Tab / Shift-Tab | at component level: next / prev component; at node level: next / prev node within the focused component |
+| Space | drill into the focused component's nodes / pop back out |
 | Ctrl+arrows | nudge focused component/node by one grid step |
 | Ctrl+Shift+arrows | nudge by 1/10 grid step (fine) |
 | R / Shift+R | rotate 90° CW / CCW |
 | Enter | commit the focused component's position to source (diff dialog) |
 | Esc / Q | exit tree mode |
+
+Plain (unmodified) arrow keys are intentionally **unbound**, reserved for the
+future jump-to-target move mode.
+
+**GTK note:** the key controller is attached in the **CAPTURE** propagation
+phase. Without this, GTK consumes Tab/Shift-Tab for default focus traversal
+(and the focused ListBox eats arrow keys) before they reach the handler.
+Capture phase intercepts keys at the window level first.
 
 ### Not yet built
 
