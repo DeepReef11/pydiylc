@@ -192,3 +192,69 @@ def test_locate_component_not_found(tmp_path):
     """)
     with pytest.raises(LookupError, match="Nope"):
         locate_component(p, "Nope")
+
+
+def test_propose_point_move_rewrites_one_entry(tmp_path):
+    from pydiylc.edit import propose_point_move
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, HookupWire
+        project = Project()
+        project.add(HookupWire(name='W1', points=[(0.5, 2.0), (1.1, 1.4)], color='ff0000'))
+    """)
+    proposal = propose_point_move(p, "W1", point_index=1, new_x=3.0, new_y=4.0)
+    assert "(3.0, 4.0)" in proposal.new_text
+    # The other point is untouched.
+    assert "(0.5, 2.0)" in proposal.new_text
+    assert "points[1]" in proposal.summary
+
+
+def test_propose_point_move_first_entry(tmp_path):
+    from pydiylc.edit import propose_point_move
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, CopperTrace
+        project = Project()
+        project.add(CopperTrace(name='T1', points=[(1.0, 1.0), (2.0, 1.0)]))
+    """)
+    proposal = propose_point_move(p, "T1", point_index=0, new_x=1.5, new_y=1.5)
+    assert "(1.5, 1.5)" in proposal.new_text
+    assert "(2.0, 1.0)" in proposal.new_text
+
+
+def test_propose_point_move_index_out_of_range(tmp_path):
+    from pydiylc.edit import propose_point_move
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, CopperTrace
+        project = Project()
+        project.add(CopperTrace(name='T1', points=[(1.0, 1.0), (2.0, 1.0)]))
+    """)
+    with pytest.raises(NotImplementedError, match="out of range"):
+        propose_point_move(p, "T1", point_index=9, new_x=0, new_y=0)
+
+
+def test_propose_point_move_no_points_kwarg(tmp_path):
+    from pydiylc.edit import propose_point_move
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    with pytest.raises(NotImplementedError, match="points="):
+        propose_point_move(p, "P1", point_index=0, new_x=2.0, new_y=2.0)
+
+
+def test_propose_point_move_clean_floats(tmp_path):
+    from pydiylc.edit import propose_point_move
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, HookupWire
+        project = Project()
+        project.add(HookupWire(name='W1', points=[(0.5, 2.0), (1.1, 1.4)]))
+    """)
+    noisy = round(2.4 / 0.1) * 0.1
+    proposal = propose_point_move(p, "W1", point_index=0, new_x=1.0, new_y=noisy)
+    assert "2.4000000000000004" not in proposal.new_text
+    assert "2.4" in proposal.new_text

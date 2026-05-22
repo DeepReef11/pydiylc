@@ -218,6 +218,89 @@ def propose_move(
     )
 
 
+def propose_point_move(
+    path: str | Path,
+    component_name: str,
+    point_index: int,
+    new_x: float,
+    new_y: float,
+) -> MoveProposal:
+    """Plan a rewrite of one entry in a ``points=[...]`` keyword argument.
+
+    For points-list components (CopperTrace, CurvedTrace, HookupWire, Line)
+    when built with a ``points=`` keyword whose elements are literal
+    ``(x, y)`` tuples/lists. ``point_index`` selects which entry to rewrite.
+
+    Raises ``LookupError`` if the component isn't found, ``NotImplementedError``
+    if there's no editable ``points=`` keyword or the indexed element isn't a
+    literal coordinate pair.
+    """
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+
+    target_call: ast.Call | None = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _find_name_arg(node) == component_name:
+            target_call = node
+            break
+    if target_call is None:
+        raise LookupError(
+            f"component {component_name!r} not found by name in {p}"
+        )
+
+    points_node = _arg_position_for(target_call, "points")
+    if points_node is None or not isinstance(points_node, (ast.List, ast.Tuple)):
+        ctor = getattr(target_call.func, "id", None) or getattr(
+            target_call.func, "attr", "?"
+        )
+        raise NotImplementedError(
+            f"{component_name!r}: can't rewrite — it needs a literal "
+            f"`points=[(x, y), ...]` keyword. Rewrite as "
+            f"`{ctor}(name={component_name!r}, points=[(1.0, 1.0), ...])`."
+        )
+
+    if not (0 <= point_index < len(points_node.elts)):
+        raise NotImplementedError(
+            f"{component_name!r}: point index {point_index} out of range "
+            f"(have {len(points_node.elts)} points)."
+        )
+
+    elt = points_node.elts[point_index]
+    if not isinstance(elt, (ast.Tuple, ast.List)) or len(elt.elts) != 2:
+        raise NotImplementedError(
+            f"{component_name!r}: points[{point_index}] is not a literal "
+            "(x, y) pair, so it can't be rewritten."
+        )
+
+    old_x = elt.elts[0].value if isinstance(elt.elts[0], ast.Constant) else None
+    old_y = elt.elts[1].value if isinstance(elt.elts[1], ast.Constant) else None
+
+    elt.elts[0] = ast.Constant(value=_clean_float(new_x))
+    elt.elts[1] = ast.Constant(value=_clean_float(new_y))
+
+    new_full = ast.unparse(tree)
+    old_lines = text.splitlines()
+    new_lines = new_full.splitlines()
+    line_no = target_call.lineno
+
+    summary = (
+        f"{component_name}.points[{point_index}]: "
+        f"({old_x!r}, {old_y!r}) → ({new_x:g}, {new_y:g})"
+    )
+    hunk = _line_numbered_hunk(old_lines, new_lines, line_no)
+
+    return MoveProposal(
+        path=p,
+        component_name=component_name,
+        old_text=text,
+        new_text=new_full + ("\n" if text.endswith("\n") else ""),
+        line=line_no,
+        summary=summary,
+        diff_hunk=hunk,
+    )
+
+
 def apply_proposal(proposal: MoveProposal) -> None:
     """Write the proposed new_text to disk. Caller is responsible for
     backup. The viewer should only call this after user confirmation."""
