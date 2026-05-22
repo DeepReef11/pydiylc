@@ -193,8 +193,24 @@ against the tested core and verified on real hardware.
 | Enter | commit the focused component's position to source (diff dialog) |
 | Esc / Q | exit tree mode |
 
-Plain (unmodified) arrow keys are intentionally **unbound**, reserved for the
-future jump-to-target move mode.
+Additional bindings:
+
+| Key | Action |
+|---|---|
+| arrows (plain) | move the focused node by one board hole (grid step off-board) |
+| / | fuzzy-search to **focus** any node (searchable Tab nav) |
+| g | fuzzy-search to **send** the focused node onto another node's position |
+| a | add a new component (fuzzy type picker), placed near the focused one |
+
+The `/` and `g` menus share `jump.searchable_targets` + `jump.fuzzy_filter`
+(subsequence match, spaces ignored, contiguous matches ranked first). `/`
+moves the cursor; `g` snaps the focused node to the chosen target. Both are
+"like Tab navigation but fuzzy".
+
+`a` creates the component in-memory via `tree_editor.make_default_component`
+(two-pin → short body, points-list → 1-inch segment, single-anchor → at the
+point). It does **not** yet write the new component back to the `.py` source —
+that needs AST insertion, a future step.
 
 **GTK note:** the key controller is attached in the **CAPTURE** propagation
 phase. Without this, GTK consumes Tab/Shift-Tab for default focus traversal

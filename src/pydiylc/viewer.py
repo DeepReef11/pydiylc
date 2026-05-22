@@ -911,13 +911,24 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
     grid = state.project.grid_inches or 0.1
     step = grid if not shift else grid / 10.0  # Shift = finer
 
-    # Ctrl+arrow = literal nudge of the focused component/node. (Plain arrows
-    # are intentionally left unbound — reserved for the future jump-to-target
-    # move mode.)
-    if ctrl and keyval in (Gdk.KEY_Left, Gdk.KEY_Right, Gdk.KEY_Up, Gdk.KEY_Down):
-        dx = -step if keyval == Gdk.KEY_Left else step if keyval == Gdk.KEY_Right else 0.0
-        dy = -step if keyval == Gdk.KEY_Up else step if keyval == Gdk.KEY_Down else 0.0
+    _DIRS = {
+        Gdk.KEY_Left: "left", Gdk.KEY_Right: "right",
+        Gdk.KEY_Up: "up", Gdk.KEY_Down: "down",
+    }
+
+    # Ctrl+arrow = literal nudge of the focused component/node by a grid step.
+    if ctrl and keyval in _DIRS:
+        direction = _DIRS[keyval]
+        dx = -step if direction == "left" else step if direction == "right" else 0.0
+        dy = -step if direction == "up" else step if direction == "down" else 0.0
         _tree_move(state, dx, dy)
+        return True
+
+    # Plain arrow = move the focused node by one board hole (if it's on a
+    # perf/stripboard). Off-board, fall back to a grid-step nudge so arrows
+    # still do something useful everywhere.
+    if not ctrl and keyval in _DIRS:
+        _tree_hole_nudge(state, _DIRS[keyval])
         return True
 
     # Tab / Shift-Tab: at component level, move between components; at node
@@ -948,12 +959,342 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         _tree_rotate(state, clockwise=not shift)
         return True
 
+    # "/" — fuzzy search to FOCUS a node (like Tab nav, but searchable).
+    if keyval == Gdk.KEY_slash:
+        _open_fuzzy_menu(state, mode="focus")
+        return True
+
+    # "g" — fuzzy search to SEND the focused node to a destination.
+    if keyval in (Gdk.KEY_g, Gdk.KEY_G):
+        _open_fuzzy_menu(state, mode="send")
+        return True
+
+    # "a" — add a new component (type picker, placed near the focused one).
+    if keyval in (Gdk.KEY_a, Gdk.KEY_A):
+        _open_add_menu(state)
+        return True
+
     # Enter commits the focused component's position to source.
     if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
         _tree_commit(state)
         return True
 
     return False
+
+
+def _tree_hole_nudge(state: _ViewerState, direction: str) -> None:
+    """Move the focused node by one board hole, or a grid step if off-board."""
+    from . import moves, jump
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    cur = nav.current
+    # Find the point's current position.
+    from .graph import control_points_of
+
+    comp = state.project.components[cur.component_index]
+    if cur.is_node and cur.movable:
+        cps = control_points_of(comp, cur.component_index)
+        pt = next((p for p in cps if p.point_index == cur.point_index), None)
+        pos = (pt.x, pt.y) if pt else None
+    else:
+        pos = _current_anchor(comp)
+
+    delta = jump.hole_delta(state.project, pos[0], pos[1], direction) if pos else None
+    if delta is None:
+        grid = state.project.grid_inches or 0.1
+        delta = (
+            -grid if direction == "left" else grid if direction == "right" else 0.0,
+            -grid if direction == "up" else grid if direction == "down" else 0.0,
+        )
+    _tree_move(state, delta[0], delta[1])
+
+
+def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
+    """Open the fuzzy search popup.
+
+    mode='focus' → selecting a target moves the tree cursor to it.
+    mode='send'  → selecting a target snaps the focused node onto it.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk, GLib
+    from . import jump, moves
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+
+    if mode == "send":
+        targets = jump.searchable_targets(
+            state.project, exclude_component=nav.current.component_index
+        )
+        title = "Send focused node to…"
+    else:
+        targets = jump.searchable_targets(state.project)
+        title = "Go to node…"
+    if not targets:
+        return
+
+    win = Gtk.Window()
+    win.set_title(title)
+    win.set_default_size(420, 360)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    box.set_margin_top(10); box.set_margin_bottom(10)
+    box.set_margin_start(10); box.set_margin_end(10)
+
+    entry = Gtk.SearchEntry()
+    entry.set_placeholder_text(title)
+    box.append(entry)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    listbox = Gtk.ListBox()
+    listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+    sw.set_child(listbox)
+    box.append(sw)
+
+    # Keep the current filtered ordering so Enter picks the top match.
+    current: dict[str, list] = {"items": list(targets)}
+
+    def populate(items):
+        child = listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            listbox.remove(child)
+            child = nxt
+        for t in items:
+            row = Gtk.ListBoxRow()
+            lbl = Gtk.Label(label=f"{t.label}   ({t.x:g}, {t.y:g})")
+            lbl.set_xalign(0.0)
+            row.set_child(lbl)
+            listbox.append(row)
+        first = listbox.get_row_at_index(0)
+        if first is not None:
+            listbox.select_row(first)
+
+    populate(current["items"])
+
+    def on_changed(_e):
+        items = jump.fuzzy_filter(targets, entry.get_text())
+        current["items"] = items
+        populate(items)
+
+    entry.connect("search-changed", on_changed)
+
+    def choose(target):
+        if target is None:
+            win.close()
+            return
+        if mode == "focus":
+            nav.focus_node(target.component_index, target.point_index)
+            _refresh_tree_panel(state)
+        else:  # send
+            cur = nav.current
+            comp = state.project.components[cur.component_index]
+            if cur.is_node and cur.movable:
+                moves.move_node_to(
+                    state.project, cur.component_index, cur.point_index,
+                    target.x, target.y,
+                )
+            else:
+                # Move the whole body so its anchor lands on the target.
+                anchor = _current_anchor(comp)
+                moves.move_component(
+                    state.project, cur.component_index,
+                    target.x - anchor[0], target.y - anchor[1],
+                )
+            nav.rebuild(state.project)
+            _refresh_tree_panel(state)
+        win.close()
+
+    def selected_target():
+        row = listbox.get_selected_row()
+        if row is None:
+            return current["items"][0] if current["items"] else None
+        idx = row.get_index()
+        items = current["items"]
+        return items[idx] if 0 <= idx < len(items) else None
+
+    listbox.connect("row-activated", lambda _lb, _row: choose(selected_target()))
+
+    key = Gtk.EventControllerKey()
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            choose(selected_target())
+            return True
+        if keyval == Gdk.KEY_Down:
+            _move_list_selection(listbox, +1)
+            return True
+        if keyval == Gdk.KEY_Up:
+            _move_list_selection(listbox, -1)
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+
+    win.set_child(box)
+    win.present()
+    entry.grab_focus()
+
+
+def _move_list_selection(listbox, delta: int) -> None:
+    row = listbox.get_selected_row()
+    idx = row.get_index() if row is not None else -1
+    nxt = listbox.get_row_at_index(max(0, idx + delta))
+    if nxt is not None:
+        listbox.select_row(nxt)
+
+
+def _auto_name(state: _ViewerState, type_name: str) -> str:
+    """Generate a unique name like 'Resistor1' for a new component."""
+    existing = {getattr(c, "name", None) for c in state.project.components}
+    i = 1
+    while f"{type_name}{i}" in existing:
+        i += 1
+    return f"{type_name}{i}"
+
+
+def _open_add_menu(state: _ViewerState) -> None:
+    """Fuzzy picker of component types; creates one near the focused component."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+    from . import tree_editor
+
+    type_names = tree_editor.addable_component_types()
+
+    win = Gtk.Window()
+    win.set_title("Add component…")
+    win.set_default_size(420, 400)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    box.set_margin_top(10); box.set_margin_bottom(10)
+    box.set_margin_start(10); box.set_margin_end(10)
+    entry = Gtk.SearchEntry()
+    entry.set_placeholder_text("Add component… (type to filter)")
+    box.append(entry)
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    listbox = Gtk.ListBox()
+    listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+    sw.set_child(listbox)
+    box.append(sw)
+
+    state_items: dict[str, list[str]] = {"items": list(type_names)}
+
+    def _simple_filter(names, query):
+        q = query.lower().replace(" ", "")
+        if not q:
+            return list(names)
+        out = []
+        for n in names:
+            hay = n.lower()
+            qi = 0
+            for ch in hay:
+                if qi < len(q) and ch == q[qi]:
+                    qi += 1
+            if qi == len(q):
+                out.append(n)
+        return out
+
+    def populate(items):
+        child = listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            listbox.remove(child)
+            child = nxt
+        for n in items:
+            row = Gtk.ListBoxRow()
+            lbl = Gtk.Label(label=n)
+            lbl.set_xalign(0.0)
+            row.set_child(lbl)
+            listbox.append(row)
+        first = listbox.get_row_at_index(0)
+        if first is not None:
+            listbox.select_row(first)
+
+    populate(state_items["items"])
+
+    def on_changed(_e):
+        items = _simple_filter(type_names, entry.get_text())
+        state_items["items"] = items
+        populate(items)
+
+    entry.connect("search-changed", on_changed)
+
+    def placement() -> tuple[float, float]:
+        nav = state.nav
+        if nav is not None and nav.current is not None:
+            comp = state.project.components[nav.current.component_index]
+            ax, ay = _current_anchor(comp)
+            return (round(ax + 0.5, 4), round(ay + 0.5, 4))
+        # Default near top-left of the canvas in project inches.
+        return (1.0, 1.0)
+
+    def choose():
+        items = state_items["items"]
+        row = listbox.get_selected_row()
+        idx = row.get_index() if row is not None else 0
+        if not items or not (0 <= idx < len(items)):
+            win.close()
+            return
+        type_name = items[idx]
+        x, y = placement()
+        name = _auto_name(state, type_name)
+        try:
+            comp = tree_editor.make_default_component(type_name, name, x, y)
+        except (ValueError, TypeError) as exc:
+            _info_dialog(state.window, "Can't add", str(exc))
+            win.close()
+            return
+        state.project.add(comp)
+        # Refresh the tree + focus the new component.
+        if state.nav is not None:
+            state.nav.rebuild(state.project)
+            state.nav.focus_node(len(state.project.components) - 1, None)
+        _refresh_tree_panel(state)
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        win.close()
+
+    listbox.connect("row-activated", lambda _lb, _row: choose())
+
+    key = Gtk.EventControllerKey()
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            choose()
+            return True
+        if keyval == Gdk.KEY_Down:
+            _move_list_selection(listbox, +1)
+            return True
+        if keyval == Gdk.KEY_Up:
+            _move_list_selection(listbox, -1)
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.present()
+    entry.grab_focus()
 
 
 def _make_poller(state: _ViewerState):

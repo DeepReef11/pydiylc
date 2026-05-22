@@ -110,7 +110,11 @@ individual nodes. Fully keyboard-driven:
 - **Tab / Shift-Tab** — next / previous component; once you drill in, walks
   the focused component's nodes
 - **Space** — drill into the focused component's nodes / pop back out
+- **arrows** — move the focused node by one board hole (grid step off-board)
 - **Ctrl+arrows** — nudge by one grid step; **Ctrl+Shift+arrows** — fine (1/10)
+- **/** — fuzzy-search to focus any node (searchable navigation)
+- **g** — fuzzy-search to send the focused node onto another node
+- **a** — add a component (fuzzy type picker; in-memory, not yet written to source)
 - **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
   parts, rotates coordinates otherwise)
 - **Enter** — commit the focused component's position to source (diff dialog)

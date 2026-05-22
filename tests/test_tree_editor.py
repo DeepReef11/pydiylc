@@ -202,6 +202,93 @@ def test_next_component_clears_node_level():
     assert not nav.current.is_node
 
 
+def test_focus_node_jumps_to_specific_node():
+    """/ search uses focus_node to move the cursor to any node directly."""
+    nav = NavState(build_tree(_project()))
+    # Jump straight to R1 (index 1), end 2 (point_index 1).
+    assert nav.focus_node(1, 1) is True
+    assert nav.current.component_index == 1
+    assert nav.current.point_index == 1
+    assert nav.node_level is True
+
+
+def test_focus_node_header_when_point_none():
+    nav = NavState(build_tree(_project()))
+    assert nav.focus_node(2, None) is True  # P1 single-anchor header
+    assert nav.current.component_index == 2
+    assert not nav.current.is_node
+    assert nav.node_level is False
+
+
+def test_focus_node_falls_back_to_header():
+    """Requesting a non-existent point falls back to the component header."""
+    nav = NavState(build_tree(_project()))
+    # P1 is single-anchor — it has no point_index=1 node.
+    assert nav.focus_node(2, 1) is True
+    assert nav.current.component_index == 2
+    assert not nav.current.is_node
+
+
+def test_focus_node_missing_component():
+    nav = NavState(build_tree(_project()))
+    assert nav.focus_node(99, 0) is False
+
+
+def test_addable_types_listed():
+    from pydiylc.tree_editor import addable_component_types
+
+    types = addable_component_types()
+    assert "Resistor" in types
+    assert "SolderPad" in types
+    assert types == sorted(types)
+
+
+def test_make_default_two_pin():
+    from pydiylc.tree_editor import make_default_component
+    from pydiylc import Resistor
+
+    c = make_default_component("Resistor", "R9", 1.0, 1.0)
+    assert isinstance(c, Resistor)
+    assert (c.x1, c.y1) == (1.0, 1.0)
+    assert c.x2 == 1.3 and c.y2 == 1.0
+
+
+def test_make_default_single_anchor():
+    from pydiylc.tree_editor import make_default_component
+    from pydiylc import SolderPad
+
+    c = make_default_component("SolderPad", "P9", 2.0, 3.0)
+    assert isinstance(c, SolderPad)
+    assert (c.x, c.y) == (2.0, 3.0)
+
+
+def test_make_default_points_list():
+    from pydiylc.tree_editor import make_default_component
+    from pydiylc import CopperTrace
+
+    c = make_default_component("CopperTrace", "T9", 1.0, 1.0)
+    assert isinstance(c, CopperTrace)
+    assert len(c.points) == 2
+    assert c.points[0] == (1.0, 1.0)
+
+
+def test_make_default_label_gets_text():
+    from pydiylc.tree_editor import make_default_component
+    from pydiylc import Label
+
+    c = make_default_component("Label", "MyLabel", 1.0, 1.0)
+    assert isinstance(c, Label)
+    assert c.text == "MyLabel"
+
+
+def test_make_default_unknown_type():
+    from pydiylc.tree_editor import make_default_component
+    import pytest
+
+    with pytest.raises(ValueError, match="unknown component type"):
+        make_default_component("Nonexistent", "X", 0, 0)
+
+
 def test_empty_project_nav_is_safe():
     nav = NavState(build_tree(Project()))
     assert nav.current is None

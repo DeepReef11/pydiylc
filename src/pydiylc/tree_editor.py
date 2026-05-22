@@ -33,6 +33,41 @@ def _is_multinode(component) -> bool:
     )
 
 
+def addable_component_types() -> list[str]:
+    """Names of component classes the 'add' flow can create, alphabetized."""
+    from .components import ALL_COMPONENTS
+
+    return sorted(c.__name__ for c in ALL_COMPONENTS)
+
+
+def make_default_component(type_name: str, name: str, x: float, y: float):
+    """Create a component of ``type_name`` at (x, y) with sensible defaults.
+
+    Two-pin components get a short default body from (x, y); points-list get a
+    1-inch segment; single-anchor / multi-node get placed at (x, y). Raises
+    ValueError for an unknown type.
+    """
+    import dataclasses
+    from .components import ALL_COMPONENTS
+
+    by_name = {c.__name__: c for c in ALL_COMPONENTS}
+    cls = by_name.get(type_name)
+    if cls is None:
+        raise ValueError(f"unknown component type: {type_name!r}")
+
+    fields = {f.name for f in dataclasses.fields(cls)}
+    kwargs: dict = {"name": name}
+    if "x1" in fields and "x2" in fields:
+        kwargs.update(x1=x, y1=y, x2=round(x + 0.3, 4), y2=y)
+    elif "points" in fields:
+        kwargs["points"] = [(x, y), (round(x + 1.0, 4), y)]
+    elif "x" in fields and "y" in fields:
+        kwargs.update(x=x, y=y)
+    if "text" in fields:
+        kwargs["text"] = name
+    return cls(**kwargs)
+
+
 @dataclass
 class TreeNode:
     """One row in the tree: either a component header or a node child."""
@@ -228,6 +263,27 @@ class NavState:
             self.cursor = nodes[(pos - 1) % len(nodes)]
         else:
             self.cursor = nodes[-1]
+
+    def focus_node(self, component_index: int, point_index: int | None) -> bool:
+        """Move the cursor to a specific component/node (used by / search).
+
+        If point_index is None, focuses the component header. Returns True if
+        a matching row was found.
+        """
+        for i, r in enumerate(self.rows):
+            if r.component_index == component_index and r.point_index == point_index:
+                self.cursor = i
+                self.tab_owner = component_index
+                self.node_level = r.is_node
+                return True
+        # Fall back: focus the component header.
+        for i, r in enumerate(self.rows):
+            if r.component_index == component_index and not r.is_node:
+                self.cursor = i
+                self.tab_owner = component_index
+                self.node_level = False
+                return True
+        return False
 
     def rebuild(self, project: Project) -> None:
         """Refresh rows after an edit, keeping the cursor on the same
