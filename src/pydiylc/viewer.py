@@ -368,10 +368,12 @@ def _make_drag_end(state: _ViewerState, canvas):
         state.last_drag_delta = (0.0, 0.0)
         if orig is None or new_anchor == orig:
             return
-        # Snap the new anchor to the project grid (0.1 in default).
+        # Snap the new anchor to the project grid (0.1 in default). Round the
+        # result to 4 decimals so float noise (5.0/0.1*0.1 = 2.4000...004)
+        # doesn't reach the canvas or the source rewrite.
         grid = state.project.grid_inches or 0.1
-        new_x = round(new_anchor[0] / grid) * grid
-        new_y = round(new_anchor[1] / grid) * grid
+        new_x = round(round(new_anchor[0] / grid) * grid, 4)
+        new_y = round(round(new_anchor[1] / grid) * grid, 4)
         # Re-align the in-memory component to the snapped anchor so the
         # preview matches what we'd write to disk.
         from .edit import move_component_inplace

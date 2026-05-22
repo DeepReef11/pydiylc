@@ -29,6 +29,35 @@ def test_propose_move_returns_summary(tmp_path):
         propose_move(p, "R1", new_x=2.0, new_y=2.0)
 
 
+def test_positional_coords_error_is_actionable(tmp_path):
+    """The 'can't move' message should name the constructor and suggest kwargs."""
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        project = Project()
+        project.add(Resistor('R1', 1.0, 1.0, 1.0, 1.5, value='10K'))
+    """)
+    with pytest.raises(NotImplementedError) as ei:
+        propose_move(p, "R1", new_x=2.0, new_y=2.0)
+    msg = str(ei.value)
+    assert "Resistor" in msg
+    assert "positional" in msg
+    assert "name=" in msg  # suggests the fix
+
+
+def test_grid_snap_floats_are_clean(tmp_path):
+    """Grid-snapped coordinates must not leak binary-float noise (2.4000...004)."""
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    noisy = round(2.4 / 0.1) * 0.1  # = 2.4000000000000004
+    assert repr(noisy) != "2.4"  # confirm the input really is noisy
+    proposal = propose_move(p, "P1", new_x=5.0, new_y=noisy)
+    assert "2.4000000000000004" not in proposal.new_text
+    assert "y=2.4" in proposal.new_text
+
+
 def test_propose_move_single_anchor(tmp_path):
     p = _write(tmp_path, """
         from pydiylc import Project, SolderPad

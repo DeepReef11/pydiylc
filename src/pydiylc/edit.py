@@ -55,6 +55,16 @@ def _format_number(v: float) -> str:
     return s or "0"
 
 
+def _clean_float(v: float) -> float:
+    """Round to 4 decimals to remove binary-float noise from grid math.
+
+    e.g. 5.0 / 0.1 * 0.1 → 2.4000000000000004 becomes 2.4. Coordinates in
+    DIYLC layouts never need more than 0.001 in precision, so 4 places is
+    safe and keeps the emitted literal short.
+    """
+    return round(float(v), 4)
+
+
 def _find_name_arg(call: ast.Call) -> str | None:
     """Return the literal value of `name=...` (or first positional arg)."""
     if call.args:
@@ -133,16 +143,28 @@ def propose_move(
     x_node = _arg_position_for(target_call, x_key)
     y_node = _arg_position_for(target_call, y_key)
     if x_node is None or y_node is None:
+        # The component exists but its coordinates are positional, e.g.
+        # Resistor('R1', 1.0, 1.0, 1.0, 1.5). We only edit keyword coords to
+        # avoid guessing positional layouts per component type.
+        ctor = getattr(target_call.func, "id", None) or getattr(
+            target_call.func, "attr", "?"
+        )
         raise NotImplementedError(
-            f"can't rewrite {component_name!r}: coordinates {x_key}/{y_key} "
-            "must be passed as keyword args (e.g. `x=1.0, y=1.5`)."
+            f"{component_name!r} is built with positional coordinates "
+            f"(`{ctor}({component_name!r}, ...)`). The viewer can only "
+            f"auto-edit keyword coords. Rewrite as "
+            f"`{ctor}(name={component_name!r}, {x_key}=..., {y_key}=...)` "
+            "to enable drag-to-move on this component."
         )
 
     old_x = x_node.value if isinstance(x_node, ast.Constant) else None
     old_y = y_node.value if isinstance(y_node, ast.Constant) else None
 
-    new_x_node = ast.Constant(value=float(new_x))
-    new_y_node = ast.Constant(value=float(new_y))
+    # Quantize to kill float noise like 2.4000000000000004 that creeps in
+    # from grid-snap arithmetic (5.0 / 0.1 * 0.1). Round to 4 decimals and
+    # drop a trailing .0-only tail so the written literal is clean (2.4).
+    new_x_node = ast.Constant(value=_clean_float(new_x))
+    new_y_node = ast.Constant(value=_clean_float(new_y))
     _set_keyword(target_call, x_key, new_x_node)
     _set_keyword(target_call, y_key, new_y_node)
 
