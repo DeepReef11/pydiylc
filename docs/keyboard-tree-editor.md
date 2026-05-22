@@ -201,6 +201,13 @@ Additional bindings:
 | / | fuzzy-search to **focus** any node (searchable Tab nav) |
 | g | fuzzy-search to **send** the focused node onto another node's position |
 | a | add a new component (fuzzy type picker), placed near the focused one |
+| dd | delete the focused component (press `d` twice; any other key cancels) |
+| u | undo the last edit (move / rotate / add / delete) |
+
+Undo is a snapshot stack (`pydiylc.history.History`): every mutating action
+deep-copies the component list first; `u` restores the previous snapshot.
+Bounded to 100 entries. In-memory only — undo doesn't touch the source file
+(commit edits to source explicitly with Enter).
 
 The `/` and `g` menus share `jump.searchable_targets` + `jump.fuzzy_filter`
 (subsequence match, spaces ignored, contiguous matches ranked first). `/`

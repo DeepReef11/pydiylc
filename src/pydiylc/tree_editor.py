@@ -285,6 +285,14 @@ class NavState:
                 return True
         return False
 
+    def clamp_cursor(self) -> None:
+        """Keep the cursor in range after rows shrink."""
+        if not self.rows:
+            self.cursor = 0
+            self.node_level = False
+            return
+        self.cursor = max(0, min(self.cursor, len(self.rows) - 1))
+
     def rebuild(self, project: Project) -> None:
         """Refresh rows after an edit, keeping the cursor on the same
         component/point where possible."""

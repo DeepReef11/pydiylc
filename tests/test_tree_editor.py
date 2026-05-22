@@ -289,6 +289,25 @@ def test_make_default_unknown_type():
         make_default_component("Nonexistent", "X", 0, 0)
 
 
+def test_clamp_cursor_after_shrink():
+    p = _project()
+    nav = NavState(build_tree(p))
+    # Move cursor near the end, then delete components and rebuild.
+    nav.cursor = len(nav.rows) - 1
+    del p.components[-1]  # remove Q1
+    del p.components[-1]  # remove the trace
+    nav.rows = build_tree(p)
+    nav.clamp_cursor()
+    assert 0 <= nav.cursor < len(nav.rows)
+
+
+def test_clamp_cursor_empty():
+    nav = NavState([])
+    nav.cursor = 5
+    nav.clamp_cursor()
+    assert nav.cursor == 0
+
+
 def test_empty_project_nav_is_safe():
     nav = NavState(build_tree(Project()))
     assert nav.current is None

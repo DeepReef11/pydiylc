@@ -115,6 +115,8 @@ individual nodes. Fully keyboard-driven:
 - **/** — fuzzy-search to focus any node (searchable navigation)
 - **g** — fuzzy-search to send the focused node onto another node
 - **a** — add a component (fuzzy type picker; in-memory, not yet written to source)
+- **dd** — delete the focused component (press `d` twice)
+- **u** — undo the last edit (move / rotate / add / delete)
 - **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
   parts, rotates coordinates otherwise)
 - **Enter** — commit the focused component's position to source (diff dialog)

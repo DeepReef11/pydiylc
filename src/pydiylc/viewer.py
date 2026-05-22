@@ -253,6 +253,8 @@ class _ViewerState:
         # Tree-editor mode.
         self.tree_mode: bool = False
         self.nav = None  # tree_editor.NavState, lazily built
+        self.history = None  # history.History, built on entering tree mode
+        self.pending_d: bool = False  # first 'd' of a 'dd' delete chord
         # Filled in by show()
         self.canvas = None
         self.status_lbl = None
@@ -268,7 +270,11 @@ def _status_text(state: _ViewerState) -> str:
     title = state.project.title or "untitled"
     sel = f"  ·  sel: {state.selected_name}" if state.selected_name else ""
     err = f"  ·  ⚠ {state.error_msg}" if state.error_msg else ""
-    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{err}"
+    chord = "  ·  d… (press d again to delete)" if state.pending_d else ""
+    undo = ""
+    if state.tree_mode and state.history is not None and state.history.can_undo():
+        undo = f"  ·  undo×{state.history.depth()}"
+    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{undo}{chord}{err}"
 
 
 def _refresh_status(state: _ViewerState) -> None:
@@ -670,8 +676,8 @@ def _build_tree_panel(state: _ViewerState):
     box.append(sw)
 
     hint = Gtk.Label(
-        label="Tab/⇧Tab component · Space drill in/out · Tab walks nodes\n"
-              "Ctrl+arrows move · +Shift finer · R rotate · Enter commit"
+        label="Tab component · Space drill · arrows hole-move · Ctrl+arrows nudge\n"
+              "R rotate · / focus · g send · a add · dd delete · u undo · Enter commit"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -681,8 +687,11 @@ def _build_tree_panel(state: _ViewerState):
 
 def _enter_tree_mode(state: _ViewerState) -> None:
     from .tree_editor import build_tree, NavState
+    from .history import History
 
     state.nav = NavState(build_tree(state.project))
+    state.history = History(state.project)
+    state.pending_d = False
     state.tree_mode = True
     if state.tree_panel is not None:
         state.tree_panel.set_visible(True)
@@ -735,6 +744,11 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
     _refresh_status(state)
 
 
+def _record(state: _ViewerState, label: str) -> None:
+    if state.history is not None:
+        state.history.record(label)
+
+
 def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     """Apply a literal nudge to the focused component or node."""
     from . import moves
@@ -743,6 +757,7 @@ def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     if nav is None or nav.current is None:
         return
     cur = nav.current
+    _record(state, "move")
     if cur.is_node and cur.movable:
         moves.move_node(state.project, cur.component_index, cur.point_index, dx, dy)
     else:
@@ -758,9 +773,39 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     nav = state.nav
     if nav is None or nav.current is None:
         return
+    _record(state, "rotate")
     moves.rotate_component(state.project, nav.current.component_index, clockwise=clockwise)
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
+
+
+def _tree_delete(state: _ViewerState) -> None:
+    """Remove the focused component (dd). In-memory only."""
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    ci = nav.current.component_index
+    if not (0 <= ci < len(state.project.components)):
+        return
+    _record(state, "delete")
+    del state.project.components[ci]
+    nav.rebuild(state.project)
+    nav.clamp_cursor()
+    _refresh_tree_panel(state)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+
+
+def _tree_undo(state: _ViewerState) -> None:
+    if state.history is None or not state.history.can_undo():
+        return
+    state.history.undo()
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+        state.nav.clamp_cursor()
+    _refresh_tree_panel(state)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
 
 
 def _tree_commit(state: _ViewerState) -> None:
@@ -910,6 +955,26 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
     nav = state.nav
     grid = state.project.grid_inches or 0.1
     step = grid if not shift else grid / 10.0  # Shift = finer
+
+    # 'dd' chord to delete the focused component. First 'd' arms it; a second
+    # 'd' deletes; any other key cancels the pending state.
+    if keyval in (Gdk.KEY_d, Gdk.KEY_D):
+        if state.pending_d:
+            state.pending_d = False
+            _tree_delete(state)
+        else:
+            state.pending_d = True
+            _refresh_status(state)
+        return True
+    # Any non-'d' key cancels a pending delete chord.
+    if state.pending_d:
+        state.pending_d = False
+        _refresh_status(state)
+
+    # 'u' undo.
+    if keyval in (Gdk.KEY_u, Gdk.KEY_U):
+        _tree_undo(state)
+        return True
 
     _DIRS = {
         Gdk.KEY_Left: "left", Gdk.KEY_Right: "right",
@@ -1123,7 +1188,10 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
 
     listbox.connect("row-activated", lambda _lb, _row: choose(selected_target()))
 
+    # CAPTURE phase so Enter/Escape/Up/Down reach us before the focused
+    # SearchEntry consumes them.
     key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
 
     def on_key(_ctl, keyval, _code, _mods):
         if keyval == Gdk.KEY_Escape:
@@ -1261,6 +1329,7 @@ def _open_add_menu(state: _ViewerState) -> None:
             _info_dialog(state.window, "Can't add", str(exc))
             win.close()
             return
+        _record(state, f"add {type_name}")
         state.project.add(comp)
         # Refresh the tree + focus the new component.
         if state.nav is not None:
@@ -1273,7 +1342,9 @@ def _open_add_menu(state: _ViewerState) -> None:
 
     listbox.connect("row-activated", lambda _lb, _row: choose())
 
+    # CAPTURE phase so the focused SearchEntry doesn't swallow Enter/Escape.
     key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
 
     def on_key(_ctl, keyval, _code, _mods):
         if keyval == Gdk.KEY_Escape:
