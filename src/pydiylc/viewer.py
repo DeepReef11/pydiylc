@@ -435,22 +435,24 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
         )
         return
 
+    from .edit import propose_move, locate_component
     try:
-        from .edit import propose_move
         proposal = propose_move(
             state.watch_path, name, new_anchor[0], new_anchor[1],
         )
     except LookupError as exc:
         _info_dialog(state.window, "Can't auto-apply", str(exc))
         return
-    except NotImplementedError as exc:
-        _info_dialog(
-            state.window,
-            "Can't auto-apply",
-            f"{exc}\n\nNew coordinates: ({new_anchor[0]:.2f}, "
-            f"{new_anchor[1]:.2f}). Update the source manually if you want "
-            "the move to persist.",
-        )
+    except NotImplementedError:
+        # The component is in the file but uses positional coords. Show the
+        # same line-numbered code preview as the apply dialog, but read-only,
+        # pointing at where to edit and what the new coords would be.
+        try:
+            loc = locate_component(state.watch_path, name)
+        except LookupError as exc:
+            _info_dialog(state.window, "Can't auto-apply", str(exc))
+            return
+        _locate_dialog(state, loc, new_anchor)
         return
 
     _apply_dialog(state, proposal)
@@ -468,14 +470,17 @@ def _info_dialog(parent, title: str, body: str) -> None:
 
 
 def _apply_dialog(state: _ViewerState, proposal) -> None:
-    """Show a modal with the diff hunk and Apply / Cancel buttons."""
+    """Show a modal with the line-numbered diff and Apply / Cancel buttons.
+
+    Enter applies, Escape cancels.
+    """
     import gi
     gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk
+    from gi.repository import Gtk, Gdk
 
     win = Gtk.Window()
     win.set_title("Apply move?")
-    win.set_default_size(640, 360)
+    win.set_default_size(680, 380)
     if state.window is not None:
         win.set_transient_for(state.window)
         win.set_modal(True)
@@ -494,50 +499,149 @@ def _apply_dialog(state: _ViewerState, proposal) -> None:
     file_info.add_css_class("dim-label")
     box.append(file_info)
 
-    # Diff preview.
     sw = Gtk.ScrolledWindow()
     sw.set_vexpand(True)
-    diff_text = _format_diff(proposal.diff_hunk)
     tv = Gtk.TextView()
     tv.set_editable(False)
     tv.set_monospace(True)
-    tv.get_buffer().set_text(diff_text)
+    tv.get_buffer().set_text(_format_diff(proposal.diff_hunk))
     sw.set_child(tv)
     box.append(sw)
 
-    # Buttons.
     btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     btn_box.set_halign(Gtk.Align.END)
     cancel_btn = Gtk.Button(label="Cancel")
-    apply_btn = Gtk.Button(label="Apply")
+    apply_btn = Gtk.Button(label="Apply  (Enter)")
     apply_btn.add_css_class("suggested-action")
 
-    def on_cancel(_):
-        win.close()
-    def on_apply(_):
+    def do_apply():
         from .edit import apply_proposal
         apply_proposal(proposal)
-        # Triggering a save bumps mtime; the file watcher will reload.
+        # Writing the file bumps mtime; the watcher reloads from source.
         win.close()
 
-    cancel_btn.connect("clicked", on_cancel)
-    apply_btn.connect("clicked", on_apply)
+    cancel_btn.connect("clicked", lambda _b: win.close())
+    apply_btn.connect("clicked", lambda _b: do_apply())
     btn_box.append(cancel_btn)
     btn_box.append(apply_btn)
     box.append(btn_box)
 
+    # Enter = Apply, Escape = Cancel.
+    key = Gtk.EventControllerKey()
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            do_apply()
+            return True
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+
     win.set_child(box)
+    # Make Apply the default so Enter triggers it even before focus moves.
+    apply_btn.set_receives_default(True)
+    win.set_default_widget(apply_btn)
     win.present()
+    apply_btn.grab_focus()
 
 
-def _format_diff(hunk: list[tuple[str, str]]) -> str:
+def _locate_dialog(state: _ViewerState, loc, new_anchor: tuple[float, float]) -> None:
+    """Read-only dialog for moves we can't auto-apply.
+
+    Shows the same line-numbered code preview as the apply dialog, points at
+    the component's line, and reports the new coordinates the user would type.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    win = Gtk.Window()
+    win.set_title("Can't auto-apply — edit manually")
+    win.set_default_size(680, 380)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    box.set_margin_top(12); box.set_margin_bottom(12)
+    box.set_margin_start(12); box.set_margin_end(12)
+
+    heading = Gtk.Label(
+        label=f"{loc.component_name} → ({new_anchor[0]:g}, {new_anchor[1]:g})"
+    )
+    heading.set_xalign(0.0)
+    heading.add_css_class("heading")
+    box.append(heading)
+
+    file_info = Gtk.Label(label=f"{loc.path}:{loc.line}")
+    file_info.set_xalign(0.0)
+    file_info.add_css_class("dim-label")
+    box.append(file_info)
+
+    reason = Gtk.Label(label=loc.reason)
+    reason.set_xalign(0.0)
+    reason.set_wrap(True)
+    box.append(reason)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    tv = Gtk.TextView()
+    tv.set_editable(False)
+    tv.set_monospace(True)
+    tv.get_buffer().set_text(_format_context(loc.context, loc.line))
+    sw.set_child(tv)
+    box.append(sw)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    close_btn = Gtk.Button(label="Close  (Esc)")
+    close_btn.connect("clicked", lambda _b: win.close())
+    btn_box.append(close_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Escape, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            win.close()
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+
+    win.set_child(box)
+    win.set_default_widget(close_btn)
+    win.present()
+    close_btn.grab_focus()
+
+
+def _format_diff(hunk: list[tuple[int, str, str]]) -> str:
+    """Render a (line_no, old, new) hunk as a line-numbered unified diff."""
     out = []
-    for old, new in hunk:
+    width = max((len(str(n)) for n, _o, _n in hunk), default=1)
+    for line_no, old, new in hunk:
+        gutter = str(line_no).rjust(width)
         if old == new:
-            out.append(f"  {old}")
+            out.append(f"  {gutter} │ {old}")
         else:
-            out.append(f"- {old}")
-            out.append(f"+ {new}")
+            out.append(f"- {gutter} │ {old}")
+            out.append(f"+ {gutter} │ {new}")
+    return "\n".join(out)
+
+
+def _format_context(context: list[tuple[int, str]], focus_line: int) -> str:
+    """Render a (line_no, source) window with a ► marker on the focus line."""
+    out = []
+    width = max((len(str(n)) for n, _ in context), default=1)
+    for line_no, src in context:
+        marker = "►" if line_no == focus_line else " "
+        gutter = str(line_no).rjust(width)
+        out.append(f"{marker} {gutter} │ {src}")
     return "\n".join(out)
 
 

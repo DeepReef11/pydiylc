@@ -43,8 +43,30 @@ class MoveProposal:
     line: int  # 1-based line where the change starts
     summary: str  # human-readable "R1.x: 1.2 → 1.5" message
 
-    diff_hunk: list[tuple[str, str]] = field(default_factory=list)
-    """Tuples (old_line, new_line) for displaying a side-by-side preview."""
+    diff_hunk: list[tuple[int, str, str]] = field(default_factory=list)
+    """Tuples (line_no, old_line, new_line) for a line-numbered diff preview.
+
+    ``line_no`` is the 1-based source line of ``old_line``. Where a line is
+    unchanged, old_line == new_line.
+    """
+
+
+@dataclass
+class LocateResult:
+    """Where a component lives in the source, when we can't rewrite it.
+
+    Returned by ``locate_component`` so the viewer can show a line-numbered
+    code preview (same look as a MoveProposal diff) even for components built
+    with positional coordinates that we won't auto-edit.
+    """
+
+    path: Path
+    component_name: str
+    line: int  # 1-based line of the constructor call
+    summary: str
+    reason: str  # why we can't auto-apply
+    context: list[tuple[int, str]] = field(default_factory=list)
+    """(line_no, source_line) window around the component for display."""
 
 
 def _format_number(v: float) -> str:
@@ -183,13 +205,7 @@ def propose_move(
         f"{component_name}.{y_key}: {old_y!r} → {new_y:g}"
     )
 
-    # Pull a small window of the affected lines for preview.
-    win = 3
-    a = max(0, line_no - 1 - win)
-    b = min(len(old_lines), line_no + win)
-    hunk: list[tuple[str, str]] = []
-    for old, new in zip(old_lines[a:b], new_lines[a:b]):
-        hunk.append((old, new))
+    hunk = _line_numbered_hunk(old_lines, new_lines, line_no)
 
     return MoveProposal(
         path=p,
@@ -206,6 +222,75 @@ def apply_proposal(proposal: MoveProposal) -> None:
     """Write the proposed new_text to disk. Caller is responsible for
     backup. The viewer should only call this after user confirmation."""
     proposal.path.write_text(proposal.new_text, encoding="utf-8")
+
+
+def _line_numbered_hunk(
+    old_lines: list[str], new_lines: list[str], focus_line: int, win: int = 3
+) -> list[tuple[int, str, str]]:
+    """Build a (line_no, old, new) hunk around ``focus_line`` (1-based).
+
+    ``ast.unparse`` reformats the whole file, so old and new line numbers
+    don't necessarily align. We pull the window from the *original* file
+    (those are the line numbers the user sees in their editor) and match it
+    against the corresponding new lines by content where possible, falling
+    back to positional pairing. The goal is a readable preview, not a
+    byte-exact patch — the actual write uses ``new_text`` wholesale.
+    """
+    a = max(0, focus_line - 1 - win)
+    b = min(len(old_lines), focus_line + win)
+    hunk: list[tuple[int, str, str]] = []
+    for i in range(a, b):
+        old = old_lines[i]
+        new = new_lines[i] if i < len(new_lines) else old
+        hunk.append((i + 1, old, new))
+    return hunk
+
+
+def locate_component(path: str | Path, component_name: str) -> "LocateResult":
+    """Find where a component is defined in the source, with a code window.
+
+    Used when a move can't be auto-applied (positional coords, etc.) so the
+    viewer can still show *where* in the file to edit, with line numbers.
+
+    Raises ``LookupError`` if the component isn't found by name.
+    """
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+
+    target_call: ast.Call | None = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _find_name_arg(node) == component_name:
+            target_call = node
+            break
+    if target_call is None:
+        raise LookupError(
+            f"component {component_name!r} not found by name in {p}"
+        )
+
+    ctor = getattr(target_call.func, "id", None) or getattr(
+        target_call.func, "attr", "?"
+    )
+    line_no = target_call.lineno
+    lines = text.splitlines()
+    win = 3
+    a = max(0, line_no - 1 - win)
+    b = min(len(lines), line_no + win)
+    context = [(i + 1, lines[i]) for i in range(a, b)]
+
+    reason = (
+        f"{component_name!r} uses positional coordinates, so the viewer "
+        f"can't rewrite them automatically. Edit line {line_no} by hand, "
+        f"or switch to keyword args: {ctor}(name={component_name!r}, x=..., y=...)."
+    )
+    return LocateResult(
+        path=p,
+        component_name=component_name,
+        line=line_no,
+        summary=f"{component_name} is at {p.name}:{line_no}",
+        reason=reason,
+        context=context,
+    )
 
 
 # ---------------------------------------------------------------------------

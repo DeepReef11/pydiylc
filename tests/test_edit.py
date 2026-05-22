@@ -145,11 +145,50 @@ def test_move_component_inplace_points_list():
     assert t.points == [(1.0, 2.0), (2.0, 2.0)]
 
 
-def test_diff_hunk_lines_pair_old_and_new(tmp_path):
+def test_diff_hunk_carries_line_numbers(tmp_path):
     p = _write(tmp_path, """
         from pydiylc import Project, SolderPad
         project = Project()
         project.add(SolderPad(name='Pad1', x=1.0, y=2.0))
     """)
     proposal = propose_move(p, "Pad1", new_x=3.5, new_y=4.0)
-    assert any("1.0" in old and "3.5" in new for old, new in proposal.diff_hunk)
+    # Each entry is (line_no, old, new); the changed line should mention both
+    # the old and new x value, and carry a plausible 1-based line number.
+    changed = [(n, o, nw) for (n, o, nw) in proposal.diff_hunk if o != nw]
+    assert changed, "expected at least one changed line"
+    line_no, old, new = changed[0]
+    assert isinstance(line_no, int) and line_no >= 1
+    assert "1.0" in old and "3.5" in new
+
+
+def test_locate_component_returns_line_and_context(tmp_path):
+    """locate_component finds a positional-coord component without rewriting it."""
+    from pydiylc.edit import locate_component
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        project = Project()
+        project.add(Resistor('R1', 1.0, 1.0, 1.0, 1.5, value='10K'))
+    """)
+    loc = locate_component(p, "R1")
+    assert loc.component_name == "R1"
+    assert loc.line >= 1
+    # The constructor line must be in the context window, flagged by its number.
+    nums = [n for n, _src in loc.context]
+    assert loc.line in nums
+    assert "Resistor" in loc.reason
+    # The context line at loc.line should contain the actual call.
+    focus_src = next(src for n, src in loc.context if n == loc.line)
+    assert "Resistor" in focus_src
+
+
+def test_locate_component_not_found(tmp_path):
+    from pydiylc.edit import locate_component
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        project = Project()
+        project.add(Resistor('R1', 1.0, 1.0, 1.0, 1.5))
+    """)
+    with pytest.raises(LookupError, match="Nope"):
+        locate_component(p, "Nope")
