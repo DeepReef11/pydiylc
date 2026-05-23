@@ -1384,7 +1384,15 @@ def build_server():
             "Coordinate hygiene: every position should be on the 0.1 in grid. "
             "The catalog (or `describe_component_type`) lists which fields are "
             "required vs. defaulted. Mistakes are recoverable — every mutating "
-            "tool records an undo snapshot, and `undo()` reverts the last one."
+            "tool records an undo snapshot, and `undo()` reverts the last one.\n\n"
+            "**Discriminator trap**: when a component has a `type` field of "
+            "its own (jacks: MONO/STEREO; solder pads: ROUND/SQUARE; "
+            "humbuckers: PAF/DOG_EAR; etc.) the dict will have two `type` "
+            "keys — Python/JSON keep only the last, dropping the class name. "
+            "For these, use `_type` for the class name and leave `type` for "
+            "the field value: "
+            "`{'_type': 'OpenJack1_4', 'name': 'J1', 'type': 'MONO'}`. "
+            "The loader raises a clear error if you hit this."
         )
 
     @server.prompt()

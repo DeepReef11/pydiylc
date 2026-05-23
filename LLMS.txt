@@ -96,6 +96,22 @@ p.save("booster.diy")
 
 Each component dict needs a `type` field naming a pydiylc class. The rest are kwargs. Measure fields (`length`, `width`, `pin_spacing`, etc.) accept either `{"value": 0.1, "unit": "in"}` or a bare number (interpreted as inches).
 
+### Discriminator collision: use `_type` for jacks and pads
+
+Some components have a `type` *field of their own* (jack mono/stereo selector, solder pad shape, etc.). When you set that field, the dict has two `type` keys and Python/JSON keep only the last one — meaning the class name gets silently dropped. **For these components, use `_type` for the class name and leave `type` for the field:**
+
+```python
+# WRONG — the {'type': 'OpenJack1_4', ...} is overwritten by 'type': 'MONO'
+{"type": "OpenJack1_4", "name": "J_in", "type": "MONO"}
+
+# RIGHT — '_type' carries the class name, 'type' is the field value
+{"_type": "OpenJack1_4", "name": "J_in", "type": "MONO"}
+```
+
+Components affected (i.e. those with a `type` field): `OpenJack1_4`, `ClosedJack1_4`, `CliffJack1_4`, `NeutrikJack1_4`, `RCAJack` (mono/stereo), `SolderPad` (ROUND/SQUARE/OVAL), `BlankBoard` (SQUARE/ROUND), `HumbuckerPickup` (PAF/DOG_EAR/MINI), `P90Pickup` (DOG_EAR/SOAP_BAR), `LeverSwitch` (DP3T/...), `MarshallPerfBoard`, `TriPadBoard`, `EyeletBoard` (board enums), `SMDResistor` / `SMDCapacitor` (size codes — though `size` is the actual field there, not `type`), and a few others. When in doubt, use `_type` everywhere — it always works.
+
+The loader raises a clear error when a `type` collision is detected and reports the component name so you can fix it in your batch.
+
 ## Value strings
 
 Two-pin components parse their `value` string as `number + unit`:

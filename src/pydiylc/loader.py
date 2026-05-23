@@ -62,9 +62,11 @@ def component_from_dict(d: dict[str, Any]) -> Component:
     """Construct a single component from a dict.
 
     The component class is taken from ``"_type"`` (preferred) or ``"type"``.
-    The fallback exists because a few components (SolderPad, TraceCut,
-    BlankBoard) have a ``type`` field of their own, so they're serialized
-    with ``"_type"`` to avoid the collision.
+    The fallback exists because several components (SolderPad, TraceCut,
+    BlankBoard, OpenJack1_4, ClosedJack1_4, CliffJack1_4, NeutrikJack1_4,
+    Pad, …) have a ``type`` field of their own, so when you set such a
+    field the dict has a key collision with the discriminator. Use
+    ``"_type"`` for the class name in that case.
     """
     if "_type" in d:
         type_name = d["_type"]
@@ -77,12 +79,26 @@ def component_from_dict(d: dict[str, Any]) -> Component:
             type_name = d["type"]
             kwargs = {k: v for k, v in d.items() if k != "type"}
         else:
+            # Try to give the LLM enough context to self-correct. If a 'name'
+            # is present, mention it so the failing component is identifiable
+            # in a batch error report.
+            name_hint = f" (name={d['name']!r})" if d.get("name") else ""
+            # Suggest the right pattern with a concrete fix.
             raise ValueError(
-                "component dict has a 'type' field that doesn't name a "
-                "pydiylc class. Use '_type' for the class discriminator."
+                f"component dict{name_hint} has type={d['type']!r}, which "
+                "isn't a pydiylc class name. This usually means the dict "
+                "had a key collision: e.g. "
+                "{'type': 'OpenJack1_4', 'name': 'J1', 'type': 'MONO'} drops "
+                "the class name (Python/JSON keep the last 'type'). "
+                "Fix: use '_type' for the class and leave 'type' for the "
+                "component's own field — "
+                "{'_type': 'OpenJack1_4', 'name': 'J1', 'type': 'MONO'}."
             )
     else:
-        raise ValueError("component dict needs a 'type' or '_type' key naming a pydiylc class")
+        raise ValueError(
+            "component dict needs a 'type' or '_type' key naming a pydiylc "
+            "class (e.g. {'type': 'Resistor', ...})"
+        )
     if type_name not in _BY_NAME:
         raise ValueError(
             f"unknown component type {type_name!r}; known types: {sorted(_BY_NAME)}"

@@ -598,6 +598,45 @@ def test_missing_project_suggests_close_match(mcp_fixture):
                                           {"project_id": "alpa"}))
 
 
+def test_type_collision_error_is_actionable(mcp_fixture):
+    """When a 'type' field collides with the class discriminator, the error
+    must mention the offending name and show the _type fix.
+
+    Concrete trap: an LLM writes
+        {"type": "OpenJack1_4", "name": "J1", "type": "MONO"}
+    intending OpenJack1_4 as the class — but Python/JSON keep only the last
+    'type', so the class name is silently dropped. The error message has
+    to be actionable enough that the LLM can self-correct.
+    """
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "tc"})
+    # Simulate what an LLM-written JSON would parse to in Python:
+    bad = {"type": "MONO", "name": "J1", "x": 1.0, "y": 1.0}
+    with pytest.raises(ToolError) as ei:
+        asyncio.run(mcp_fixture.call_tool("add_component", {
+            "project_id": "tc", "component": bad,
+        }))
+    msg = str(ei.value)
+    # Must reference: the bad type value, the component name, and the _type fix.
+    assert "MONO" in msg
+    assert "J1" in msg
+    assert "_type" in msg
+
+
+def test_type_collision_fixed_with_underscore_type(mcp_fixture):
+    """The _type form succeeds where the colliding form fails."""
+    _call(mcp_fixture, "create_project", {"project_id": "tc2"})
+    res = _call(mcp_fixture, "add_component", {
+        "project_id": "tc2",
+        "component": {"_type": "OpenJack1_4", "name": "J1",
+                      "x": 1.0, "y": 1.0, "type": "MONO"},
+    })
+    assert res["type"] == "OpenJack1_4"
+    assert res["name"] == "J1"
+
+
 def test_add_component_dry_run(mcp_fixture):
     """dry_run validates without adding."""
     _call(mcp_fixture, "create_project", {"project_id": "dr"})
@@ -836,6 +875,108 @@ def test_align_dry_run(mcp_fixture):
     # No commit.
     p2 = _call(mcp_fixture, "get_component", {"project_id": "ald", "name": "P2"})
     assert p2["x"] == 2.0
+
+
+def test_end_to_end_pedal_build(mcp_fixture, tmp_path):
+    """Real-world stress test: build a complete pedal layout through MCP
+    tool calls only, then save → re-read and check it round-trips.
+
+    This is what an LLM client does. Catches regressions that unit tests
+    don't see — e.g. the type-vs-_type collision on jack components, or
+    the connect() failing to find a neighbor — by running the full
+    documented "build from scratch" pattern from LLMS.txt end to end.
+    """
+    project_id = "e2e"
+
+    # 1. discover (would-be cheap exploration on the LLM side).
+    cats = _call(mcp_fixture, "list_categories", {})
+    assert any(c["category"] == "passive" for c in cats)
+
+    # 2. create.
+    _call(mcp_fixture, "create_project", {
+        "project_id": project_id, "title": "E2E test",
+        "width_cm": 18, "height_cm": 12,
+    })
+
+    # 3. batch-add a 23-component LPB-1-shaped layout.
+    components = [
+        {"type": "VeroBoard", "name": "Board1",
+         "x1": 1.0, "y1": 1.0, "x2": 2.2, "y2": 1.7,
+         "orientation": "HORIZONTAL"},
+        {"type": "TraceCut", "name": "Cut1", "x": 1.5, "y": 1.3,
+         "orientation": "HORIZONTAL"},
+        {"type": "TransistorTO92", "name": "Q1",
+         "x": 1.6, "y": 1.3, "value": "2N5088", "pinout": "BJT_EBC"},
+        {"type": "SolderPad", "name": "PadIn", "x": 1.1, "y": 1.4},
+        {"type": "RadialFilmCapacitor", "name": "C1",
+         "x1": 1.1, "y1": 1.4, "x2": 1.4, "y2": 1.4, "value": "100nF"},
+        {"type": "Resistor", "name": "R1",
+         "x1": 1.5, "y1": 1.4, "x2": 1.5, "y2": 1.6, "value": "1M"},
+        {"type": "Resistor", "name": "R2",
+         "x1": 1.7, "y1": 1.2, "x2": 1.7, "y2": 1.4, "value": "10K"},
+        {"type": "RadialElectrolytic", "name": "C2",
+         "x1": 1.7, "y1": 1.4, "x2": 2.0, "y2": 1.4, "value": "1uF"},
+        {"type": "PotentiometerPanel", "name": "VR1",
+         "x": 3.5, "y": 2.0, "resistance": "100K", "taper": "LOG"},
+        {"type": "MiniToggleSwitch", "name": "SW1",
+         "x": 5.0, "y": 3.0, "switch_type": "_3PDT"},
+        # The _type-discriminator trick — these would silently drop the
+        # class name with plain "type" (regression coverage for that).
+        {"_type": "OpenJack1_4", "name": "J_in",
+         "x": 0.5, "y": 2.0, "type": "MONO"},
+        {"_type": "OpenJack1_4", "name": "J_out",
+         "x": 6.5, "y": 2.5, "type": "MONO"},
+        {"type": "PlasticDCJack", "name": "J_dc",
+         "x": 6.5, "y": 1.0, "polarity": "CENTER_NEGATIVE"},
+    ]
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": project_id, "components": components,
+    })
+    assert res["added"] == len(components)
+    assert res["errors"] == []
+
+    # 4. connect by name — verifies the auto-nearest-pin path works on a
+    # heterogeneous mix (a single-anchor SolderPad to a single-anchor jack,
+    # then a two-pin cap to a single-anchor pot).
+    c1 = _call(mcp_fixture, "connect", {
+        "project_id": project_id,
+        "from_name": "J_in", "to_name": "PadIn",
+    })
+    assert c1["type"] == "HookupWire"
+    c2 = _call(mcp_fixture, "connect", {
+        "project_id": project_id,
+        "from_name": "C2", "to_name": "VR1",
+    })
+    assert c2["type"] == "HookupWire"
+
+    # 5. validate — must come back clean for a well-formed layout.
+    rep = _call(mcp_fixture, "validate", {"project_id": project_id})
+    assert rep["ok"], f"validate found issues: {rep['issues']}"
+
+    # 6. stats — sanity check counts.
+    st = _call(mcp_fixture, "stats", {"project_id": project_id})
+    by_type = {e["type"]: e["count"] for e in st["by_type"]}
+    assert by_type["Resistor"] == 2
+    assert by_type["OpenJack1_4"] == 2
+    assert by_type["HookupWire"] == 2  # the two connects
+
+    # 7. inline render — sandboxed-chat flow.
+    svg = _call(mcp_fixture, "render_svg", {
+        "project_id": project_id, "return_content": True,
+    })
+    assert "<svg" in svg["content"]
+
+    # 8. save to disk and re-read — round-trip check.
+    out = tmp_path / "pedal.diy"
+    _call(mcp_fixture, "save", {
+        "project_id": project_id, "path": str(out),
+    })
+    assert out.exists()
+    reread = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{project_id}_rt", "path": str(out),
+    })
+    assert reread["components"] == st["components"]
+    assert reread["warnings"] == []
 
 
 def test_stats(mcp_fixture):
