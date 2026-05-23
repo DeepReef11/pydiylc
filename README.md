@@ -3,13 +3,13 @@
 ![tests](https://img.shields.io/badge/tests-165%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
-![corpus](https://img.shields.io/badge/corpus%20recognition-97.5%25-brightgreen)
+![corpus](https://img.shields.io/badge/corpus%20recognition-98.2%25-brightgreen)
 
 A scriptable Python library — and a native Wayland GTK4 viewer — for
 [DIYLC](https://github.com/bancika/diy-layout-creator) circuit layouts.
 
 - **Write layouts in Python or JSON**, save them as `.diy` (opens in DIYLC).
-- **Read existing `.diy` files** back into Python (97.5% component recognition
+- **Read existing `.diy` files** back into Python (98.2% component recognition
   on the DIYLC community corpus).
 - **Preview natively** — SVG for browsers, PNG via cairo, or a Wayland-native
   GTK4 viewer with pan/zoom/click-select and drag-to-move-with-diff.
@@ -38,7 +38,7 @@ Beta (v0.2.0). Current component set (40 types):
 - **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
 - **Misc**: `Label`, `GroundSymbol`, `Image`, `BOM`
 
-**Corpus coverage:** 97.5% component recognition on the DIYLC regression corpus (53,366 of 54,727 components across 423 of 425 real community layouts).
+**Corpus coverage:** 98.2% component recognition on the DIYLC regression corpus (75,165 of 76,526 components across 423 of 425 real community layouts), with 423 of 425 files round-tripping cleanly through read → save → re-read.
 
 ## CLI
 

@@ -41,9 +41,13 @@ def test_hookup_wire_rejects_bad_gauge():
         HookupWire("W1", points=[(0, 0), (1, 0)], gauge="22")
 
 
-def test_hookup_wire_rejects_3_points():
-    with pytest.raises(ValueError, match="2 or 4 points"):
-        HookupWire("W1", points=[(0, 0), (1, 0), (2, 0)])
+def test_hookup_wire_accepts_3_points():
+    """v3 community files emit wires with 2, 3, 4, 5, or 7 points (the full
+    WIRE_POINT_COUNT enum). Reject only < 2."""
+    HookupWire("W1", points=[(0, 0), (1, 0), (2, 0)])  # 3 points OK
+    HookupWire("W2", points=[(0, 0), (1, 0)])           # 2 OK
+    with pytest.raises(ValueError, match="at least 2 points"):
+        HookupWire("W3", points=[(0, 0)])               # 1 fails
 
 
 def test_solder_pad_rejects_bad_type():

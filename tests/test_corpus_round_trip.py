@@ -136,6 +136,90 @@ def test_v3_chained_references(tmp_path):
         assert pad.size.value == 0.09
 
 
+def test_v3_java_awt_point_form(tmp_path):
+    """v3 XStream emits <java.awt.Point x=... y=.../> instead of <point .../>
+    inside controlPoints. The reader must accept both."""
+    xml = """<?xml version="1.0"?>
+<org.diylc.core.Project>
+  <title>jaw points</title>
+  <author></author>
+  <width value="10.0" unit="cm"/>
+  <height value="10.0" unit="cm"/>
+  <gridSpacing value="0.1" unit="in"/>
+  <components>
+    <org.diylc.components.boards.PerfBoard>
+      <name>B1</name>
+      <alpha>62</alpha>
+      <value></value>
+      <controlPoints>
+        <java.awt.Point x="1.0" y="1.0"/>
+        <java.awt.Point x="2.0" y="2.0"/>
+      </controlPoints>
+      <firstPoint x="1.0" y="1.0"/>
+      <secondPoint x="2.0" y="2.0"/>
+      <boardColor hex="f8ebb3"/>
+      <borderColor hex="ada47d"/>
+      <padColor hex="da8a67"/>
+      <spacing value="0.1" unit="in"/>
+    </org.diylc.components.boards.PerfBoard>
+  </components>
+</org.diylc.core.Project>
+"""
+    f = _write(tmp_path, "jp.diy", xml)
+    p = read_project(f)
+    assert len(p.components) == 1
+    b = p.components[0]
+    assert (b.x1, b.y1, b.x2, b.y2) == (1.0, 1.0, 2.0, 2.0)
+
+
+def test_v3_nested_color_form(tmp_path):
+    """v3 colors use <red>/<green>/<blue>/<alpha> child elements instead of
+    a hex="..." attribute. The reader must accept both."""
+    xml = """<?xml version="1.0"?>
+<org.diylc.core.Project>
+  <title>nested color</title>
+  <author></author>
+  <width value="10.0" unit="cm"/>
+  <height value="10.0" unit="cm"/>
+  <gridSpacing value="0.1" unit="in"/>
+  <components>
+    <org.diylc.components.boards.PerfBoard>
+      <name>B1</name>
+      <alpha>62</alpha>
+      <value></value>
+      <controlPoints>
+        <java.awt.Point x="1.0" y="1.0"/>
+        <java.awt.Point x="2.0" y="2.0"/>
+      </controlPoints>
+      <firstPoint x="1.0" y="1.0"/>
+      <secondPoint x="2.0" y="2.0"/>
+      <boardColor>
+        <red>248</red>
+        <green>235</green>
+        <blue>179</blue>
+        <alpha>255</alpha>
+      </boardColor>
+      <borderColor>
+        <red>173</red>
+        <green>164</green>
+        <blue>125</blue>
+        <alpha>255</alpha>
+      </borderColor>
+      <padColor hex="da8a67"/>
+      <spacing value="0.1" unit="in"/>
+    </org.diylc.components.boards.PerfBoard>
+  </components>
+</org.diylc.core.Project>
+"""
+    f = _write(tmp_path, "color.diy", xml)
+    p = read_project(f)
+    b = p.components[0]
+    # 248, 235, 179 → f8ebb3
+    assert b.board_color == "f8ebb3"
+    # 173, 164, 125 → ada47d
+    assert b.border_color == "ada47d"
+
+
 def test_v3_unresolvable_reference_doesnt_crash(tmp_path):
     """A reference path that doesn't resolve (bad data) should be skipped
     with a warning, not crash the whole read."""

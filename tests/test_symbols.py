@@ -85,9 +85,11 @@ def test_curved_trace_two_to_four_interpolation():
     assert len(cps) == 4
 
 
-def test_curved_trace_rejects_3_points():
-    with pytest.raises(ValueError, match="2 or 4 points"):
-        CurvedTrace("T", points=[(0, 0), (1, 0), (2, 0)])
+def test_curved_trace_accepts_3_points():
+    """Like HookupWire, CurvedTrace accepts any WIRE_POINT_COUNT count (≥2)."""
+    CurvedTrace("T", points=[(0, 0), (1, 0), (2, 0)])  # 3 OK
+    with pytest.raises(ValueError, match="at least 2 points"):
+        CurvedTrace("T2", points=[(0, 0)])              # 1 fails
 
 
 def test_all_new_symbols_round_trip(tmp_path):

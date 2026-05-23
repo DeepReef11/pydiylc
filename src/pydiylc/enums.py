@@ -85,7 +85,7 @@ TRANSISTOR_PINOUT = (
 DIL_PIN_COUNT = tuple(f"_{n}" for n in range(4, 52, 2))
 
 # DIL IC pin-number display
-DIL_DISPLAY_NUMBERS = ("No", "DIP", "Connector", "DIP_MIRROR", "CONNECTOR_MIRROR")
+DIL_DISPLAY_NUMBERS = ("NO", "DIP", "CONNECTOR", "DIP_MIRROR", "CONNECTOR_MIRROR")
 
 # Potentiometer taper
 POT_TAPER = ("LIN", "LOG", "REV_LOG", "W", "S", "M", "N")

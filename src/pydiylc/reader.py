@@ -109,6 +109,16 @@ def _parse_point(el: ET.Element) -> tuple[float, float]:
     return float(el.get("x", "0")), float(el.get("y", "0"))
 
 
+def _point_children(parent: ET.Element) -> list[ET.Element]:
+    """Children of a points/controlPoints container.
+
+    Modern files use ``<point x="..." y="..."/>``; v3 XStream files use
+    ``<java.awt.Point x="..." y="..."/>`` (the Java class name leaks through
+    the serializer). Both have the same x/y attribute shape; we accept both.
+    """
+    return [c for c in parent if c.tag in ("point", "java.awt.Point")]
+
+
 def _parse_measure(el: ET.Element) -> Measure:
     """Parse a Measure-shaped XML element.
 
@@ -141,8 +151,38 @@ def _looks_like_measure(el: ET.Element) -> bool:
 
 
 def _parse_color(el: ET.Element) -> str:
-    """`<bodyColor hex="abc123"/>` → `'abc123'`."""
-    return el.get("hex", "000000")
+    """Parse a color element.
+
+    Two forms in the wild:
+      - Modern: ``<bodyColor hex="abc123"/>`` (single attribute).
+      - v3 XStream: ``<bodyColor><red>248</red><green>235</green>
+        <blue>179</blue><alpha>255</alpha></bodyColor>`` (nested ints).
+    """
+    if el.get("hex") is not None:
+        return el.get("hex", "000000")
+    r_el = el.find("red")
+    g_el = el.find("green")
+    b_el = el.find("blue")
+    if r_el is not None and g_el is not None and b_el is not None:
+        try:
+            r = int((r_el.text or "0").strip())
+            g = int((g_el.text or "0").strip())
+            b = int((b_el.text or "0").strip())
+            return f"{max(0, min(255, r)):02x}{max(0, min(255, g)):02x}{max(0, min(255, b)):02x}"
+        except ValueError:
+            pass
+    return "000000"
+
+
+def _looks_like_color(el: ET.Element) -> bool:
+    """True if ``el`` represents a color (attr or nested form)."""
+    if el.get("hex") is not None:
+        return True
+    return (
+        el.find("red") is not None
+        and el.find("green") is not None
+        and el.find("blue") is not None
+    )
 
 
 def _parse_bool(text: str | None) -> bool:
@@ -203,13 +243,15 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         tag = child.tag
 
         # Handle the well-known irregular containers first.
+        # v3 XStream sometimes stores points as <java.awt.Point x= y=> instead
+        # of <point x= y=>; _point_children catches both.
         if tag in ("points", "controlPoints"):
-            pts = [_parse_point(p) for p in child.findall("point")]
+            pts = [_parse_point(p) for p in _point_children(child)]
             continue
         if tag == "controlPoints2":  # HookupWire and CurvedTrace
-            wire_pts = [_parse_point(p) for p in child.findall("point")]
+            wire_pts = [_parse_point(p) for p in _point_children(child)]
             continue
-        if tag == "point" and child.get("x") is not None:
+        if tag in ("point", "java.awt.Point") and child.get("x") is not None:
             # SolderPad / Label / TraceCut store a bare <point x="" y=""/>
             single_point = _parse_point(child)
             continue
@@ -245,8 +287,9 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
 
         field_name = _renamed_field(el.tag, tag)
 
-        # Color elements have a `hex="..."` attribute.
-        if "Color" in tag or tag in ("color",):
+        # Color elements come in two forms: hex="..." attribute (modern)
+        # or nested <red>/<green>/<blue>/<alpha> child elements (v3 XStream).
+        if "Color" in tag or tag in ("color",) or _looks_like_color(child):
             if field_name in field_names:
                 values[field_name] = _parse_color(child)
             continue
@@ -286,11 +329,13 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
     # `__diylc_class__` before dispatching.
     diylc_class = cls.__diylc_class__
     if diylc_class == "diylc.connectivity.HookupWire":
-        values["points"] = wire_pts
+        # v3 sometimes uses <controlPoints> instead of <controlPoints2>; pick
+        # whichever bucket actually got populated.
+        values["points"] = wire_pts or pts
     elif diylc_class == "diylc.connectivity.CurvedTrace":
-        values["points"] = wire_pts
+        values["points"] = wire_pts or pts
     elif diylc_class == "diylc.connectivity.CopperTrace":
-        values["points"] = pts
+        values["points"] = pts or wire_pts
     elif diylc_class == "diylc.connectivity.SolderPad":
         if single_point is not None:
             values["x"], values["y"] = single_point

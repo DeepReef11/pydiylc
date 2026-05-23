@@ -1162,8 +1162,12 @@ class HookupWire(Component):
 
     def __post_init__(self) -> None:
         self._validate_enums()
-        if len(self.points) not in (2, 4):
-            raise ValueError("HookupWire needs 2 or 4 points")
+        # The DIYLC file format and editor support 2/3/4/5/7 control points
+        # (mirrors WIRE_POINT_COUNT). 2 is the common "endpoints only" form,
+        # 4 is the typical Bezier-like curved wire. Anything in the enum is
+        # legal; we just need at least 2 to render something.
+        if len(self.points) < 2:
+            raise ValueError("HookupWire needs at least 2 points")
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -1421,8 +1425,8 @@ class CurvedTrace(Component):
 
     def __post_init__(self) -> None:
         self._validate_enums()
-        if len(self.points) not in (2, 4):
-            raise ValueError("CurvedTrace needs 2 or 4 points")
+        if len(self.points) < 2:
+            raise ValueError("CurvedTrace needs at least 2 points")
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
