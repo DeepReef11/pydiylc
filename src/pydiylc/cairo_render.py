@@ -125,7 +125,8 @@ def _hex_to_rgb(hex6: str) -> tuple[float, float, float]:
 def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
                  background: tuple[float, float, float] = (1, 1, 1),
                  show_grid: bool = True,
-                 selected_name: str | None = None) -> None:
+                 selected_name: str | None = None,
+                 focus_pin: tuple[float, float] | None = None) -> None:
     """Paint a Project onto an existing Cairo context.
 
     The caller is responsible for sizing the surface and applying any pan/zoom
@@ -170,6 +171,18 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
         except Exception:
             # Don't let a bad component blank the canvas
             pass
+
+    # Pin-level focus marker (when the tree editor has drilled into a node).
+    if focus_pin is not None:
+        cr.save()
+        cr.set_source_rgba(1.0, 0.45, 0.0, 0.9)
+        cr.set_line_width(2.0)
+        cr.arc(focus_pin[0] * scale, focus_pin[1] * scale, 7, 0, 2 * math.pi)
+        cr.stroke()
+        cr.set_source_rgba(1.0, 0.45, 0.0, 0.25)
+        cr.arc(focus_pin[0] * scale, focus_pin[1] * scale, 4, 0, 2 * math.pi)
+        cr.fill()
+        cr.restore()
 
 
 # ---------------------------------------------------------------------------

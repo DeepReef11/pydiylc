@@ -171,6 +171,9 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         # Toolbar buttons in the header bar (modern GTK4 convention).
         _build_header_buttons(state, header)
 
+        # Install actions used by the right-click context menu.
+        _install_viewer_actions(state, win)
+
         # Main content: canvas in a scrolled window
         sw = Gtk.ScrolledWindow()
         sw.set_hexpand(True)
@@ -186,6 +189,12 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         click.set_button(0)  # any
         click.connect("pressed", _make_click_handler(state, canvas))
         canvas.add_controller(click)
+
+        # Right-click → context menu.
+        rclick = Gtk.GestureClick()
+        rclick.set_button(3)  # right mouse button
+        rclick.connect("pressed", _make_right_click_handler(state, canvas))
+        canvas.add_controller(rclick)
 
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", _make_drag_begin(state))
@@ -270,6 +279,8 @@ class _ViewerState:
         self.pending_d: bool = False  # first 'd' of a 'dd' delete chord
         # Live cursor position in project inches (None when off canvas).
         self.cursor_in: tuple[float, float] | None = None
+        # Active right-click context popover (so callbacks can dismiss it).
+        self.context_popover = None
         # Working-buffer save flow.
         self.buffer = None  # buffer.Buffer (one per tree-mode session)
         self.prefs = None  # prefs.Prefs (loaded lazily)
@@ -299,6 +310,44 @@ def _status_text(state: _ViewerState) -> str:
     if state.cursor_in is not None:
         cur = f"  ·  ({state.cursor_in[0]:.2f}, {state.cursor_in[1]:.2f}) in"
     return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
+
+
+def _install_viewer_actions(state: _ViewerState, win) -> None:
+    """Bind the context-menu actions (rotate / delete / send / add / focus).
+
+    Each closes the popover (if any) and routes to the same handlers the
+    keyboard shortcuts already use. Tree mode is auto-entered for actions
+    that require it, so right-click works without first pressing T.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gio
+
+    def ensure_tree():
+        if not state.tree_mode:
+            _enter_tree_mode(state)
+
+    def with_popover(action):
+        def wrapper(_a, _p):
+            if state.context_popover is not None:
+                state.context_popover.popdown()
+                state.context_popover = None
+            ensure_tree()
+            action()
+        return wrapper
+
+    group = Gio.SimpleActionGroup()
+    for name, fn in [
+        ("rotate", lambda: _tree_rotate(state, clockwise=True)),
+        ("delete", lambda: _tree_delete(state)),
+        ("send", lambda: _open_fuzzy_menu(state, mode="send")),
+        ("add", lambda: _open_add_menu(state, autowire=False)),
+        ("focus", lambda: _open_fuzzy_menu(state, mode="focus")),
+    ]:
+        a = Gio.SimpleAction.new(name, None)
+        a.connect("activate", with_popover(fn))
+        group.add_action(a)
+    win.insert_action_group("viewer", group)
 
 
 def _build_header_buttons(state: _ViewerState, header) -> None:
@@ -413,6 +462,7 @@ def _make_draw_func(state: _ViewerState):
             background=(1, 1, 1),
             show_grid=True,
             selected_name=state.selected_name,
+            focus_pin=_focused_pin_position(state) if state.tree_mode else None,
         )
         cr.restore()
     return draw
@@ -431,11 +481,56 @@ def _make_click_handler(state: _ViewerState, canvas):
         hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
         if hit is not None:
             state.selected_name = getattr(hit, "name", None)
+            # Sync the tree cursor if tree mode is on.
+            if state.tree_mode and state.nav is not None:
+                idx = state.project.components.index(hit)
+                state.nav.focus_node(idx, None)
+                _refresh_tree_panel(state)
         else:
             state.selected_name = None
         canvas.queue_draw()
         _refresh_status(state)
     return on_click
+
+
+def _make_right_click_handler(state: _ViewerState, canvas):
+    """Right-click pops a context menu with the most common actions."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk, Gio
+
+    def on_rclick(gesture, n_press, x, y):
+        cx, cy = _project_xy_from_screen(state, x, y)
+        hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
+        # Select the right-clicked component (and sync tree).
+        if hit is not None:
+            state.selected_name = getattr(hit, "name", None)
+            if state.tree_mode and state.nav is not None:
+                state.nav.focus_node(state.project.components.index(hit), None)
+                _refresh_tree_panel(state)
+            canvas.queue_draw()
+            _refresh_status(state)
+
+        menu = Gio.Menu()
+        if hit is not None:
+            menu.append("Rotate (R)", "viewer.rotate")
+            menu.append("Delete (dd)", "viewer.delete")
+            menu.append("Send to… (g)", "viewer.send")
+        menu.append("Add component… (a)", "viewer.add")
+        menu.append("Focus… (/)", "viewer.focus")
+
+        popover = Gtk.PopoverMenu.new_from_model(menu)
+        popover.set_parent(canvas)
+        # Position at the click.
+        rect = Gdk.Rectangle()
+        rect.x = int(x); rect.y = int(y); rect.width = 1; rect.height = 1
+        popover.set_pointing_to(rect)
+        popover.set_has_arrow(False)
+        popover.popup()
+        # Stash so the action callbacks can dismiss it.
+        state.context_popover = popover
+
+    return on_rclick
 
 
 def _make_drag_begin(state: _ViewerState):
@@ -1510,8 +1605,10 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         state.pending_d = False
         _refresh_status(state)
 
-    # 'u' undo.
-    if keyval in (Gdk.KEY_u, Gdk.KEY_U):
+    # 'u' undo (also Ctrl+Z — universal shortcut).
+    if keyval in (Gdk.KEY_u, Gdk.KEY_U) or (
+        ctrl and keyval in (Gdk.KEY_z, Gdk.KEY_Z)
+    ):
         _tree_undo(state)
         return True
 
