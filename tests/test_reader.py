@@ -81,6 +81,18 @@ def test_resistor_value_round_trips_as_string(tmp_path):
     assert p2.components[1].value == "1M"
 
 
+def test_empty_value_round_trips(tmp_path):
+    """A cap with an empty value field shouldn't crash on re-emit."""
+    p = Project()
+    p.add(RadialCeramicDiskCapacitor("C1", 0, 0, 0, 0.1, value=""))
+    out = tmp_path / "x.diy"
+    p.save(out)
+    p2 = read_project(out)
+    # Empty value parses back to 0pF; we accept either "" or "0pF" depending
+    # on emitter behavior. What matters is no exception.
+    assert isinstance(p2.components[0], RadialCeramicDiskCapacitor)
+
+
 def test_capacitor_value_round_trips(tmp_path):
     p = Project()
     p.add(RadialFilmCapacitor("C1", 0, 0, 0, 0.1, value="100nF"))
@@ -318,3 +330,92 @@ def test_project_read_classmethod(tmp_path):
     p.save(tmp_path / "x.diy")
     p2 = Project.read(tmp_path / "x.diy")
     assert p2.title == "cm"
+
+
+def test_nested_xstream_measure_form(tmp_path):
+    """v3 XStream uses <size><value>0.09</value><unit>in</unit></size>
+    rather than the modern attribute form. The reader must accept both."""
+    xml = """<?xml version="1.0"?>
+<org.diylc.core.Project>
+  <title>v3</title>
+  <author></author>
+  <width value="10.0" unit="cm"/>
+  <height value="10.0" unit="cm"/>
+  <gridSpacing value="0.1" unit="in"/>
+  <components>
+    <org.diylc.components.connectivity.SolderPad>
+      <name>P1</name>
+      <size>
+        <value>0.09</value>
+        <unit class="org.diylc.core.measures.SizeUnit">in</unit>
+      </size>
+      <color hex="000000"/>
+      <point x="1.0" y="1.0"/>
+      <type>ROUND</type>
+      <holeSize>
+        <value>0.5</value>
+        <unit>mm</unit>
+      </holeSize>
+    </org.diylc.components.connectivity.SolderPad>
+  </components>
+</org.diylc.core.Project>
+"""
+    f = tmp_path / "x.diy"
+    f.write_text(xml)
+    p = read_project(f)
+    assert len(p.components) == 1
+    pad = p.components[0]
+    assert pad.size.value == 0.09
+    assert pad.size.unit == "in"
+    assert pad.hole_size.value == 0.5
+    assert pad.hole_size.unit == "mm"
+
+
+def test_xstream_reference_attribute_resolved(tmp_path):
+    """v3 XStream deduplicates identical sub-objects by emitting a
+    ``reference="..."`` path instead of repeating the value. The reader
+    must resolve these so the second SolderPad gets the same size as the
+    first, not crash with a missing field."""
+    xml = """<?xml version="1.0"?>
+<org.diylc.core.Project>
+  <title>v3</title>
+  <author></author>
+  <width value="10.0" unit="cm"/>
+  <height value="10.0" unit="cm"/>
+  <gridSpacing value="0.1" unit="in"/>
+  <components>
+    <org.diylc.components.connectivity.SolderPad>
+      <name>P1</name>
+      <size>
+        <value>0.09</value>
+        <unit>in</unit>
+      </size>
+      <color hex="000000"/>
+      <point x="1.0" y="1.0"/>
+      <type>ROUND</type>
+      <holeSize value="0.5" unit="mm"/>
+    </org.diylc.components.connectivity.SolderPad>
+    <org.diylc.components.connectivity.SolderPad>
+      <name>P2</name>
+      <size reference="../../org.diylc.components.connectivity.SolderPad/size"/>
+      <color hex="000000"/>
+      <point x="2.0" y="2.0"/>
+      <type>ROUND</type>
+      <holeSize value="0.5" unit="mm"/>
+    </org.diylc.components.connectivity.SolderPad>
+  </components>
+</org.diylc.core.Project>
+"""
+    f = tmp_path / "x.diy"
+    f.write_text(xml)
+    p = read_project(f)
+    # Both pads should resolve to the same size value.
+    assert len(p.components) == 2
+    assert p.components[0].size.value == 0.09
+    assert p.components[1].size.value == 0.09  # via reference
+    assert p.components[1].size.unit == "in"
+    # And the project should successfully round-trip (re-emit + re-read).
+    out = tmp_path / "rt.diy"
+    p.save(out)
+    p2 = read_project(out)
+    assert len(p2.components) == 2

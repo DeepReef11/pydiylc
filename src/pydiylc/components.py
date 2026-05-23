@@ -334,9 +334,16 @@ class Resistor(Component):
 
 
 def _split_value(s: str, default_unit: str) -> tuple[float, str]:
-    """Parse strings like "4.7K", "470nF", "22uF" into (value, unit)."""
+    """Parse strings like "4.7K", "470nF", "22uF" into (value, unit).
+
+    Tolerates empty/whitespace strings by returning ``(0.0, default_unit)``
+    — some round-tripped v3 files have empty value fields and we want the
+    re-emit to be silent rather than crash on bad input.
+    """
     import re
 
+    if not s or not s.strip():
+        return 0.0, default_unit
     m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*([A-Za-z]+)?\s*$", s)
     if not m:
         raise ValueError(f"can't parse value: {s!r}")

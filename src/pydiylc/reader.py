@@ -110,7 +110,34 @@ def _parse_point(el: ET.Element) -> tuple[float, float]:
 
 
 def _parse_measure(el: ET.Element) -> Measure:
-    return Measure(float(el.get("value", "0")), el.get("unit", "in"))
+    """Parse a Measure-shaped XML element.
+
+    Two forms in the wild:
+      - Modern: ``<size value="0.09" unit="in"/>`` (attributes).
+      - v3 XStream: ``<size><value>0.09</value><unit class="...">in</unit></size>``
+        (nested elements).
+    """
+    if el.get("value") is not None and el.get("unit") is not None:
+        return Measure(float(el.get("value", "0")), el.get("unit", "in"))
+    # Fall back to the nested form.
+    v_el = el.find("value")
+    u_el = el.find("unit")
+    if v_el is not None and v_el.text is not None:
+        try:
+            v = float(v_el.text.strip())
+        except ValueError:
+            v = 0.0
+        u = (u_el.text or "in").strip() if u_el is not None else "in"
+        return Measure(v, u)
+    return Measure(0.0, "in")
+
+
+def _looks_like_measure(el: ET.Element) -> bool:
+    """True if ``el`` represents a Measure (attr or nested form)."""
+    if el.get("value") is not None and el.get("unit") is not None:
+        return True
+    # Nested form: a <value> child plus a <unit> child.
+    return el.find("value") is not None and el.find("unit") is not None
 
 
 def _parse_color(el: ET.Element) -> str:
@@ -224,21 +251,19 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
                 values[field_name] = _parse_color(child)
             continue
 
-        # Measure elements have value+unit attributes.
-        if child.get("value") is not None and child.get("unit") is not None:
+        # Measure elements — modern attr form or v3 XStream nested form.
+        if _looks_like_measure(child):
             tag_short = el.tag
             if tag_short.startswith("org.diylc.components."):
                 tag_short = "diylc." + tag_short[len("org.diylc.components."):]
+            m = _parse_measure(child)
             if (tag_short, field_name) in _UNIT_VALUE_AS_STRING:
                 # Re-stringify as e.g. "10K", "100nF" — matches the format
                 # the original constructor accepts.
-                v = float(child.get("value", "0"))
-                u = child.get("unit", "")
-                # Strip trailing ".0" on integers for cleaner round-trip.
-                v_str = f"{int(v)}" if v.is_integer() else f"{v:g}"
-                values[field_name] = f"{v_str}{u}"
+                v_str = f"{int(m.value)}" if m.value.is_integer() else f"{m.value:g}"
+                values[field_name] = f"{v_str}{m.unit}"
             elif field_name in field_names:
-                values[field_name] = _parse_measure(child)
+                values[field_name] = m
             continue
 
         # Booleans, strings, numbers as element text.
@@ -356,11 +381,94 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         return None
 
 
+def _resolve_xstream_references(root: ET.Element) -> None:
+    """In-place: replace each element with a ``reference="..."`` attribute
+    with a deep copy of its referent.
+
+    v3 XStream-serialized files deduplicate identical sub-objects by emitting
+    e.g. ``<size reference="../../org.diylc.components.connectivity.SolderPad/size"/>``
+    instead of repeating the full ``<size>...</size>`` block. The reference
+    path is XPath-ish, evaluated against the element's parent context.
+
+    We do this once up front so the rest of the reader can treat the tree
+    as if every reference were inlined.
+    """
+    import copy as _copy
+
+    # Map child → parent so we can navigate "../" hops.
+    parent_map = {c: p for p in root.iter() for c in p}
+
+    def resolve_path(start: ET.Element, ref: str) -> ET.Element | None:
+        """Walk an XStream reference path from ``start``."""
+        node: ET.Element | None = start
+        for part in ref.split("/"):
+            if node is None:
+                return None
+            if part == "..":
+                node = parent_map.get(node)
+            elif part == "" or part == ".":
+                continue
+            else:
+                # Names may be indexed like "name[2]" (1-based). Strip and use.
+                idx = 1
+                tag = part
+                if "[" in part and part.endswith("]"):
+                    tag, _, rest = part.partition("[")
+                    try:
+                        idx = int(rest[:-1])
+                    except ValueError:
+                        idx = 1
+                # Find the idx-th child with that tag.
+                matches = [c for c in node if c.tag == tag]
+                if 1 <= idx <= len(matches):
+                    node = matches[idx - 1]
+                else:
+                    return None
+        return node
+
+    # Find every reference="..." element and replace it.
+    # Walk a snapshot of elements since we mutate the tree.
+    refs = [el for el in root.iter() if el.get("reference") is not None]
+    # Multiple passes in case references chain.
+    for _ in range(5):  # cap to avoid infinite loops on malformed input
+        progressed = False
+        still_refs: list[ET.Element] = []
+        for el in refs:
+            ref = el.get("reference")
+            if ref is None:
+                continue
+            parent = parent_map.get(el)
+            if parent is None:
+                continue
+            referent = resolve_path(el, ref)
+            if referent is None or referent.get("reference") is not None:
+                still_refs.append(el)
+                continue
+            # Replace el with a deep copy of referent (keeping el's tag so
+            # the field-name dispatch in the reader still works).
+            clone = _copy.deepcopy(referent)
+            clone.tag = el.tag
+            # Splice into the parent at el's position.
+            idx = list(parent).index(el)
+            parent.remove(el)
+            parent.insert(idx, clone)
+            # Update the parent_map for the new subtree.
+            for c in clone.iter():
+                for cc in c:
+                    parent_map[cc] = c
+            parent_map[clone] = parent
+            progressed = True
+        refs = still_refs
+        if not progressed or not refs:
+            break
+
+
 def read_project(path: str | Path) -> Project:
     """Parse a .diy file into a Project."""
     p = Path(path)
     tree = ET.parse(p)
     root = tree.getroot()
+    _resolve_xstream_references(root)
     # Modern files use <project>; older XStream-serialized files use
     # <org.diylc.core.Project>. Accept both.
     if root.tag not in ("project", "org.diylc.core.Project"):
