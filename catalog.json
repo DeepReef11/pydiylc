@@ -286,6 +286,63 @@
       "CENTER",
       "RIGHT"
     ],
+    "TAG_STRIP_MOUNT": [
+      "Central",
+      "Panel",
+      "CHASSIS",
+      "PCB"
+    ],
+    "SIL_PIN_COUNT": [
+      "_3",
+      "_4",
+      "_5",
+      "_6",
+      "_7",
+      "_8",
+      "_9",
+      "_10",
+      "_11",
+      "_12",
+      "_13",
+      "_14",
+      "_15",
+      "_16",
+      "_17",
+      "_18",
+      "_19",
+      "_20",
+      "_21",
+      "_22",
+      "_23",
+      "_24",
+      "_25",
+      "_26",
+      "_27",
+      "_28",
+      "_29",
+      "_30",
+      "_31",
+      "_32",
+      "_33",
+      "_34",
+      "_35",
+      "_36",
+      "_37",
+      "_38",
+      "_39",
+      "_40",
+      "_41",
+      "_42",
+      "_43",
+      "_44",
+      "_45",
+      "_46",
+      "_47",
+      "_48",
+      "_49",
+      "_50",
+      "_51"
+    ],
     "BJT_POLARITY": [
       "NPN",
       "PNP"
@@ -2016,6 +2073,1112 @@
             "kind": "string"
           },
           "default": "808080",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TagStrip",
+      "diylc_class": "diylc.boards.TagStrip",
+      "doc": "Insulated tag strip (terminal board with N solder lugs).\n\nXML: ``<diylc.boards.TagStrip>``\n\nAnchor (`x`, `y`) is the first lug; the rest are spaced by ``terminal_spacing``\nalong the strip's length.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "terminal_count",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 3,
+          "required": false
+        },
+        {
+          "name": "terminal_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.375,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "mount",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Central",
+          "required": false,
+          "enum": [
+            "Central",
+            "Panel",
+            "CHASSIS",
+            "PCB"
+          ]
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cd8500",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PilotLampHolder",
+      "diylc_class": "diylc.electromechanical.PilotLampHolder",
+      "doc": "Panel-mount pilot lamp holder (chassis indicator light).\n\nXML: ``<diylc.electromechanical.PilotLampHolder>``\n\nAnchor (`x`, `y`) is the lamp center. ``angle`` rotates the body in degrees.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "angle",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "MultiSectionCapacitor",
+      "diylc_class": "diylc.passive.MultiSectionCapacitor",
+      "doc": "Multi-section \"can\" capacitor (vintage tube-amp filter cap).\n\nXML: ``<diylc.passive.MultiSectionCapacitor>``\n\nHas N capacitance values in a single can. ``values`` is a list of value\nstrings, one per section (e.g. ``[\"20uF\", \"20uF\", \"20uF\"]``).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "points"
+          },
+          "default": "['20uF']",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_450V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TapeMeasure",
+      "diylc_class": "diylc.shapes.TapeMeasure",
+      "doc": "Tape-measure annotation (dimension line with arrows + label).\n\nXML: ``<diylc.shapes.TapeMeasure>``\n\nTwo endpoints define the measurement span; ``arrow_size`` controls\nthe arrowhead length.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "string"
+          },
+          "default": "SOLID",
+          "required": false,
+          "enum": [
+            "SOLID",
+            "DASHED",
+            "DOTTED"
+          ]
+        },
+        {
+          "name": "thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.0,
+            "unit": "px"
+          },
+          "required": false
+        },
+        {
+          "name": "arrow_size",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 5.0,
+            "unit": "px"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "FuseHolderPanel",
+      "diylc_class": "diylc.electromechanical.FuseHolderPanel",
+      "doc": "Panel-mount fuse holder (chassis-mount cartridge fuse).\n\nXML: ``<diylc.electromechanical.FuseHolderPanel>``\n\nTwo control points (the two solder lugs). ``orientation`` is HORIZONTAL\nor VERTICAL (the v3 enum, distinct from the standard 4-way ORIENTATION).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VERTICAL",
+          "required": false,
+          "enum": [
+            "HORIZONTAL",
+            "VERTICAL"
+          ]
+        },
+        {
+          "name": "has_fuse",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "VALUE",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "555555",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3b3b3b",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "AudioTransformer",
+      "diylc_class": "diylc.passive.AudioTransformer",
+      "doc": "Through-hole audio transformer with primary + secondary windings.\n\nXML: ``<diylc.passive.AudioTransformer>``\n\n6 control points (3 primary lugs + 3 secondary lugs).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "lead_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "winding_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.5,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "core_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.15,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "core_width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.6,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "coil_width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.4,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "coil_length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.2,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "core_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "759daf",
+          "required": false
+        },
+        {
+          "name": "coil_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "b87333",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 100,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "LEDSymbol",
+      "diylc_class": "diylc.semiconductors.LEDSymbol",
+      "doc": "Schematic symbol for an LED (DiodeSymbol with arrows).\n\nXML: ``<diylc.semiconductors.LEDSymbol>``\n\nSame geometry as DiodeSymbol \u2014 two terminals plus the LED-specific\nlight-emission arrows added by the renderer.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ff0000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "SIL_IC",
+      "diylc_class": "diylc.semiconductors.SIL_IC",
+      "doc": "Single-in-line IC (one row of pins \u2014 voltage regulators, drivers, etc).\n\nXML: ``<diylc.semiconductors.SIL_IC>``\n\nAnchor (`x`, `y`) is pin 1. ``pin_count`` is the v3 enum form (\"_9\").",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "pin_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_3",
+          "required": false,
+          "enum": [
+            "_3",
+            "_4",
+            "_5",
+            "_6",
+            "_7",
+            "_8",
+            "_9",
+            "_10",
+            "_11",
+            "_12",
+            "_13",
+            "_14",
+            "_15",
+            "_16",
+            "_17",
+            "_18",
+            "_19",
+            "_20",
+            "_21",
+            "_22",
+            "_23",
+            "_24",
+            "_25",
+            "_26",
+            "_27",
+            "_28",
+            "_29",
+            "_30",
+            "_31",
+            "_32",
+            "_33",
+            "_34",
+            "_35",
+            "_36",
+            "_37",
+            "_38",
+            "_39",
+            "_40",
+            "_41",
+            "_42",
+            "_43",
+            "_44",
+            "_45",
+            "_46",
+            "_47",
+            "_48",
+            "_49",
+            "_50",
+            "_51"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3b3b3b",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "ChassisPanel",
+      "diylc_class": "diylc.chassis.ChassisPanel",
+      "doc": "Rectangular chassis-panel cutout (the metal box the layout sits in).\n\nXML: ``<diylc.chassis.ChassisPanel>``\n\nDefined by two corner points.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "333333",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TransistorTO1",
+      "diylc_class": "diylc.semiconductors.TransistorTO1",
+      "doc": "TO-1 / TO-5 metal-can transistor (vintage Ge transistors, etc).\n\nXML: ``<diylc.semiconductors.TransistorTO1>``\n\nThree control points (E, B, C). Anchor (`x`, `y`) is the body center.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "pinout",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BJT_EBC",
+          "required": false,
+          "enum": [
+            "BJT_EBC",
+            "BJT_CBE",
+            "BJT_BCE",
+            "BJT_ECB",
+            "JFET_DSG",
+            "JFET_GSD",
+            "JFET_DGS",
+            "JFET_SGD",
+            "JFET_GDS",
+            "MOSFET_DSG",
+            "MOSFET_GSD",
+            "MOSFET_DGS",
+            "MOSFET_SGD",
+            "MOSFET_GDS",
+            "REGULATOR_IGO",
+            "REGULATOR_OGI",
+            "REGULATOR_GOI",
+            "REGULATOR_AOI",
+            "REGULATOR_GIO"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "c0c0c0",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "868686",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH",
+            "PINOUT"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
           "required": false
         }
       ]

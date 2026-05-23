@@ -73,6 +73,16 @@ from .components import (
     Turret,
     VeroBoard,
     WrapLabel,
+    TagStrip,
+    PilotLampHolder,
+    MultiSectionCapacitor,
+    TapeMeasure,
+    FuseHolderPanel,
+    AudioTransformer,
+    LEDSymbol,
+    SIL_IC,
+    ChassisPanel,
+    TransistorTO1,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1315,6 +1325,134 @@ def _render_cliff_jack(cr, c: CliffJack1_4, s: float) -> None:
     cr.stroke()
 
 
+def _render_tag_strip(cr, c: TagStrip, s: float) -> None:
+    ts = c.terminal_spacing.to_inches()
+    h = (c.terminal_count - 1) * ts + 0.2
+    cr.rectangle((c.x - 0.05) * s, (c.y - 0.1) * s, 0.3 * s, h * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.2, 0.1, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+    for i in range(c.terminal_count):
+        y = (c.y + i * ts) * s
+        cr.arc(c.x * s, y, 3, 0, 2 * math.pi)
+        cr.set_source_rgb(0.4, 0.4, 0.4)
+        cr.fill_preserve()
+        cr.set_source_rgb(0, 0, 0)
+        cr.stroke()
+
+
+def _render_pilot_lamp(cr, c: PilotLampHolder, s: float) -> None:
+    cx, cy = c.x * s, c.y * s
+    cr.arc(cx, cy, 12, 0, 2 * math.pi)
+    cr.set_source_rgba(1, 0.85, 0.3, c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.3, 0.2, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_multi_section_cap(cr, c: MultiSectionCapacitor, s: float) -> None:
+    sections = len(c.values)
+    h = sections * 0.2 + 0.1
+    cr.rectangle((c.x - 0.15) * s, (c.y - 0.1) * s, 0.3 * s, h * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_tape_measure(cr, c: TapeMeasure, s: float) -> None:
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.0)
+    cr.move_to(c.x1 * s, c.y1 * s)
+    cr.line_to(c.x2 * s, c.y2 * s)
+    cr.stroke()
+    # Arrow heads at each end (small triangles).
+    for (ex, ey, ox, oy) in [(c.x1, c.y1, c.x2, c.y2), (c.x2, c.y2, c.x1, c.y1)]:
+        cr.move_to(ex * s, ey * s)
+        cr.line_to(ox * s, oy * s)
+    cr.stroke()
+
+
+def _render_fuse_holder(cr, c: FuseHolderPanel, s: float) -> None:
+    cr.rectangle((c.x - 0.05) * s, c.y * s, 0.1 * s, 0.2 * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_audio_transformer(cr, c: AudioTransformer, s: float) -> None:
+    w = c.coil_width.to_inches() * s
+    h = c.coil_length.to_inches() * s
+    cr.rectangle(c.x * s - w / 2, c.y * s, w, h)
+    cr.set_source_rgba(*_hex_to_rgb(c.coil_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.core_color))
+    cr.set_line_width(1.5)
+    cr.stroke()
+
+
+def _render_led_symbol(cr, c: LEDSymbol, s: float) -> None:
+    # Triangle pointing along x1→x2.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    ux, uy = dx / L, dy / L
+    px, py = -uy, ux
+    size = 8
+    cr.move_to(cx - ux * size, cy - uy * size + 0)
+    cr.line_to(cx + ux * size, cy + uy * size)
+    cr.line_to(cx + px * size, cy + py * size)
+    cr.close_path()
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_sil_ic(cr, c: SIL_IC, s: float) -> None:
+    n = int(c.pin_count.lstrip("_"))
+    ps = c.pin_spacing.to_inches()
+    w = (n - 1) * ps + 0.1
+    cr.rectangle((c.x - 0.05) * s, (c.y - 0.1) * s, w * s, 0.25 * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_chassis_panel(cr, c: ChassisPanel, s: float) -> None:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    cr.rectangle(x, y, w, h)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.5)
+    cr.stroke()
+
+
+def _render_transistor_to1(cr, c: TransistorTO1, s: float) -> None:
+    cx, cy = c.x * s, (c.y + c.pin_spacing.to_inches()) * s
+    cr.arc(cx, cy, 0.18 * s, 0, 2 * math.pi)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1371,4 +1509,14 @@ _RENDERERS: dict[type, callable] = {
     TransformerCore: _render_transformer_core,
     TriodeSymbol: _render_triode_symbol,
     SingleCoilPickup: _render_single_coil_pickup,
+    TagStrip: _render_tag_strip,
+    PilotLampHolder: _render_pilot_lamp,
+    MultiSectionCapacitor: _render_multi_section_cap,
+    TapeMeasure: _render_tape_measure,
+    FuseHolderPanel: _render_fuse_holder,
+    AudioTransformer: _render_audio_transformer,
+    LEDSymbol: _render_led_symbol,
+    SIL_IC: _render_sil_ic,
+    ChassisPanel: _render_chassis_panel,
+    TransistorTO1: _render_transistor_to1,
 }

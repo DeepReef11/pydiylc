@@ -67,6 +67,16 @@ from .components import (
     Turret,
     VeroBoard,
     WrapLabel,
+    TagStrip,
+    PilotLampHolder,
+    MultiSectionCapacitor,
+    TapeMeasure,
+    FuseHolderPanel,
+    AudioTransformer,
+    LEDSymbol,
+    SIL_IC,
+    ChassisPanel,
+    TransistorTO1,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1313,6 +1323,122 @@ def _render_cliff_jack(c: CliffJack1_4, s: float) -> str:
     )
 
 
+def _render_tag_strip(c: TagStrip, s: float) -> str:
+    ts = c.terminal_spacing.to_inches()
+    h = (c.terminal_count - 1) * ts + 0.2
+    body = (
+        f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
+        f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
+        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#3d1f00" stroke-width="1"/>'
+    )
+    lugs = "".join(
+        f'<circle cx="{c.x*s:.1f}" cy="{(c.y+i*ts)*s:.1f}" r="3" fill="#666" stroke="#000"/>'
+        for i in range(c.terminal_count)
+    )
+    return "<g>" + body + lugs + "</g>"
+
+
+def _render_pilot_lamp(c: PilotLampHolder, s: float) -> str:
+    return (
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="12" '
+        f'fill="#ffd84d" fill-opacity="{c.alpha/255:.2f}" stroke="#4c3200" stroke-width="1"/>'
+    )
+
+
+def _render_multi_section_cap(c: MultiSectionCapacitor, s: float) -> str:
+    sections = len(c.values)
+    h = sections * 0.2 + 0.1
+    return (
+        f'<rect x="{(c.x-0.15)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
+        f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_tape_measure(c: TapeMeasure, s: float) -> str:
+    return (
+        f'<line x1="{c.x1*s:.1f}" y1="{c.y1*s:.1f}" '
+        f'x2="{c.x2*s:.1f}" y2="{c.y2*s:.1f}" '
+        f'stroke="#{c.color}" stroke-width="1" '
+        f'marker-start="url(#arrow)" marker-end="url(#arrow)"/>'
+    )
+
+
+def _render_fuse_holder(c: FuseHolderPanel, s: float) -> str:
+    return (
+        f'<rect x="{(c.x-0.05)*s:.1f}" y="{c.y*s:.1f}" '
+        f'width="{0.1*s:.1f}" height="{0.2*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_audio_transformer(c: AudioTransformer, s: float) -> str:
+    w = c.coil_width.to_inches() * s
+    h = c.coil_length.to_inches() * s
+    return (
+        f'<rect x="{c.x*s - w/2:.1f}" y="{c.y*s:.1f}" '
+        f'width="{w:.1f}" height="{h:.1f}" '
+        f'fill="#{c.coil_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.core_color}" stroke-width="1.5"/>'
+    )
+
+
+def _render_led_symbol(c: LEDSymbol, s: float) -> str:
+    import math
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    ux, uy = dx / L, dy / L
+    px, py = -uy, ux
+    size = 8
+    p1 = (cx - ux * size, cy - uy * size)
+    p2 = (cx + ux * size, cy + uy * size)
+    p3 = (cx + px * size, cy + py * size)
+    pts = f"{p1[0]:.1f},{p1[1]:.1f} {p2[0]:.1f},{p2[1]:.1f} {p3[0]:.1f},{p3[1]:.1f}"
+    return (
+        f'<polygon points="{pts}" fill="#{c.body_color}" '
+        f'stroke="#000" stroke-width="1"/>'
+    )
+
+
+def _render_sil_ic(c: SIL_IC, s: float) -> str:
+    n = int(c.pin_count.lstrip("_"))
+    ps = c.pin_spacing.to_inches()
+    w = (n - 1) * ps + 0.1
+    return (
+        f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
+        f'width="{w*s:.1f}" height="{0.25*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_chassis_panel(c: ChassisPanel, s: float) -> str:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    return (
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'fill="#{c.color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1.5"/>'
+    )
+
+
+def _render_transistor_to1(c: TransistorTO1, s: float) -> str:
+    cy = (c.y + c.pin_spacing.to_inches()) * s
+    return (
+        f'<circle cx="{c.x*s:.1f}" cy="{cy:.1f}" r="{0.18*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1369,4 +1495,14 @@ _RENDERERS: dict[type, callable] = {
     TransformerCore: _render_transformer_core,
     TriodeSymbol: _render_triode_symbol,
     SingleCoilPickup: _render_single_coil_pickup,
+    TagStrip: _render_tag_strip,
+    PilotLampHolder: _render_pilot_lamp,
+    MultiSectionCapacitor: _render_multi_section_cap,
+    TapeMeasure: _render_tape_measure,
+    FuseHolderPanel: _render_fuse_holder,
+    AudioTransformer: _render_audio_transformer,
+    LEDSymbol: _render_led_symbol,
+    SIL_IC: _render_sil_ic,
+    ChassisPanel: _render_chassis_panel,
+    TransistorTO1: _render_transistor_to1,
 }

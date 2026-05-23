@@ -128,6 +128,13 @@ PCB_LAYER = ("_1", "_2", "_3", "_4")
 # Label horizontal alignment used by WrapLabel
 WRAP_LABEL_ALIGNMENT = ("LEFT", "CENTER", "RIGHT")
 
+# TagStrip mount mode (where the strip is placed). v3 files use "Central" /
+# "Panel"; modern files use "CHASSIS" / "PCB". Accept all four.
+TAG_STRIP_MOUNT = ("Central", "Panel", "CHASSIS", "PCB")
+
+# SIL IC pin count: 3..50 (single-in-line includes voltage regulators with 3 pins).
+SIL_PIN_COUNT = tuple(f"_{n}" for n in range(3, 52))
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 

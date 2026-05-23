@@ -270,8 +270,9 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         if tag == "controlPoints2":  # HookupWire and CurvedTrace
             wire_pts = [_parse_point(p) for p in _point_children(child)]
             continue
-        if tag in ("point", "java.awt.Point") and child.get("x") is not None:
-            # SolderPad / Label / TraceCut store a bare <point x="" y=""/>
+        if tag in ("point", "java.awt.Point", "controlPoint") and child.get("x") is not None:
+            # SolderPad / Label / TraceCut store a bare <point x="" y=""/>;
+            # SingleCoilPickup uses the singular <controlPoint x="" y=""/>.
             single_point = _parse_point(child)
             continue
         if tag in ("firstPoint", "secondPoint"):
@@ -418,8 +419,28 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
             values["x1"], values["y1"] = pts[0]
             values["x2"], values["y2"] = pts[1] if len(pts) >= 2 else pts[0]
     else:
-        # Two-pin: assume [p1, p2, midpoint]
-        _set_two_pin_coords(values, pts)
+        # Auto-dispatch by the dataclass's coordinate-field shape. This lets
+        # new components Just Work without adding another entry to the table
+        # above; the explicit cases above handle the components whose
+        # in-XML point ordering doesn't match the naive guess.
+        has_xy = "x" in field_names and "y" in field_names
+        has_corners = all(k in field_names for k in ("x1", "y1", "x2", "y2"))
+        has_points_field = "points" in field_names
+        if has_points_field:
+            values["points"] = pts
+        elif has_corners and len(pts) >= 2:
+            values["x1"], values["y1"] = pts[0]
+            values["x2"], values["y2"] = pts[1]
+        elif has_xy:
+            # Prefer the singular <controlPoint x=" y="> when present
+            # (SingleCoilPickup etc.); fall back to the first control point.
+            if single_point is not None and not pts:
+                values["x"], values["y"] = single_point
+            else:
+                _set_single_anchor(values, pts)
+        else:
+            # Last-resort: original two-pin behavior.
+            _set_two_pin_coords(values, pts)
 
     # Drop keys the dataclass doesn't accept.
     extra = set(values) - field_names

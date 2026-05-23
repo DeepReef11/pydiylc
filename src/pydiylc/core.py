@@ -26,6 +26,25 @@ class Measure:
     def attrs(self) -> str:
         return f'value="{_fmt(self.value)}" unit="{self.unit}"'
 
+    def to_inches(self) -> float:
+        """Convert this measurement to inches, regardless of stored unit.
+
+        Only length units are supported (in, cm, mm, px). For non-length
+        measurements (V, A, F, etc.) calling this is a bug; we raise rather
+        than silently treat them as a length.
+        """
+        u = self.unit.lower()
+        if u == "in":
+            return float(self.value)
+        if u == "cm":
+            return float(self.value) / 2.54
+        if u == "mm":
+            return float(self.value) / 25.4
+        if u == "px":
+            # DIYLC's "px" is conventionally 1/96 in (CSS DPI).
+            return float(self.value) / 96.0
+        raise ValueError(f"to_inches: unit {self.unit!r} is not a length")
+
 
 def inches(v: float) -> Measure:
     return Measure(v, "in")
