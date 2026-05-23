@@ -23,20 +23,31 @@ from .components import (
     BlankBoard,
     BOM,
     CapacitorSymbol,
+    CliffJack1_4,
     Component,
     CopperTrace,
     CurvedTrace,
+    DiodeGlass,
     DiodePlastic,
     DIL_IC,
     DiodeSymbol,
     Dot,
     Ellipse,
+    EllipticalCutout,
     Eyelet,
+    GroundFill,
     GroundSymbol,
     HookupWire,
     Image,
     Jumper,
     Line,
+    PCBText,
+    PerfBoard,
+    PinHeader,
+    PlasticDCJack,
+    Polygon,
+    PotentiometerPanel,
+    PotentiometerSymbol,
     Rectangle,
     ResistorSymbol,
     TerminalStrip,
@@ -46,9 +57,6 @@ from .components import (
     LED,
     MiniToggleSwitch,
     OpenJack1_4,
-    PerfBoard,
-    PlasticDCJack,
-    PotentiometerPanel,
     RadialCeramicDiskCapacitor,
     RadialElectrolytic,
     RadialFilmCapacitor,
@@ -58,6 +66,7 @@ from .components import (
     TransistorTO92,
     Turret,
     VeroBoard,
+    WrapLabel,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1054,6 +1063,151 @@ def _render_label(cr, c: Label, s: float) -> None:
     cr.restore()
 
 
+def _render_ground_fill(cr, c: GroundFill, s: float) -> None:
+    pts = [(x * s, y * s) for x, y in c.points]
+    if len(pts) < 3:
+        return
+    cr.move_to(*pts[0])
+    for x, y in pts[1:]:
+        cr.line_to(x, y)
+    cr.close_path()
+    cr.set_source_rgba(*_hex_to_rgb(c.color), 0.35)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_elliptical_cutout(cr, c: EllipticalCutout, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    rx, ry = abs(x2 - x1) / 2, abs(y2 - y1) / 2
+    if rx == 0 or ry == 0:
+        return
+    cr.save()
+    cr.translate(cx, cy)
+    cr.scale(rx, ry)
+    cr.arc(0, 0, 1, 0, 2 * math.pi)
+    cr.restore()
+    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_pin_header(cr, c: PinHeader, s: float) -> None:
+    for x, y in c.points:
+        cr.arc(x * s, y * s, 4, 0, 2 * math.pi)
+        cr.set_source_rgb(0.2, 0.2, 0.2)
+        cr.fill_preserve()
+        cr.set_source_rgb(0, 0, 0)
+        cr.set_line_width(1.0)
+        cr.stroke()
+
+
+def _render_polygon(cr, c: Polygon, s: float) -> None:
+    pts = [(x * s, y * s) for x, y in c.points]
+    if len(pts) < 3:
+        return
+    cr.move_to(*pts[0])
+    for x, y in pts[1:]:
+        cr.line_to(x, y)
+    cr.close_path()
+    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_wrap_label(cr, c: WrapLabel, s: float) -> None:
+    cr.save()
+    cr.select_font_face("sans-serif")
+    cr.set_font_size(c.font_size)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    x = c.x1 * s
+    y = c.y1 * s + c.font_size
+    cr.move_to(x, y)
+    cr.show_text(c.text)
+    cr.restore()
+
+
+def _render_diode_glass(cr, c: DiodeGlass, s: float) -> None:
+    _render_diode_like(cr, c, s)
+
+
+def _render_diode_like(cr, c, s: float) -> None:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1
+    ux, uy = dx / length, dy / length
+    body_len = max(length * 0.5, 14)
+    body_w = 8
+    px, py = -uy, ux
+    hl = body_len / 2
+    hw = body_w / 2
+    cr.move_to(cx - ux * hl + px * hw, cy - uy * hl + py * hw)
+    cr.line_to(cx + ux * hl + px * hw, cy + uy * hl + py * hw)
+    cr.line_to(cx + ux * hl - px * hw, cy + uy * hl - py * hw)
+    cr.line_to(cx - ux * hl - px * hw, cy - uy * hl - py * hw)
+    cr.close_path()
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+    cr.set_source_rgb(*_hex_to_rgb(c.lead_color))
+    cr.set_line_width(1.2)
+    cr.move_to(x1, y1)
+    cr.line_to(cx - ux * hl, cy - uy * hl)
+    cr.move_to(cx + ux * hl, cy + uy * hl)
+    cr.line_to(x2, y2)
+    cr.stroke()
+
+
+def _render_pcb_text(cr, c: PCBText, s: float) -> None:
+    cr.save()
+    cr.select_font_face("monospace")
+    cr.set_font_size(c.font_size)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.move_to(c.x * s, c.y * s + c.font_size)
+    cr.show_text(c.text)
+    cr.restore()
+
+
+def _render_potentiometer_symbol(cr, c: PotentiometerSymbol, s: float) -> None:
+    pts = c._control_points()
+    sx = [p[0] * s for p in pts]
+    sy = [p[1] * s for p in pts]
+    cx, cy = sum(sx) / 3, sum(sy) / 3
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.0)
+    cr.arc(cx, cy, 8, 0, 2 * math.pi)
+    cr.stroke()
+    for x, y in zip(sx, sy):
+        cr.move_to(cx, cy)
+        cr.line_to(x, y)
+        cr.stroke()
+
+
+def _render_cliff_jack(cr, c: CliffJack1_4, s: float) -> None:
+    # Body rectangle around the 5 control points.
+    x = c.x * s
+    y = c.y * s
+    w = 0.4 * s
+    h = 0.3 * s
+    cr.rectangle(x - 4, y - 4, w, h)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1095,4 +1249,13 @@ _RENDERERS: dict[type, callable] = {
     PlasticDCJack: _render_dc_jack,
     OpenJack1_4: _render_open_jack,
     Label: _render_label,
+    GroundFill: _render_ground_fill,
+    EllipticalCutout: _render_elliptical_cutout,
+    PinHeader: _render_pin_header,
+    Polygon: _render_polygon,
+    WrapLabel: _render_wrap_label,
+    DiodeGlass: _render_diode_glass,
+    PCBText: _render_pcb_text,
+    PotentiometerSymbol: _render_potentiometer_symbol,
+    CliffJack1_4: _render_cliff_jack,
 }

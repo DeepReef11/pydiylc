@@ -2474,12 +2474,454 @@ class OpenJack1_4(Component):
         )
 
 
+# ---------------------------------------------------------------------------
+# Additional v3-corpus components (added when corpus warnings surfaced them).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class GroundFill(Component):
+    """Copper-fill polygon, typically used as a PCB ground plane.
+
+    XML: ``<diylc.connectivity.GroundFill>``
+
+    Defined by N corner points; closes implicitly. Layer selects which
+    PCB copper layer the fill belongs to.
+    """
+
+    name: str
+    points: Sequence[Point]
+    color: str = "000000"
+    layer: str = "_1"
+
+    __diylc_class__: ClassVar[str] = "diylc.connectivity.GroundFill"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"layer": E.PCB_LAYER}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if len(self.points) < 3:
+            raise ValueError("GroundFill needs at least 3 corner points")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        n = len(self.points)
+        # The upstream pointCount enum: _3, _4, _5, _6, _8, _12, _16, _32.
+        # Round up to the nearest legal value just in case.
+        pc = f"_{n}"
+        return (
+            f"{pad}<diylc.connectivity.GroundFill>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{_points_block('controlPoints', list(self.points), indent + 2)}\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <pointCount>{pc}</pointCount>\n"
+            f"{pad}  <layer>{self.layer}</layer>\n"
+            f"{pad}</diylc.connectivity.GroundFill>"
+        )
+
+
+@dataclass
+class EllipticalCutout(Component):
+    """Elliptical chassis cutout — a hole punched in a chassis panel.
+
+    XML: ``<diylc.chassis.EllipticalCutout>``
+
+    Defined by two corner points of its bounding rectangle.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    alpha: int = 127
+    color: str = "333333"
+    border_color: str = "000000"
+    border_thickness: Measure = field(default_factory=lambda: mm(0.2))
+
+    __diylc_class__: ClassVar[str] = "diylc.chassis.EllipticalCutout"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.chassis.EllipticalCutout>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}    <point x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <borderThickness {self.border_thickness.attrs()}/>\n"
+            f"{pad}</diylc.chassis.EllipticalCutout>"
+        )
+
+
+@dataclass
+class PinHeader(Component):
+    """Pin header / connector strip with N pins.
+
+    XML: ``<diylc.electromechanical.PinHeader>``
+
+    Stored as a list of pin positions; pin count is len(points).
+    """
+
+    name: str
+    points: Sequence[Point]
+    orientation: str = "DEFAULT"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.PinHeader"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+        if len(self.points) < 1:
+            raise ValueError("PinHeader needs at least 1 pin")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.electromechanical.PinHeader>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{_points_block('controlPoints', list(self.points), indent + 2)}\n"
+            f"{pad}</diylc.electromechanical.PinHeader>"
+        )
+
+
+@dataclass
+class Polygon(Component):
+    """N-sided polygon shape annotation.
+
+    XML: ``<diylc.shapes.Polygon>``
+
+    Defined by N corner points (>= 3 forms a closed polygon).
+    """
+
+    name: str
+    points: Sequence[Point]
+    value: str = ""
+    alpha: int = 63
+    color: str = "cccccc"
+    border_color: str = "000000"
+    border_thickness: Measure = field(default_factory=lambda: mm(0.2))
+
+    __diylc_class__: ClassVar[str] = "diylc.shapes.Polygon"
+
+    def __post_init__(self) -> None:
+        if len(self.points) < 3:
+            raise ValueError("Polygon needs at least 3 corner points")
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = list(self.points)
+        # First / second points fall back to the bounding-box corners of the
+        # polygon — DIYLC uses them for resize handles.
+        xs = [x for x, _ in pts]; ys = [y for _, y in pts]
+        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+        return (
+            f"{pad}<diylc.shapes.Polygon>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <firstPoint x="{fmt(x1)}" y="{fmt(y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(x2)}" y="{fmt(y2)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <borderThickness {self.border_thickness.attrs()}/>\n"
+            f"{pad}</diylc.shapes.Polygon>"
+        )
+
+
+@dataclass
+class WrapLabel(Component):
+    """Text label with word-wrap inside a bounding rectangle.
+
+    XML: ``<diylc.misc.WrapLabel>``
+
+    Behaves like a Label but the text wraps to fit (x1,y1)..(x2,y2).
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    text: str = ""
+    font: str = "Arial"
+    font_size: int = 14
+    font_style: int = 0
+    color: str = "000000"
+    horizontal_alignment: str = "LEFT"
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.WrapLabel"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "horizontal_alignment": E.WRAP_LABEL_ALIGNMENT,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.misc.WrapLabel>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <controlPoints>\n"
+            f'{pad}    <point x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}    <point x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f"{pad}  </controlPoints>\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <font name="{esc(self.font)}" size="{self.font_size}" style="{self.font_style}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <horizontalAlignment>{self.horizontal_alignment}</horizontalAlignment>\n"
+            f"{pad}  <value>{esc(self.text)}</value>\n"
+            f"{pad}</diylc.misc.WrapLabel>"
+        )
+
+
+@dataclass
+class DiodeGlass(Component):
+    """Glass-bodied through-hole diode (e.g. 1N4148-style with glass body).
+
+    XML: ``<diylc.semiconductors.DiodeGlass>``
+
+    Functionally a DiodePlastic with a translucent glass body (different
+    default colors).
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    alpha: int = 127
+    body_color: str = "e1f0ff"
+    border_color: str = "808080"
+    label_color: str = "000000"
+    lead_color: str = "636363"
+    marker_color: str = "303030"
+    length: Measure = field(default_factory=lambda: mm(4.5))
+    width: Measure = field(default_factory=lambda: inches(0.09))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.DiodeGlass"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.semiconductors.DiodeGlass>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <markerColor hex="{hex_color(self.marker_color)}"/>\n'
+            f"{pad}</diylc.semiconductors.DiodeGlass>"
+        )
+
+
+@dataclass
+class PCBText(Component):
+    """Single-line text label rendered on a PCB.
+
+    XML: ``<diylc.misc.PCBText>``
+
+    Stored as a single anchor point + text string. The font field is
+    intentionally minimal — DIYLC's full XStream font block with kerning,
+    weight, etc., is not round-tripped, but the basic Label-style font is.
+    """
+
+    name: str
+    x: float
+    y: float
+    text: str = ""
+    font: str = "Courier New"
+    font_size: int = 12
+    font_style: int = 0
+    color: str = "000000"
+    horizontal_alignment: str = "LEFT"
+    vertical_alignment: str = "TOP"
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.PCBText"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.misc.PCBText>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <text>{esc(self.text)}</text>\n"
+            f'{pad}  <font name="{esc(self.font)}" size="{self.font_size}" style="{self.font_style}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <horizontalAlignment>{self.horizontal_alignment}</horizontalAlignment>\n"
+            f"{pad}  <verticalAlignment>{self.vertical_alignment}</verticalAlignment>\n"
+            f"{pad}</diylc.misc.PCBText>"
+        )
+
+
+@dataclass
+class PotentiometerSymbol(Component):
+    """Schematic-style 3-lug potentiometer symbol.
+
+    XML: ``<diylc.passive.PotentiometerSymbol>``
+
+    Anchor (`x`, `y`) is lug 1; the other two are auto-placed.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    color: str = "0000ff"
+    flip: str = "NONE"
+    display: str = "NAME"
+    orientation: str = "DEFAULT"
+    move_label: bool = False
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.PotentiometerSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "flip": E.SYMBOL_FLIPPING,
+        "display": E.DISPLAY,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _control_points(self) -> list[Point]:
+        # Three lugs spaced 0.2 in apart, plus the wiper-mid-tap on the
+        # perpendicular axis. Geometry borrows from the panel pot.
+        s = 0.2
+        if self.orientation == "DEFAULT":
+            return [(self.x, self.y), (self.x + s, self.y + s), (self.x - s, self.y + s)]
+        if self.orientation == "_90":
+            return [(self.x, self.y), (self.x - s, self.y + s), (self.x - s, self.y - s)]
+        if self.orientation == "_180":
+            return [(self.x, self.y), (self.x - s, self.y - s), (self.x + s, self.y - s)]
+        return [(self.x, self.y), (self.x + s, self.y - s), (self.x + s, self.y + s)]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
+        return (
+            f"{pad}<diylc.passive.PotentiometerSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <flip>{self.flip}</flip>\n"
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}</diylc.passive.PotentiometerSymbol>"
+        )
+
+
+@dataclass
+class CliffJack1_4(Component):
+    """Cliff-style closed panel-mount 1/4" phono jack.
+
+    XML: ``<diylc.electromechanical.CliffJack1_4>``
+
+    A more elaborate jack than ``OpenJack1_4`` — fully enclosed body.
+    Anchor (`x`, `y`) is the first pin; jack has 5 control points.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    type: str = "MONO"
+    orientation: str = "DEFAULT"
+    show_labels: bool = True
+    alpha: int = 127
+    body_color: str = "666666"
+    nut_color: str = "999999"
+    border_color: str = "000000"
+    label_color: str = "ffffff"
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.CliffJack1_4"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "type": E.OPEN_JACK_TYPE,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # Five control points: tip / ring / sleeve / nut / mounting (rough
+        # 0.1-in offsets; DIYLC's editor places them precisely).
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x, self.y + 0.1),
+            (self.x, self.y + 0.2),
+            (self.x + 0.3, self.y + 0.1),
+            (self.x + 0.3, self.y + 0.2),
+        ]
+        return (
+            f"{pad}<diylc.electromechanical.CliffJack1_4>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}  <showLabels>{str(self.show_labels).lower()}</showLabels>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <nutColor hex="{hex_color(self.nut_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}</diylc.electromechanical.CliffJack1_4>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
     BlankBoard,
     PerfBoard,
     VeroBoard,
+    GroundFill,
+    EllipticalCutout,
+    PinHeader,
+    Polygon,
+    WrapLabel,
+    DiodeGlass,
+    PCBText,
+    PotentiometerSymbol,
+    CliffJack1_4,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,

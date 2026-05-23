@@ -122,6 +122,12 @@ TUBE_BASE = ("B7G", "B8B", "B9A", "OCTAL", "MINIATURE_9", "MAGNOVAL", "B12C", "D
 # Tube socket mount style
 TUBE_MOUNT = ("CHASSIS", "PCB")
 
+# GroundFill layer (PCB layer index for the fill polygon)
+PCB_LAYER = ("_1", "_2", "_3", "_4")
+
+# Label horizontal alignment used by WrapLabel
+WRAP_LABEL_ALIGNMENT = ("LEFT", "CENTER", "RIGHT")
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 

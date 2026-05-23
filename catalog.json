@@ -207,9 +207,9 @@
       "_50"
     ],
     "DIL_DISPLAY_NUMBERS": [
-      "No",
+      "NO",
       "DIP",
-      "Connector",
+      "CONNECTOR",
       "DIP_MIRROR",
       "CONNECTOR_MIRROR"
     ],
@@ -274,6 +274,17 @@
     "TUBE_MOUNT": [
       "CHASSIS",
       "PCB"
+    ],
+    "PCB_LAYER": [
+      "_1",
+      "_2",
+      "_3",
+      "_4"
+    ],
+    "WRAP_LABEL_ALIGNMENT": [
+      "LEFT",
+      "CENTER",
+      "RIGHT"
     ],
     "BJT_POLARITY": [
       "NPN",
@@ -720,6 +731,820 @@
             "One_Side",
             "Both_Sides"
           ]
+        }
+      ]
+    },
+    {
+      "python_class": "GroundFill",
+      "diylc_class": "diylc.connectivity.GroundFill",
+      "doc": "Copper-fill polygon, typically used as a PCB ground plane.\n\nXML: ``<diylc.connectivity.GroundFill>``\n\nDefined by N corner points; closes implicitly. Layer selects which\nPCB copper layer the fill belongs to.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "layer",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_1",
+          "required": false,
+          "enum": [
+            "_1",
+            "_2",
+            "_3",
+            "_4"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "EllipticalCutout",
+      "diylc_class": "diylc.chassis.EllipticalCutout",
+      "doc": "Elliptical chassis cutout \u2014 a hole punched in a chassis panel.\n\nXML: ``<diylc.chassis.EllipticalCutout>``\n\nDefined by two corner points of its bounding rectangle.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "333333",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "border_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "mm"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PinHeader",
+      "diylc_class": "diylc.electromechanical.PinHeader",
+      "doc": "Pin header / connector strip with N pins.\n\nXML: ``<diylc.electromechanical.PinHeader>``\n\nStored as a list of pin positions; pin count is len(points).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "Polygon",
+      "diylc_class": "diylc.shapes.Polygon",
+      "doc": "N-sided polygon shape annotation.\n\nXML: ``<diylc.shapes.Polygon>``\n\nDefined by N corner points (>= 3 forms a closed polygon).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "points"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 63,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "border_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "mm"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "WrapLabel",
+      "diylc_class": "diylc.misc.WrapLabel",
+      "doc": "Text label with word-wrap inside a bounding rectangle.\n\nXML: ``<diylc.misc.WrapLabel>``\n\nBehaves like a Label but the text wraps to fit (x1,y1)..(x2,y2).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "font",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Arial",
+          "required": false
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 14,
+          "required": false
+        },
+        {
+          "name": "font_style",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "horizontal_alignment",
+          "type": {
+            "kind": "string"
+          },
+          "default": "LEFT",
+          "required": false,
+          "enum": [
+            "LEFT",
+            "CENTER",
+            "RIGHT"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "DiodeGlass",
+      "diylc_class": "diylc.semiconductors.DiodeGlass",
+      "doc": "Glass-bodied through-hole diode (e.g. 1N4148-style with glass body).\n\nXML: ``<diylc.semiconductors.DiodeGlass>``\n\nFunctionally a DiodePlastic with a translucent glass body (different\ndefault colors).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "e1f0ff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "marker_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "303030",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 4.5,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.09,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PCBText",
+      "diylc_class": "diylc.misc.PCBText",
+      "doc": "Single-line text label rendered on a PCB.\n\nXML: ``<diylc.misc.PCBText>``\n\nStored as a single anchor point + text string. The font field is\nintentionally minimal \u2014 DIYLC's full XStream font block with kerning,\nweight, etc., is not round-tripped, but the basic Label-style font is.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "font",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Courier New",
+          "required": false
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 12,
+          "required": false
+        },
+        {
+          "name": "font_style",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 0,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "horizontal_alignment",
+          "type": {
+            "kind": "string"
+          },
+          "default": "LEFT",
+          "required": false
+        },
+        {
+          "name": "vertical_alignment",
+          "type": {
+            "kind": "string"
+          },
+          "default": "TOP",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PotentiometerSymbol",
+      "diylc_class": "diylc.passive.PotentiometerSymbol",
+      "doc": "Schematic-style 3-lug potentiometer symbol.\n\nXML: ``<diylc.passive.PotentiometerSymbol>``\n\nAnchor (`x`, `y`) is lug 1; the other two are auto-placed.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "flip",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NONE",
+          "required": false,
+          "enum": [
+            "NONE",
+            "X",
+            "Y"
+          ]
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "CliffJack1_4",
+      "diylc_class": "diylc.electromechanical.CliffJack1_4",
+      "doc": "Cliff-style closed panel-mount 1/4\" phono jack.\n\nXML: ``<diylc.electromechanical.CliffJack1_4>``\n\nA more elaborate jack than ``OpenJack1_4`` \u2014 fully enclosed body.\nAnchor (`x`, `y`) is the first pin; jack has 5 control points.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "MONO",
+          "required": false,
+          "enum": [
+            "MONO",
+            "STEREO",
+            "SWITCHED"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "show_labels",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": true,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "666666",
+          "required": false
+        },
+        {
+          "name": "nut_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "999999",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
         }
       ]
     },
@@ -3616,9 +4441,9 @@
           "default": "DIP",
           "required": false,
           "enum": [
-            "No",
+            "NO",
             "DIP",
-            "Connector",
+            "CONNECTOR",
             "DIP_MIRROR",
             "CONNECTOR_MIRROR"
           ]
