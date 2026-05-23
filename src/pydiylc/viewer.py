@@ -702,6 +702,130 @@ def _install_viewer_actions(state: _ViewerState, win) -> None:
     win.insert_action_group("viewer", group)
 
 
+_KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
+    ("View", [
+        ("scroll", "zoom"),
+        ("drag", "pan"),
+        ("0", "fit page to viewport"),
+        ("+/-", "zoom in/out"),
+        ("click", "select component"),
+        ("right-click", "context menu (Add here, Edit value, …)"),
+        ("Ctrl+drag", "drag a component (proposes a source edit on release)"),
+    ]),
+    ("Modes", [
+        ("T", "toggle edit mode"),
+        ("Q / Esc", "exit edit mode"),
+        ("?", "this help dialog"),
+        ("r", "reload from disk"),
+    ]),
+    ("Edit mode — navigation", [
+        ("Tab / Shift-Tab", "next / previous component (or nodes once drilled)"),
+        ("Space", "drill into / out of the focused component's nodes"),
+        ("PgUp / PgDn", "page 10 components at a time"),
+        ("/", "fuzzy-search to focus any node"),
+        ("g", "fuzzy-search to send the focused node onto another node"),
+    ]),
+    ("Edit mode — modify", [
+        ("arrows", "move focused node by one board hole (grid step off-board)"),
+        ("Ctrl+arrows", "nudge by one grid step"),
+        ("Ctrl+Shift+arrows", "fine nudge (1/10 grid)"),
+        ("R / Shift+R", "rotate 90° CW / CCW"),
+        ("v", "edit the focused component's value / text / resistance"),
+        ("a", "add a component (auto-wires to focused pin)"),
+        ("A", "add a component without auto-wiring"),
+        ("D", "duplicate the focused component"),
+        ("dd", "delete the focused component (press d twice)"),
+    ]),
+    ("History", [
+        ("u / Ctrl+Z", "undo"),
+        ("U / Ctrl+Y", "redo"),
+    ]),
+    ("Save", [
+        ("Enter", "write the working buffer to disk (silent)"),
+        ("Ctrl+S", "save with the diff-on-save dialog"),
+    ]),
+]
+
+
+def _open_help_dialog(state: _ViewerState) -> None:
+    """Which-key-style popup listing every keyboard shortcut.
+
+    Renders the _KEYBINDINGS table as a two-column "key | action" grid
+    per group. Esc / Enter / ? close it.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    win = Gtk.Window()
+    win.set_title("Keyboard shortcuts")
+    win.set_default_size(640, 600)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    outer.set_margin_top(12); outer.set_margin_bottom(12)
+    outer.set_margin_start(12); outer.set_margin_end(12)
+
+    heading = Gtk.Label(label="Keyboard shortcuts")
+    heading.set_xalign(0.0)
+    heading.add_css_class("title-2")
+    outer.append(heading)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+    body.set_margin_top(4); body.set_margin_bottom(4)
+    body.set_margin_start(4); body.set_margin_end(4)
+
+    for group_name, bindings in _KEYBINDINGS:
+        group_lbl = Gtk.Label(label=group_name)
+        group_lbl.set_xalign(0.0)
+        group_lbl.add_css_class("heading")
+        body.append(group_lbl)
+        grid = Gtk.Grid()
+        grid.set_column_spacing(16)
+        grid.set_row_spacing(2)
+        for row, (key, desc) in enumerate(bindings):
+            key_lbl = Gtk.Label(label=key)
+            key_lbl.set_xalign(0.0)
+            key_lbl.add_css_class("monospace")
+            key_lbl.add_css_class("accent")
+            desc_lbl = Gtk.Label(label=desc)
+            desc_lbl.set_xalign(0.0)
+            desc_lbl.set_wrap(True)
+            grid.attach(key_lbl, 0, row, 1, 1)
+            grid.attach(desc_lbl, 1, row, 1, 1)
+        body.append(grid)
+    sw.set_child(body)
+    outer.append(sw)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    close_btn = Gtk.Button(label="Close  (Esc)")
+    close_btn.connect("clicked", lambda _b: win.close())
+    btn_box.append(close_btn)
+    outer.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Escape, Gdk.KEY_Return, Gdk.KEY_KP_Enter,
+                      Gdk.KEY_question, Gdk.KEY_slash):  # ? and / both close
+            win.close()
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(outer)
+    win.set_default_widget(close_btn)
+    win.present()
+    close_btn.grab_focus()
+
+
 def _build_header_buttons(state: _ViewerState, header) -> None:
     """Populate the HeaderBar with toolbar buttons.
 
@@ -719,35 +843,42 @@ def _build_header_buttons(state: _ViewerState, header) -> None:
         b.connect("clicked", lambda _b: on_click())
         return b
 
-    # Left side: tree toggle + add.
-    tree_btn = btn("view-list-symbolic", "Toggle edit mode (T)",
-                   lambda: _enter_tree_mode(state) if not state.tree_mode else _exit_tree_mode(state))
-    header.pack_start(tree_btn)
-    add_btn = btn("list-add-symbolic", "Add component (a)",
-                  lambda: _open_add_menu(state, autowire=False) if state.tree_mode else None)
-    header.pack_start(add_btn)
-    prefs_btn = btn("preferences-system-symbolic", "Preferences",
-                    lambda: _open_prefs_dialog(state))
-    header.pack_start(prefs_btn)
-    export_btn = btn("document-send-symbolic", "Export to SVG / PNG",
-                     lambda: _open_export_dialog(state))
-    header.pack_start(export_btn)
+    def sep():
+        s = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        s.set_margin_start(4); s.set_margin_end(4)
+        return s
 
-    # Right side (before the status label): save / undo / zoom / fit.
-    fit_btn = btn("zoom-fit-best-symbolic", "Fit page to viewport (0)",
-                  lambda: _fit_to_page(state))
-    zoom_in = btn("zoom-in-symbolic", "Zoom in (+)",
-                  lambda: _zoom_by(state, 1.2))
-    zoom_out = btn("zoom-out-symbolic", "Zoom out (-)",
-                   lambda: _zoom_by(state, 1 / 1.2))
-    undo_btn = btn("edit-undo-symbolic", "Undo (u)",
-                   lambda: _tree_undo(state))
-    save_btn = btn("document-save-symbolic", "Save (Enter)",
-                   lambda: _flush_buffer_silent(state) if state.buffer else None)
-    save_as = btn("document-save-as-symbolic", "Save with diff dialog (Ctrl+S)",
-                  lambda: _save_buffer(state) if state.buffer else None)
-    for b in (undo_btn, save_btn, save_as, zoom_out, zoom_in, fit_btn):
-        header.pack_end(b)
+    # Left cluster — modal switches.
+    header.pack_start(btn("view-list-symbolic", "Toggle edit mode (T)",
+        lambda: _enter_tree_mode(state) if not state.tree_mode else _exit_tree_mode(state)))
+    header.pack_start(btn("list-add-symbolic", "Add component (a)",
+        lambda: _open_add_menu(state, autowire=False) if state.tree_mode else None))
+    header.pack_start(sep())
+    header.pack_start(btn("preferences-system-symbolic", "Preferences",
+        lambda: _open_prefs_dialog(state)))
+    header.pack_start(btn("document-send-symbolic", "Export to SVG / PNG",
+        lambda: _open_export_dialog(state)))
+    header.pack_start(btn("help-faq-symbolic", "Keyboard shortcuts (?)",
+        lambda: _open_help_dialog(state)))
+
+    # Right cluster — view + history + save. pack_end appends right-to-left,
+    # so the visual order is: undo · redo · | · save · save-as · | · zoom out · in · fit.
+    header.pack_end(btn("zoom-fit-best-symbolic", "Fit page to viewport (0)",
+        lambda: _fit_to_page(state)))
+    header.pack_end(btn("zoom-in-symbolic", "Zoom in (+)",
+        lambda: _zoom_by(state, 1.2)))
+    header.pack_end(btn("zoom-out-symbolic", "Zoom out (-)",
+        lambda: _zoom_by(state, 1 / 1.2)))
+    header.pack_end(sep())
+    header.pack_end(btn("document-save-as-symbolic", "Save with diff dialog (Ctrl+S)",
+        lambda: _save_buffer(state) if state.buffer else None))
+    header.pack_end(btn("document-save-symbolic", "Save (Enter)",
+        lambda: _flush_buffer_silent(state) if state.buffer else None))
+    header.pack_end(sep())
+    header.pack_end(btn("edit-redo-symbolic", "Redo (U / Ctrl+Y)",
+        lambda: _tree_redo(state)))
+    header.pack_end(btn("edit-undo-symbolic", "Undo (u / Ctrl+Z)",
+        lambda: _tree_undo(state)))
 
 
 def _zoom_by(state: _ViewerState, factor: float) -> None:
@@ -2078,6 +2209,11 @@ def _make_key_handler(state: _ViewerState, canvas, win):
                 _exit_tree_mode(state)
             else:
                 _enter_tree_mode(state)
+            return True
+
+        # "?" opens the keyboard-shortcut help (which-key style).
+        if keyval == Gdk.KEY_question:
+            _open_help_dialog(state)
             return True
 
         # In tree mode, navigation/move/rotate/commit keys take over.
