@@ -164,9 +164,17 @@ def show(project: Project, *, title: str = "pydiylc viewer",
 
         header = Gtk.HeaderBar()
         win.set_titlebar(header)
+
+        # Status bar lives at the bottom of the window, not in the header —
+        # the status text changes frequently (cursor coords, mode hints) and
+        # is easier to read on a wide widget at the foot of the canvas.
         state.status_lbl = Gtk.Label(label=_status_text(state))
+        state.status_lbl.set_xalign(0.0)
         state.status_lbl.add_css_class("dim-label")
-        header.pack_end(state.status_lbl)
+        state.status_lbl.set_margin_start(8)
+        state.status_lbl.set_margin_end(8)
+        state.status_lbl.set_margin_top(2)
+        state.status_lbl.set_margin_bottom(2)
 
         # Toolbar buttons in the header bar (modern GTK4 convention).
         _build_header_buttons(state, header)
@@ -226,7 +234,13 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         paned.set_resize_start_child(False)
         state.paned = paned
         panel.set_visible(False)  # hidden until T
-        win.set_child(paned)
+
+        # Bottom status bar: thin separator + label.
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.append(paned)
+        outer.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        outer.append(state.status_lbl)
+        win.set_child(outer)
 
         # Fit the project to the viewport once the canvas is realized so the
         # user opens to a sensible view rather than a corner of a 2200×1600
