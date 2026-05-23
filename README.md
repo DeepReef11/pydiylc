@@ -152,7 +152,7 @@ pip install -e ".[mcp]"
 pydiylc-mcp                  # stdio transport
 ```
 
-**39 tools** spanning the full lifecycle:
+**40 tools** spanning the full lifecycle:
 
 - **Catalog browsing**: `list_component_types`, `describe_component_type`, `enum_values`, `list_categories` (passive / boards / tube / …), `list_components_in_category`, `list_enums`
 - **Project lifecycle**: `create_project`, `create_project_from_dict`, `list_projects`, `delete_project`, `set_project_metadata`
