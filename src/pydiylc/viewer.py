@@ -236,7 +236,9 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         paned.set_start_child(panel)
         paned.set_end_child(sw)
-        paned.set_position(260)
+        # 340 fits "PerfBoard  ·  10x8 in" and indented node labels without
+        # clipping in the common case; the user can still drag the splitter.
+        paned.set_position(340)
         paned.set_resize_start_child(False)
         state.paned = paned
         panel.set_visible(False)  # hidden until T
@@ -306,6 +308,8 @@ class _ViewerState:
         # One-shot placement target for the next add (set by right-click Add
         # Here, cleared after use). When None, add uses cursor_in or focused.
         self.next_add_at: tuple[float, float] | None = None
+        # Page-sheet color (RGB), set by _apply_theme.
+        self.page_color: tuple[float, float, float] = (1.0, 1.0, 1.0)
         # Canvas off-page backdrop color (RGB), set by _apply_theme.
         self.canvas_backdrop: tuple[float, float, float] = (0.97, 0.97, 0.97)
         # Active right-click context popover (so callbacks can dismiss it).
@@ -498,6 +502,7 @@ def _apply_theme(state: _ViewerState, theme: str) -> None:
     # The canvas off-page color is drawn by us; pick a tone matching the
     # current chrome so the page-on-desk look reads right.
     state.canvas_backdrop = _canvas_backdrop_for(theme)
+    state.page_color = _page_color_for(theme)
     if state.canvas is not None:
         state.canvas.queue_draw()
 
@@ -505,11 +510,26 @@ def _apply_theme(state: _ViewerState, theme: str) -> None:
 def _canvas_backdrop_for(theme: str) -> tuple[float, float, float]:
     """RGB triple for the off-page canvas backdrop, per theme."""
     if theme == "dark":
-        return (0.16, 0.16, 0.18)
+        # Deep neutral with a faint purple bias so the page sheet sits on a
+        # cohesive dark "desk" instead of plain charcoal.
+        return (0.13, 0.12, 0.16)
     # light + system both render with a near-white desk so default GTK light
     # styling doesn't clash. (Detecting "system" actually-dark would need
     # querying GtkSettings; left for later.)
     return (0.97, 0.97, 0.97)
+
+
+def _page_color_for(theme: str) -> tuple[float, float, float]:
+    """RGB triple for the project-page 'sheet' background, per theme.
+
+    Light mode keeps a true white sheet (the CAD convention — labels stay
+    legible). Dark mode tints the sheet a muted dark purple so the desk
+    and sheet read together; component labels are still bright enough on
+    this background to remain readable.
+    """
+    if theme == "dark":
+        return (0.20, 0.18, 0.26)
+    return (1.0, 1.0, 1.0)
 
 
 def _open_export_dialog(state: _ViewerState) -> None:
@@ -961,7 +981,7 @@ def _make_draw_func(state: _ViewerState):
             cr,
             state.project,
             scale=cairo_render.PX_PER_INCH,
-            background=(1, 1, 1),
+            background=state.page_color,
             show_grid=True,
             selected_name=state.selected_name,
             focus_pin=_focused_pin_position(state) if state.tree_mode else None,
@@ -1661,6 +1681,13 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
     for i, row in enumerate(nav.rows):
         lbl = Gtk.Label(label=("  " + row.label) if row.is_node else row.label)
         lbl.set_xalign(0.0)
+        # Ellipsize on the right when the row is too narrow for the label,
+        # so a long name (e.g. a value-laden component) never spills off the
+        # panel edge or pushes the row wider than the splitter position.
+        from gi.repository import Pango
+        lbl.set_ellipsize(Pango.EllipsizeMode.END)
+        lbl.set_hexpand(True)
+        lbl.set_tooltip_text(row.label)
         if row.is_node and not row.movable:
             lbl.add_css_class("dim-label")
         lr = Gtk.ListBoxRow()

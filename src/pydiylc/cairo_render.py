@@ -159,11 +159,20 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
     cr.rectangle(0, 0, w, h)
     cr.fill()
 
+    # Approximate luminance to decide grid + border tone. Below 0.5 we're
+    # on a dark "sheet" and want bright-but-faint grid lines instead of
+    # the default light-gray ones (which would vanish on a dark page).
+    dark_page = (0.299 * background[0] + 0.587 * background[1]
+                 + 0.114 * background[2]) < 0.5
+
     if show_grid:
-        _draw_grid(cr, w_in, h_in, scale)
+        _draw_grid(cr, w_in, h_in, scale, dark_page=dark_page)
 
     # Crisp page border so the project bounds are unmistakable.
-    cr.set_source_rgb(0.55, 0.55, 0.6)
+    if dark_page:
+        cr.set_source_rgb(0.45, 0.42, 0.55)
+    else:
+        cr.set_source_rgb(0.55, 0.55, 0.6)
     cr.set_line_width(1.0)
     cr.rectangle(0.5, 0.5, w - 1, h - 1)
     cr.stroke()
@@ -199,15 +208,20 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
 # ---------------------------------------------------------------------------
 
 
-def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1) -> None:
+def _draw_grid(cr, w_in: float, h_in: float, scale: float,
+               step_in: float = 0.1, *, dark_page: bool = False) -> None:
     """Fine grid every ``step_in`` inches, plus emphasized lines every inch.
 
     The fine grid is a light gray; the inch lines are a touch darker so the
-    eye picks out coordinates at a glance without rulers.
+    eye picks out coordinates at a glance without rulers. On a dark page we
+    flip to faintly-bright lines so they stay visible.
     """
     cr.save()
     # Fine grid (every 0.1 in).
-    cr.set_source_rgb(0.93, 0.93, 0.93)
+    if dark_page:
+        cr.set_source_rgb(0.30, 0.27, 0.36)
+    else:
+        cr.set_source_rgb(0.93, 0.93, 0.93)
     cr.set_line_width(0.5)
     n_x = int(w_in / step_in)
     n_y = int(h_in / step_in)
@@ -222,7 +236,10 @@ def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1)
     cr.stroke()
 
     # Emphasized inch lines.
-    cr.set_source_rgb(0.78, 0.78, 0.82)
+    if dark_page:
+        cr.set_source_rgb(0.42, 0.38, 0.50)
+    else:
+        cr.set_source_rgb(0.78, 0.78, 0.82)
     cr.set_line_width(0.8)
     nx_in = int(w_in)
     ny_in = int(h_in)
@@ -237,7 +254,10 @@ def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1)
     cr.stroke()
 
     # Inch labels along the top and left edges (small, dim).
-    cr.set_source_rgb(0.55, 0.55, 0.58)
+    if dark_page:
+        cr.set_source_rgb(0.70, 0.66, 0.78)
+    else:
+        cr.set_source_rgb(0.55, 0.55, 0.58)
     cr.set_font_size(8)
     for i in range(1, nx_in + 1):
         cr.move_to(i * scale - 6, -3)
