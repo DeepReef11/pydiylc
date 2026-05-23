@@ -37,11 +37,14 @@ def test_server_lists_expected_tools():
         "create_project", "create_project_from_dict", "list_projects",
         "delete_project", "set_project_metadata",
         # Inspection
-        "list_components", "get_component", "find_components",
+        "list_components", "get_component", "find_components", "get_pins",
         # Edits
-        "add_component", "remove_component",
+        "add_component", "add_components", "remove_component",
         "move_component", "move_node", "move_node_to",
-        "rotate_component", "duplicate_component", "set_value", "add_wire",
+        "rotate_component", "duplicate_component",
+        "set_value", "set_field", "add_wire", "connect",
+        # Validation + history
+        "validate", "undo", "redo", "history",
         # I/O
         "save", "render_svg", "render_png", "to_json", "read_diy",
     }
@@ -312,3 +315,295 @@ def test_unknown_component_via_tool_raises(mcp_fixture):
         asyncio.run(
             mcp_fixture.call_tool("describe_component_type", {"type_name": "Nope"})
         )
+
+
+# ---------------------------------------------------------------------------
+# Polish: batch add, connect, get_pins, validate, set_field, undo/redo,
+# inline content returns, "did you mean" hints.
+# ---------------------------------------------------------------------------
+
+
+def test_add_components_batch(mcp_fixture):
+    """add_components accepts many items in one call."""
+    _call(mcp_fixture, "create_project", {"project_id": "b"})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "b",
+        "components": [
+            {"type": "Resistor", "name": f"R{i}",
+             "x1": 1.0, "y1": float(i), "x2": 1.0, "y2": i + 0.3,
+             "value": "10K"}
+            for i in range(5)
+        ],
+    })
+    assert res["added"] == 5
+    assert res["errors"] == []
+    assert res["aborted"] is False
+    listed = _call(mcp_fixture, "list_components", {"project_id": "b"})
+    assert len(listed) == 5
+
+
+def test_add_components_records_errors_not_raise(mcp_fixture):
+    """Bad items in a batch produce errors but don't fail the batch."""
+    _call(mcp_fixture, "create_project", {"project_id": "b2"})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "b2",
+        "components": [
+            {"type": "Resistor", "name": "R1",
+             "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5, "value": "10K"},
+            {"type": "Bogus", "name": "B1"},
+            {"type": "SolderPad", "name": "P1", "x": 2.0, "y": 2.0},
+        ],
+    })
+    assert res["added"] == 2
+    assert len(res["errors"]) == 1
+    assert res["errors"][0]["type"] == "Bogus"
+
+
+def test_add_components_stop_on_error(mcp_fixture):
+    """stop_on_error=True aborts on first bad item, leaves project clean."""
+    _call(mcp_fixture, "create_project", {"project_id": "b3"})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "b3",
+        "stop_on_error": True,
+        "components": [
+            {"type": "Resistor", "name": "R1",
+             "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5, "value": "10K"},
+            {"type": "Bogus", "name": "B1"},
+            {"type": "SolderPad", "name": "P1", "x": 2.0, "y": 2.0},
+        ],
+    })
+    assert res["added"] == 0
+    assert res["aborted"] is True
+    listed = _call(mcp_fixture, "list_components", {"project_id": "b3"})
+    assert len(listed) == 0  # nothing committed
+
+
+def test_get_pins(mcp_fixture):
+    """get_pins surfaces control-point coordinates by index."""
+    _call(mcp_fixture, "create_project", {"project_id": "g"})
+    _call(mcp_fixture, "add_component", {"project_id": "g",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    pins = _call(mcp_fixture, "get_pins", {"project_id": "g", "name": "R1"})
+    assert len(pins) == 2
+    assert pins[0]["pin"] == 0
+    assert pins[0]["x"] == 1.0
+
+
+def test_connect_by_name_picks_nearest_pins(mcp_fixture):
+    """connect with no pin indices picks the closest pair automatically."""
+    _call(mcp_fixture, "create_project", {"project_id": "c"})
+    _call(mcp_fixture, "add_component", {"project_id": "c",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    _call(mcp_fixture, "add_component", {"project_id": "c",
+        "component": {"type": "Resistor", "name": "R2",
+                      "x1": 1.0, "y1": 2.0, "x2": 1.0, "y2": 2.5}})
+    res = _call(mcp_fixture, "connect", {
+        "project_id": "c", "from_name": "R1", "to_name": "R2",
+    })
+    # R1's bottom pin (1.0, 1.5) is closest to R2's top pin (1.0, 2.0).
+    assert res["from"]["pin"] == 1
+    assert res["to"]["pin"] == 0
+    assert res["type"] == "HookupWire"
+
+
+def test_connect_explicit_pins(mcp_fixture):
+    """connect with explicit from_pin / to_pin uses those endpoints."""
+    _call(mcp_fixture, "create_project", {"project_id": "c2"})
+    _call(mcp_fixture, "add_component", {"project_id": "c2",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    _call(mcp_fixture, "add_component", {"project_id": "c2",
+        "component": {"type": "Resistor", "name": "R2",
+                      "x1": 2.0, "y1": 1.0, "x2": 2.0, "y2": 1.5}})
+    res = _call(mcp_fixture, "connect", {
+        "project_id": "c2", "from_name": "R1", "to_name": "R2",
+        "from_pin": 0, "to_pin": 0,
+    })
+    assert res["from"]["pin"] == 0
+    assert res["to"]["pin"] == 0
+
+
+def test_connect_kind_trace(mcp_fixture):
+    """kind='trace' adds a CopperTrace instead of a HookupWire."""
+    _call(mcp_fixture, "create_project", {"project_id": "c3"})
+    _call(mcp_fixture, "add_component", {"project_id": "c3",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "c3",
+        "component": {"type": "SolderPad", "name": "P2", "x": 2.0, "y": 1.0}})
+    res = _call(mcp_fixture, "connect", {
+        "project_id": "c3", "from_name": "P1", "to_name": "P2", "kind": "trace",
+    })
+    assert res["type"] == "CopperTrace"
+
+
+def test_set_field_general(mcp_fixture):
+    """set_field can change arbitrary attributes, with type coercion."""
+    _call(mcp_fixture, "create_project", {"project_id": "f"})
+    _call(mcp_fixture, "add_component", {"project_id": "f",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    res = _call(mcp_fixture, "set_field", {
+        "project_id": "f", "name": "R1", "field": "alpha", "value": 64,
+    })
+    assert res["type"] == "Resistor"
+    # Verify the change committed.
+    got = _call(mcp_fixture, "get_component", {"project_id": "f", "name": "R1"})
+    assert got["alpha"] == 64
+
+
+def test_set_field_dry_run(mcp_fixture):
+    """dry_run=True reports the would-be change without committing."""
+    _call(mcp_fixture, "create_project", {"project_id": "fd"})
+    _call(mcp_fixture, "add_component", {"project_id": "fd",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    res = _call(mcp_fixture, "set_field", {
+        "project_id": "fd", "name": "R1", "field": "alpha", "value": 64,
+        "dry_run": True,
+    })
+    assert res["dry_run"] is True
+    # Original value unchanged.
+    got = _call(mcp_fixture, "get_component", {"project_id": "fd", "name": "R1"})
+    assert got["alpha"] == 127  # unchanged from the default
+
+
+def test_set_field_unknown_field_suggests(mcp_fixture):
+    """Bad field name produces a 'did you mean' hint."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "fs"})
+    _call(mcp_fixture, "add_component", {"project_id": "fs",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 1.0, "y2": 1.5}})
+    with pytest.raises(ToolError, match="alpha|valid fields"):
+        asyncio.run(mcp_fixture.call_tool("set_field", {
+            "project_id": "fs", "name": "R1", "field": "alpah",  # typo
+            "value": 64,
+        }))
+
+
+def test_validate_detects_duplicate_names(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "v"})
+    _call(mcp_fixture, "add_component", {"project_id": "v",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5}})
+    _call(mcp_fixture, "add_component", {"project_id": "v",
+        "component": {"type": "Resistor", "name": "R1",  # duplicate
+                      "x1": 2, "y1": 1, "x2": 2, "y2": 1.5}})
+    rep = _call(mcp_fixture, "validate", {"project_id": "v"})
+    assert rep["ok"] is False
+    dup = [i for i in rep["issues"] if i["kind"] == "duplicate_name"]
+    assert dup
+    assert dup[0]["name"] == "R1"
+
+
+def test_validate_detects_off_canvas(mcp_fixture):
+    _call(mcp_fixture, "create_project",
+          {"project_id": "v2", "width_cm": 5.0, "height_cm": 5.0})
+    _call(mcp_fixture, "add_component", {"project_id": "v2",
+        "component": {"type": "SolderPad", "name": "P1", "x": 100.0, "y": 100.0}})
+    rep = _call(mcp_fixture, "validate", {"project_id": "v2"})
+    off = [i for i in rep["issues"] if i["kind"] == "off_canvas"]
+    assert off
+    assert off[0]["name"] == "P1"
+
+
+def test_validate_clean_project(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "v3"})
+    _call(mcp_fixture, "add_component", {"project_id": "v3",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    rep = _call(mcp_fixture, "validate", {"project_id": "v3"})
+    assert rep["ok"] is True
+    assert rep["issues"] == []
+
+
+def test_undo_redo_round_trip(mcp_fixture):
+    """add → undo restores; redo reapplies."""
+    _call(mcp_fixture, "create_project", {"project_id": "u"})
+    _call(mcp_fixture, "add_component", {"project_id": "u",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    res = _call(mcp_fixture, "undo", {"project_id": "u"})
+    assert res["undone"] is True
+    assert res["components"] == 0
+    res2 = _call(mcp_fixture, "redo", {"project_id": "u"})
+    assert res2["redone"] is True
+    assert res2["components"] == 1
+
+
+def test_history_status(mcp_fixture):
+    """history reports depth + last label."""
+    _call(mcp_fixture, "create_project", {"project_id": "h"})
+    _call(mcp_fixture, "add_component", {"project_id": "h",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1, "y": 1}})
+    _call(mcp_fixture, "move_component",
+          {"project_id": "h", "name": "P1", "dx": 0.5, "dy": 0})
+    res = _call(mcp_fixture, "history", {"project_id": "h"})
+    assert res["depth"] == 2
+    assert res["can_undo"] is True
+    assert "move" in (res["last_label"] or "")
+
+
+def test_render_svg_inline_content(mcp_fixture):
+    """render_svg without a path returns SVG markup inline."""
+    _call(mcp_fixture, "create_project", {"project_id": "r"})
+    _call(mcp_fixture, "add_component", {"project_id": "r",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    res = _call(mcp_fixture, "render_svg",
+                {"project_id": "r", "return_content": True})
+    assert "content" in res
+    assert "<svg" in res["content"]
+
+
+def test_save_inline_content(mcp_fixture):
+    """save with return_content=True returns the .diy XML inline."""
+    _call(mcp_fixture, "create_project", {"project_id": "s"})
+    _call(mcp_fixture, "add_component", {"project_id": "s",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    res = _call(mcp_fixture, "save",
+                {"project_id": "s", "return_content": True})
+    assert "content" in res
+    assert "<project>" in res["content"]
+    assert "P1" in res["content"]
+
+
+def test_missing_component_suggests_close_match(mcp_fixture):
+    """Mistyped name gets a 'did you mean' hint in the error."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "m"})
+    _call(mcp_fixture, "add_component", {"project_id": "m",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5}})
+    with pytest.raises(ToolError, match="R1"):
+        # 'r1' (lowercase) is one edit away from 'R1'.
+        asyncio.run(mcp_fixture.call_tool("get_component",
+                                          {"project_id": "m", "name": "r1"}))
+
+
+def test_missing_project_suggests_close_match(mcp_fixture):
+    """Mistyped project id also gets a hint."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "alpha"})
+    with pytest.raises(ToolError, match="alpha"):
+        asyncio.run(mcp_fixture.call_tool("list_components",
+                                          {"project_id": "alpa"}))
+
+
+def test_add_component_dry_run(mcp_fixture):
+    """dry_run validates without adding."""
+    _call(mcp_fixture, "create_project", {"project_id": "dr"})
+    res = _call(mcp_fixture, "add_component", {
+        "project_id": "dr",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5},
+        "dry_run": True,
+    })
+    assert res["dry_run"] is True
+    listed = _call(mcp_fixture, "list_components", {"project_id": "dr"})
+    assert len(listed) == 0
