@@ -513,6 +513,11 @@ def read_project(path: str | Path) -> Project:
     p = Path(path)
     tree = ET.parse(p)
     root = tree.getroot()
+    # v1 (DIYLC 1.x/2.x) files use a <Layout> root and a flat, attribute-only
+    # element schema (<Resistor X1=.. Y1=.. X2=.. Y2=.. Value=.. Name=..>).
+    # Dispatch separately — they share no structure with the modern format.
+    if root.tag == "Layout":
+        return _read_v1(p, root)
     _resolve_xstream_references(root)
     # Modern files use <project>; older XStream-serialized files use
     # <org.diylc.core.Project>. Accept both.
@@ -575,3 +580,262 @@ def read_project(path: str | Path) -> Project:
 def read_warnings(project: Project) -> list[str]:
     """Return the warning list from a previously-read Project."""
     return getattr(project, "_read_warnings", [])
+
+
+# ---------------------------------------------------------------------------
+# v1 reader (DIYLC 1.x / 2.x — <Layout> root, flat attribute-only schema).
+# ---------------------------------------------------------------------------
+
+# v1 coordinates are integer perfboard-hole indices. One hole = 0.1 inch on
+# both perfboards and stripboards (the only Layout.Type values we see in the
+# corpus that have a grid). Convert by multiplying by this constant.
+_V1_HOLE_INCHES = 0.1
+
+# Map v1 element tag → builder fn(attrs, name_counter) -> Component | None.
+# Defined below, after the helpers.
+_V1_BUILDERS: dict[str, Any] = {}
+
+
+def _v1_xy(attrs: dict[str, str], k1: str = "X1", k2: str = "Y1") -> tuple[float, float]:
+    """Read an integer hole index pair from v1 attrs, in inches."""
+    x = float(attrs.get(k1, "0")) * _V1_HOLE_INCHES
+    y = float(attrs.get(k2, "0")) * _V1_HOLE_INCHES
+    return x, y
+
+
+def _v1_color(name: str) -> str:
+    """Convert a v1 color name ('Black', 'Red'...) to a hex string."""
+    return {
+        "Black": "000000",
+        "Red": "ff0000",
+        "Blue": "0000ff",
+        "Green": "00aa00",
+        "Brown": "8b4513",
+        "Gray": "808080",
+        "Orange": "ff8800",
+        "White": "ffffff",
+        "Yellow": "ffff00",
+    }.get(name, "000000")
+
+
+def _v1_taper(s: str) -> str:
+    """Map v1 'Audio'/'Linear'/'Reverse Audio' → modern LIN/LOG enum."""
+    return {
+        "Linear": "LIN",
+        "Audio": "LOG",
+        "Reverse Audio": "REV_LOG",
+        "": "LIN",
+    }.get(s, "LIN")
+
+
+def _read_v1(path: Path, root: ET.Element) -> Project:
+    """Parse a v1 <Layout> file into a Project.
+
+    v1 files have a flat, attribute-only schema. Coordinates are integer
+    perfboard-hole indices; we convert to inches at 0.1 in/hole. An implicit
+    board (Perfboard / Stripboard / PCB) of Layout.Width × Layout.Height is
+    synthesized as the first component so the user sees the same canvas the
+    original layout assumed.
+
+    Unknown elements record a warning and are skipped rather than raising,
+    matching the modern reader's tolerance policy.
+    """
+    from .components import (
+        AxialElectrolyticCapacitor, BlankBoard, CopperTrace, DIL_IC, DiodePlastic,
+        HookupWire, Jumper, Label, LED, MiniToggleSwitch, OpenJack1_4,
+        PerfBoard, PotentiometerPanel, RadialFilmCapacitor, Resistor, SolderPad,
+        TraceCut, TransistorTO92, TrimmerPotentiometer, VeroBoard,
+    )
+
+    project = Project()
+    warnings_out: list[str] = []
+
+    # Project metadata from Layout attrs.
+    a = dict(root.attrib)
+    project.title = a.get("Project", "")
+    # Width/Height are in perfboard holes. Convert to cm via inches.
+    try:
+        w_holes = float(a.get("Width", "30"))
+        h_holes = float(a.get("Height", "20"))
+        project.width_cm = (w_holes + 4) * _V1_HOLE_INCHES * 2.54
+        project.height_cm = (h_holes + 4) * _V1_HOLE_INCHES * 2.54
+    except ValueError:
+        pass
+
+    layout_type = a.get("Type", "Perfboard")
+
+    # Synthesize an implicit board sized to the Layout. v1 boards have no
+    # explicit element — they're inferred from Layout.Type. Place it inset
+    # by 2 holes from each side so wires/pads at the edge stay on-board.
+    inset = 2 * _V1_HOLE_INCHES
+    try:
+        w_holes = float(a.get("Width", "30"))
+        h_holes = float(a.get("Height", "20"))
+        bx1, by1 = inset, inset
+        bx2 = inset + w_holes * _V1_HOLE_INCHES
+        by2 = inset + h_holes * _V1_HOLE_INCHES
+        if layout_type == "Perfboard":
+            project.add(PerfBoard(name="Board", x1=bx1, y1=by1, x2=bx2, y2=by2))
+        elif layout_type == "Stripboard":
+            project.add(VeroBoard(name="Board", x1=bx1, y1=by1, x2=bx2, y2=by2))
+        elif layout_type == "PCB":
+            project.add(BlankBoard(name="Board", x1=bx1, y1=by1, x2=bx2, y2=by2))
+        # Mono/Stereo layouts have no board (rare; jack-only layouts).
+    except (ValueError, TypeError):
+        pass
+
+    # Offset every coordinate by the inset so v1's origin-at-corner lines up
+    # inside the synthesized board.
+    def _xy(attrs, k1="X1", k2="Y1"):
+        x, y = _v1_xy(attrs, k1, k2)
+        return x + inset, y + inset
+
+    # Track name collisions so two pads with the same auto-name don't clash.
+    name_counts: dict[str, int] = {}
+    def _uniq(name: str) -> str:
+        if not name:
+            name = "X"
+        if name not in name_counts:
+            name_counts[name] = 1
+            return name
+        name_counts[name] += 1
+        return f"{name}_{name_counts[name]}"
+
+    for el in root:
+        tag = el.tag
+        attrs = dict(el.attrib)
+        name = _uniq(attrs.get("Name", ""))
+        value = attrs.get("Value", "")
+        try:
+            if tag == "Pad":
+                x, y = _xy(attrs)
+                square = attrs.get("Square", "False") == "True"
+                color = _v1_color(attrs.get("Color", "Black"))
+                project.add(SolderPad(
+                    name=name, x=x, y=y, color=color,
+                    type="SQUARE" if square else "ROUND",
+                ))
+            elif tag == "Trace":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(CopperTrace(
+                    name=name, points=[(x1, y1), (x2, y2)],
+                ))
+            elif tag == "Wire":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                color = _v1_color(attrs.get("Color", "Black"))
+                project.add(HookupWire(
+                    name=name, points=[(x1, y1), (x2, y2)], color=color,
+                ))
+            elif tag == "Jumper":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(Jumper(name=name, points=[(x1, y1), (x2, y2)]))
+            elif tag == "Cut":
+                x, y = _xy(attrs)
+                project.add(TraceCut(name=name, x=x, y=y))
+            elif tag == "Resistor":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(Resistor(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2, value=value,
+                ))
+            elif tag == "Capacitor":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(RadialFilmCapacitor(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2, value=value,
+                ))
+            elif tag == "Electrolyte":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(AxialElectrolyticCapacitor(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2, value=value,
+                ))
+            elif tag == "Diode":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(DiodePlastic(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2, value=value,
+                ))
+            elif tag == "Led" or tag == "LED":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                project.add(LED(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2, value=value,
+                ))
+            elif tag == "Transistor":
+                x, y = _xy(attrs)
+                # v1 Transistor uses a 2-point span (X1,Y1)..(X2,Y2); use
+                # the first as the body anchor.
+                project.add(TransistorTO92(
+                    name=name, x=x, y=y, value=value,
+                ))
+            elif tag == "IC" or tag == "LineIC":
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                # Pin count = perimeter / 2 (rough — most v1 ICs are DIP8 or
+                # DIP14). Default to 8 if math fails.
+                w = abs(round((x2 - x1) / _V1_HOLE_INCHES))
+                h = abs(round((y2 - y1) / _V1_HOLE_INCHES))
+                pins = max(4, min(50, (w + h) * 2))
+                pins = pins if pins % 2 == 0 else pins + 1
+                project.add(DIL_IC(
+                    name=name, x=x1, y=y1, value=value,
+                    pin_count=f"_{pins}",
+                ))
+            elif tag == "Pot":
+                x1, y1 = _xy(attrs)
+                taper = _v1_taper(attrs.get("Taper", ""))
+                project.add(PotentiometerPanel(
+                    name=name, x=x1, y=y1, resistance=value or "10K", taper=taper,
+                ))
+            elif tag == "Trimmer":
+                x1, y1 = _xy(attrs)
+                project.add(TrimmerPotentiometer(
+                    name=name, x=x1, y=y1, resistance=value or "10K",
+                ))
+            elif tag == "Text":
+                x, y = _xy(attrs)
+                project.add(Label(
+                    name=name, x=x, y=y, text=value,
+                ))
+            elif tag == "Switch":
+                x, y = _xy(attrs)
+                # v1 Switch.Value is free text ("DPDT", "On/On"...); the modern
+                # MiniToggleSwitch needs a structured enum. Default to DPDT
+                # (most-common pedal switch) and keep the original in a Label
+                # alongside so the user still sees the v1 spec.
+                from .enums import TOGGLE_SWITCH_TYPE
+                st = value if value in TOGGLE_SWITCH_TYPE else "DPDT"
+                project.add(MiniToggleSwitch(
+                    name=name, x=x, y=y, switch_type=st,
+                ))
+                if value and st != value:
+                    project.add(Label(
+                        name=_uniq(f"{name}_lbl"),
+                        x=x, y=y, text=value,
+                    ))
+            elif tag == "Jack":
+                x, y = _xy(attrs)
+                jtype = attrs.get("Type", "Mono").upper()
+                project.add(OpenJack1_4(
+                    name=name, x=x, y=y,
+                    type="STEREO" if jtype == "STEREO" else "MONO",
+                ))
+            elif tag == "Transformer":
+                # No close equivalent in pydiylc yet — render as a labeled
+                # rectangle so the position survives the round-trip.
+                x1, y1 = _xy(attrs); x2, y2 = _xy(attrs, "X2", "Y2")
+                from .components import Rectangle
+                project.add(Rectangle(
+                    name=name, x1=x1, y1=y1, x2=x2, y2=y2,
+                ))
+                project.add(Label(
+                    name=_uniq("T_label"),
+                    x=x1, y=y1, text=value or "Transformer",
+                ))
+            else:
+                warnings_out.append(f"unknown v1 element: {tag}")
+        except Exception as exc:
+            warnings_out.append(f"v1 {tag} {name}: {type(exc).__name__}: {exc}")
+
+    project._read_warnings = warnings_out  # type: ignore[attr-defined]
+    if warnings_out:
+        warnings.warn(
+            f"read_project (v1): {len(warnings_out)} warning(s); see project._read_warnings",
+            stacklevel=2,
+        )
+    return project

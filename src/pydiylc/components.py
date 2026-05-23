@@ -334,22 +334,54 @@ class Resistor(Component):
 
 
 def _split_value(s: str, default_unit: str) -> tuple[float, str]:
-    """Parse strings like "4.7K", "470nF", "22uF" into (value, unit).
+    """Parse value strings into (number, unit).
 
-    Tolerates empty/whitespace strings by returning ``(0.0, default_unit)``
-    — some round-tripped v3 files have empty value fields and we want the
-    re-emit to be silent rather than crash on bad input.
+    Accepts:
+      - "4.7K", "470nF", "22uF"  — plain decimal + optional unit
+      - "3,3K"                   — European comma decimal
+      - "2k2", "4M7"             — suffix-as-decimal-point (k2 ≡ .2 kilo)
+      - "25 V 2500uF"            — picks up the *last* number+unit pair
+                                   (some v1 files put multiple specs in one
+                                   field; the cap value usually comes last)
+      - "" / "  "                — returns (0.0, default_unit) so round-trip
+                                   of empty value fields stays silent.
+
+    When no recognizable number is present at all, returns
+    ``(0.0, default_unit)`` rather than raising — callers may have a free-text
+    label like "ceramic" that we can't quantify, but the on-disk
+    ``<value>`` element still carries the user's original string so DIYLC
+    displays it verbatim.
     """
     import re
 
     if not s or not s.strip():
         return 0.0, default_unit
-    m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*([A-Za-z]+)?\s*$", s)
-    if not m:
-        raise ValueError(f"can't parse value: {s!r}")
-    num = float(m.group(1))
-    unit = m.group(2) or default_unit
-    return num, unit
+
+    # Normalize: comma → dot (European decimal), strip surrounding whitespace.
+    cleaned = s.replace(",", ".").strip()
+
+    # Pattern A — full "{num}{unit}" form. Pick the LAST occurrence so
+    # combined strings like "25 V 2500uF" yield the right-most value.
+    matches = re.findall(r"([0-9]*\.?[0-9]+)\s*([A-Za-z]+)?", cleaned)
+    if matches:
+        # Try suffix-as-decimal-point ("2k2", "4M7") first, since the more
+        # general numeric match would catch only "2" or "4" otherwise.
+        suffix_form = re.match(
+            r"^\s*([0-9]+)([kKmMRrGgnNpPuUFf])([0-9]+)\s*$",
+            s.strip(),
+        )
+        if suffix_form:
+            num = float(f"{suffix_form.group(1)}.{suffix_form.group(3)}")
+            return num, suffix_form.group(2)
+        num_s, unit = matches[-1]
+        try:
+            num = float(num_s)
+        except ValueError:
+            return 0.0, default_unit
+        return num, unit or default_unit
+
+    # Free-text only (e.g. "ceramic"). Keep the typed measure at 0.
+    return 0.0, default_unit
 
 
 @dataclass

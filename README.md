@@ -1,9 +1,9 @@
 # pydiylc
 
-![tests](https://img.shields.io/badge/tests-165%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-382%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
-![corpus](https://img.shields.io/badge/corpus%20recognition-98.2%25-brightgreen)
+![corpus](https://img.shields.io/badge/corpus%20recognition-100%25-brightgreen)
 
 A scriptable Python library — and a native Wayland GTK4 viewer — for
 [DIYLC](https://github.com/bancika/diy-layout-creator) circuit layouts.
@@ -38,7 +38,7 @@ Beta (v0.2.0). Current component set (40 types):
 - **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
 - **Misc**: `Label`, `GroundSymbol`, `Image`, `BOM`
 
-**Corpus coverage:** 98.2% component recognition on the DIYLC regression corpus (75,165 of 76,526 components across 423 of 425 real community layouts), with 423 of 425 files round-tripping cleanly through read → save → re-read.
+**Corpus coverage:** 100% component recognition on the DIYLC regression corpus (105,473 of 105,473 components across 709 of 711 real community layouts, including legacy v1 `<Layout>` files), with 709 of 711 files round-tripping cleanly through read → save → re-read. The 2 misses are physically truncated XML in the upstream corpus.
 
 ## CLI
 
@@ -62,7 +62,7 @@ A complete pedal layout — stripboard, transistor, pot, 3PDT bypass, DC and 1/4
 p = Project.read("downloaded_pedal.diy")
 ```
 
-Tolerates modern (4.x) and v3 (XStream-prefixed) roots. Unknown component types are dropped with a warning instead of failing the parse.
+Tolerates three on-disk formats: modern (4.x, `<project>` root), v3 XStream (`<org.diylc.core.Project>` root with nested measures + cross-element references), and legacy v1 (`<Layout>` root, integer perfboard-hole coordinates, attribute-only elements). v1 layouts get an implicit `PerfBoard` / `VeroBoard` / `BlankBoard` synthesized from `Layout.Type`. Unknown component types are dropped with a warning instead of failing the parse.
 
 ## Native SVG preview
 
