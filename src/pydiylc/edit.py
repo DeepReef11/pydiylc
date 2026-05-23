@@ -301,6 +301,206 @@ def propose_point_move(
     )
 
 
+def _component_to_call(component) -> ast.Call:
+    """Build an AST ``ClassName(kwarg=...)`` call for a Component.
+
+    Uses every dataclass field with ``name`` first, skipping fields whose
+    current value equals the field's default (keeps the emitted line short).
+    Measure fields render as ``mm(0.1)``/``inches(0.5)``/``cm(2.0)`` calls;
+    point lists as list literals; everything else as bare constants.
+    """
+    import dataclasses
+
+    from .core import Measure
+
+    cls = type(component)
+    type_name = cls.__name__
+    fields = list(dataclasses.fields(component))
+
+    # Order: name first, then the rest in declaration order.
+    def sort_key(f):
+        return (0 if f.name == "name" else 1, fields.index(f))
+
+    keywords: list[ast.keyword] = []
+    for f in sorted(fields, key=sort_key):
+        if f.name.startswith("_"):
+            continue
+        value = getattr(component, f.name)
+        # Compute the dataclass default for this field.
+        if f.default is not dataclasses.MISSING:
+            default = f.default
+        elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+            try:
+                default = f.default_factory()  # type: ignore[misc]
+            except Exception:
+                default = object()  # never equal to value
+        else:
+            default = object()
+        # Skip values that match the default — except name (always emit).
+        if f.name != "name" and _values_equal(value, default):
+            continue
+        keywords.append(ast.keyword(arg=f.name, value=_value_to_ast(value)))
+
+    return ast.Call(
+        func=ast.Name(id=type_name, ctx=ast.Load()),
+        args=[],
+        keywords=keywords,
+    )
+
+
+def _values_equal(a, b) -> bool:
+    """Compare two field values for default-stripping. Tolerant of Measure."""
+    from .core import Measure
+
+    if isinstance(a, Measure) and isinstance(b, Measure):
+        return a.value == b.value and a.unit == b.unit
+    return a == b
+
+
+def _value_to_ast(value) -> ast.expr:
+    """Render a Python value as an AST expression.
+
+    Floats are cleaned of binary noise (matches the move-write convention).
+    Measures become ``mm(...)``/``inches(...)``/``cm(...)`` calls.
+    Tuples of length 2 (coordinate points) render as parenthesized tuples.
+    """
+    from .core import Measure
+
+    if isinstance(value, Measure):
+        funcs = {"mm": "mm", "in": "inches", "cm": "cm"}
+        fn = funcs.get(value.unit)
+        if fn is not None:
+            return ast.Call(
+                func=ast.Name(id=fn, ctx=ast.Load()),
+                args=[ast.Constant(value=_clean_float(value.value))],
+                keywords=[],
+            )
+        # Fallback: Measure(value, unit)
+        return ast.Call(
+            func=ast.Name(id="Measure", ctx=ast.Load()),
+            args=[
+                ast.Constant(value=_clean_float(value.value)),
+                ast.Constant(value=value.unit),
+            ],
+            keywords=[],
+        )
+    if isinstance(value, bool):
+        return ast.Constant(value=value)
+    if isinstance(value, float):
+        return ast.Constant(value=_clean_float(value))
+    if isinstance(value, int):
+        return ast.Constant(value=value)
+    if isinstance(value, str):
+        return ast.Constant(value=value)
+    if value is None:
+        return ast.Constant(value=None)
+    if isinstance(value, (list, tuple)):
+        elts = [_value_to_ast(v) for v in value]
+        # Preserve tuple-ness for 2-tuples (points); use a list for top-level
+        # `points=[...]` containers since user code overwhelmingly writes lists.
+        if isinstance(value, tuple):
+            return ast.Tuple(elts=elts, ctx=ast.Load())
+        return ast.List(elts=elts, ctx=ast.Load())
+    # Last-resort: stringify.
+    return ast.Constant(value=repr(value))
+
+
+def _find_last_add_call(tree: ast.AST) -> tuple[ast.stmt, ast.AST] | None:
+    """Locate the last ``<something>.add(...)`` statement in the tree.
+
+    Returns (statement_node, parent_body_list) so the caller can splice a new
+    statement in right after it. Walks both module-level and inside function
+    bodies (so a layout defined in ``def build():`` is handled).
+    """
+    last: tuple[ast.stmt, list, int] | None = None
+
+    def visit(body: list):
+        nonlocal last
+        for i, stmt in enumerate(body):
+            # Recurse into function bodies.
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(stmt.body)
+                continue
+            if isinstance(stmt, (ast.If, ast.With, ast.For)):
+                visit(stmt.body)
+                if hasattr(stmt, "orelse"):
+                    visit(stmt.orelse)
+                continue
+            # Detect `<x>.add(<arg>)` as an Expr statement.
+            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                call = stmt.value
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "add"
+                    and len(call.args) >= 1
+                ):
+                    last = (stmt, body, i)
+
+    if isinstance(tree, ast.Module):
+        visit(tree.body)
+    return (last[0], last[1]) if last else None
+
+
+def propose_add(
+    path: str | Path,
+    component,
+) -> MoveProposal:
+    """Plan an insertion of ``component`` as a new ``p.add(Component(...))``
+    line right after the last existing ``add`` in the source.
+
+    Reuses ``MoveProposal`` so the same Apply dialog can drive the write.
+    Raises ``NotImplementedError`` if no insertion site can be found
+    (no existing ``.add(...)`` calls in the file).
+    """
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+
+    located = _find_last_add_call(tree)
+    if located is None:
+        raise NotImplementedError(
+            "Can't auto-insert: no existing `<project>.add(...)` call found "
+            "to anchor the new line. Add the first one by hand, then `a` will "
+            "be able to append more."
+        )
+    anchor_stmt, body = located
+
+    call_expr = _component_to_call(component)
+    # The new statement mirrors the anchor's `<x>.add(...)` shape:
+    # take the anchor's receiver expression and call .add(<component>) on it.
+    receiver = anchor_stmt.value.func.value  # type: ignore[attr-defined]
+    new_call = ast.Call(
+        func=ast.Attribute(value=receiver, attr="add", ctx=ast.Load()),
+        args=[call_expr],
+        keywords=[],
+    )
+    new_stmt = ast.Expr(value=new_call)
+    # Insert after the anchor.
+    idx = body.index(anchor_stmt)
+    body.insert(idx + 1, new_stmt)
+    ast.fix_missing_locations(tree)
+
+    new_full = ast.unparse(tree)
+    old_lines = text.splitlines()
+    new_lines = new_full.splitlines()
+    line_no = anchor_stmt.lineno + 1  # roughly where the new line lands
+
+    name = getattr(component, "name", "?")
+    type_name = type(component).__name__
+    summary = f"add {type_name}({name!r}) at {p.name}:{line_no}"
+    hunk = _line_numbered_hunk(old_lines, new_lines, line_no)
+
+    return MoveProposal(
+        path=p,
+        component_name=name,
+        old_text=text,
+        new_text=new_full + ("\n" if text.endswith("\n") else ""),
+        line=line_no,
+        summary=summary,
+        diff_hunk=hunk,
+    )
+
+
 def apply_proposal(proposal: MoveProposal) -> None:
     """Write the proposed new_text to disk. Caller is responsible for
     backup. The viewer should only call this after user confirmation."""

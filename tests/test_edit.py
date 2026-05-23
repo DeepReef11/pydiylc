@@ -258,3 +258,98 @@ def test_propose_point_move_clean_floats(tmp_path):
     proposal = propose_point_move(p, "W1", point_index=0, new_x=1.0, new_y=noisy)
     assert "2.4000000000000004" not in proposal.new_text
     assert "2.4" in proposal.new_text
+
+
+def test_propose_add_appends_new_line(tmp_path):
+    from pydiylc.edit import propose_add
+    from pydiylc import SolderPad
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    proposal = propose_add(p, SolderPad("P2", x=2.0, y=3.0))
+    # Both pads should be present in the new source.
+    assert "P1" in proposal.new_text
+    assert "P2" in proposal.new_text
+    # The new call should mention the type, name, and coords.
+    assert "SolderPad" in proposal.new_text
+    assert "name='P2'" in proposal.new_text or 'name="P2"' in proposal.new_text
+    assert "x=2.0" in proposal.new_text
+    assert "y=3.0" in proposal.new_text
+
+
+def test_propose_add_inside_build_function(tmp_path):
+    """An add inside def build(): finds the right insertion site."""
+    from pydiylc.edit import propose_add
+    from pydiylc import SolderPad
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        def build():
+            p = Project()
+            p.add(SolderPad(name='P1', x=1.0, y=1.0))
+            return p
+    """)
+    proposal = propose_add(p, SolderPad("P2", x=2.0, y=3.0))
+    assert "P2" in proposal.new_text
+    # Order is preserved: P1 still comes before P2.
+    assert proposal.new_text.index("'P1'") < proposal.new_text.index("'P2'")
+
+
+def test_propose_add_no_anchor_raises(tmp_path):
+    """A file with no existing .add(...) call can't be auto-inserted."""
+    from pydiylc.edit import propose_add
+    from pydiylc import SolderPad
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+    """)
+    with pytest.raises(NotImplementedError, match="no existing"):
+        propose_add(p, SolderPad("P1", x=0.0, y=0.0))
+
+
+def test_propose_add_round_trips_through_loader(tmp_path):
+    """The inserted line must be valid Python and produce the right component."""
+    import importlib.util
+    from pydiylc.edit import propose_add, apply_proposal
+    from pydiylc import Resistor
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad, Resistor
+        def build():
+            pr = Project()
+            pr.add(SolderPad(name='P1', x=1.0, y=1.0))
+            return pr
+    """)
+    new = Resistor("R1", x1=2.0, y1=2.0, x2=2.0, y2=2.5, value="10K")
+    proposal = propose_add(p, new)
+    apply_proposal(proposal)
+    # Reload the rewritten module and check both components are there.
+    spec = importlib.util.spec_from_file_location("rewritten", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    project = mod.build()
+    names = [c.name for c in project.components]
+    assert names == ["P1", "R1"]
+    r = project.components[1]
+    assert isinstance(r, Resistor)
+    assert r.value == "10K"
+    assert (r.x1, r.y1, r.x2, r.y2) == (2.0, 2.0, 2.0, 2.5)
+
+
+def test_propose_add_clean_floats(tmp_path):
+    from pydiylc.edit import propose_add
+    from pydiylc import SolderPad
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    noisy = round(2.4 / 0.1) * 0.1
+    proposal = propose_add(p, SolderPad("P2", x=noisy, y=1.0))
+    assert "2.4000000000000004" not in proposal.new_text
+    assert "x=2.4" in proposal.new_text

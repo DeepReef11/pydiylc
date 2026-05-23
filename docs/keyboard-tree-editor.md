@@ -230,4 +230,12 @@ Capture phase intercepts keys at the window level first.
   arrows). Currently plain arrows navigate the tree; literal nudge is
   Ctrl+arrows. The jump overlay needs canvas-space candidate rendering.
 - Shared-node "n / p jump to neighbor component" keys.
+- **Vim-style save flow (parked):** treat the whole document as an editable
+  buffer; `Ctrl+S` / `:w` opens a diff-on-save dialog (gated by a "don't
+  show again" preference) and writes all pending changes to source in one
+  go. No-op when there are no changes. Could use git for an external undo
+  history (one commit per save, `u` walks the log). Bigger feature than the
+  current per-action `propose_move` / `propose_add` flow — would unify
+  add/delete/move into a single end-of-session commit instead of per-edit
+  dialogs.
 ```

@@ -485,15 +485,96 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
     _apply_dialog(state, proposal)
 
 
-def _info_dialog(parent, title: str, body: str) -> None:
+def _copy_to_clipboard(widget, text: str) -> None:
+    """Put ``text`` on the system clipboard via the widget's display."""
+    try:
+        display = widget.get_display() if widget is not None else None
+        if display is None:
+            return
+        clipboard = display.get_clipboard()
+        clipboard.set(text)
+    except Exception:
+        pass  # never let a clipboard failure crash a dialog
+
+
+def _make_copy_button(text_provider, parent_widget, label: str = "Copy"):
+    """Build a 'Copy' button that copies the result of ``text_provider()``.
+
+    ``text_provider`` is a callable returning the string to copy (so we can
+    re-render dynamic content at click time). The button label briefly
+    changes to 'Copied' on success.
+    """
     import gi
     gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk
+    from gi.repository import Gtk, GLib
 
-    dlg = Gtk.AlertDialog()
-    dlg.set_message(title)
-    dlg.set_detail(body)
-    dlg.show(parent)
+    btn = Gtk.Button(label=label)
+
+    def on_click(_b):
+        _copy_to_clipboard(parent_widget, text_provider())
+        btn.set_label("Copied")
+        GLib.timeout_add(1200, lambda: (btn.set_label(label), False)[1])
+
+    btn.connect("clicked", on_click)
+    return btn
+
+
+def _info_dialog(parent, title: str, body: str) -> None:
+    """Information / error popup with a Copy button (replaces AlertDialog)."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    win = Gtk.Window()
+    win.set_title(title)
+    win.set_default_size(480, 240)
+    if parent is not None:
+        win.set_transient_for(parent)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    box.set_margin_top(12); box.set_margin_bottom(12)
+    box.set_margin_start(12); box.set_margin_end(12)
+
+    heading = Gtk.Label(label=title)
+    heading.set_xalign(0.0)
+    heading.add_css_class("heading")
+    box.append(heading)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    tv = Gtk.TextView()
+    tv.set_editable(False)
+    tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    tv.get_buffer().set_text(body)
+    sw.set_child(tv)
+    box.append(sw)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    copy_btn = _make_copy_button(lambda: f"{title}\n\n{body}", win)
+    close_btn = Gtk.Button(label="Close  (Esc)")
+    close_btn.connect("clicked", lambda _b: win.close())
+    btn_box.append(copy_btn)
+    btn_box.append(close_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Escape, Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            win.close()
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+
+    win.set_child(box)
+    win.set_default_widget(close_btn)
+    win.present()
+    close_btn.grab_focus()
 
 
 def _apply_dialog(state: _ViewerState, proposal) -> None:
@@ -547,8 +628,14 @@ def _apply_dialog(state: _ViewerState, proposal) -> None:
         # Writing the file bumps mtime; the watcher reloads from source.
         win.close()
 
+    copy_btn = _make_copy_button(
+        lambda: f"{proposal.summary}\n{proposal.path}:{proposal.line}\n\n"
+                + _format_diff(proposal.diff_hunk),
+        win,
+    )
     cancel_btn.connect("clicked", lambda _b: win.close())
     apply_btn.connect("clicked", lambda _b: do_apply())
+    btn_box.append(copy_btn)
     btn_box.append(cancel_btn)
     btn_box.append(apply_btn)
     box.append(btn_box)
@@ -625,8 +712,16 @@ def _locate_dialog(state: _ViewerState, loc, new_anchor: tuple[float, float]) ->
 
     btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     btn_box.set_halign(Gtk.Align.END)
+    copy_btn = _make_copy_button(
+        lambda: f"{loc.component_name} → ({new_anchor[0]:g}, {new_anchor[1]:g})\n"
+                f"{loc.path}:{loc.line}\n\n"
+                f"{loc.reason}\n\n"
+                + _format_context(loc.context, loc.line),
+        win,
+    )
     close_btn = Gtk.Button(label="Close  (Esc)")
     close_btn.connect("clicked", lambda _b: win.close())
+    btn_box.append(copy_btn)
     btn_box.append(close_btn)
     box.append(btn_box)
 
@@ -823,7 +918,7 @@ def _tree_commit(state: _ViewerState) -> None:
             "components. The move is applied in-memory only.",
         )
         return
-    from .edit import propose_move, propose_point_move, locate_component
+    from .edit import propose_move, propose_point_move, propose_add, locate_component
     from . import graph as _g
 
     try:
@@ -842,8 +937,15 @@ def _tree_commit(state: _ViewerState) -> None:
         else:
             anchor = _current_anchor(comp)
             proposal = propose_move(state.watch_path, name, anchor[0], anchor[1])
-    except LookupError as exc:
-        _info_dialog(state.window, "Can't auto-apply", str(exc))
+    except LookupError:
+        # Component isn't in the source — typically because it was just added
+        # in-memory via `a`. Offer to insert a new line.
+        try:
+            proposal = propose_add(state.watch_path, comp)
+        except NotImplementedError as exc:
+            _info_dialog(state.window, "Can't auto-insert", str(exc))
+            return
+        _apply_dialog(state, proposal)
         return
     except NotImplementedError:
         try:
