@@ -40,12 +40,32 @@ def addable_component_types() -> list[str]:
     return sorted(c.__name__ for c in ALL_COMPONENTS)
 
 
+# Type-aware default sizes for newly-added two-pin components, in inches.
+# Boards are large enough to actually fit components on; small parts get a
+# resistor-sized body; shape annotations get a roomy frame.
+_DEFAULT_TWO_PIN_SIZE: dict[str, tuple[float, float]] = {
+    # Boards: ~1 in × 0.7 in (10 × 7 holes at 0.1 in spacing).
+    "BlankBoard": (1.0, 0.7),
+    "PerfBoard": (1.0, 0.7),
+    "VeroBoard": (1.0, 0.7),
+    # Shape annotations: a visible frame.
+    "Rectangle": (1.0, 0.5),
+    "Ellipse": (1.0, 0.5),
+    # Jumper / Resistor / caps / diodes / LED / symbols: small body.
+    # (Anything not listed falls through to a 0.3 × 0 default.)
+}
+
+
 def make_default_component(type_name: str, name: str, x: float, y: float):
     """Create a component of ``type_name`` at (x, y) with sensible defaults.
 
-    Two-pin components get a short default body from (x, y); points-list get a
-    1-inch segment; single-anchor / multi-node get placed at (x, y). Raises
-    ValueError for an unknown type.
+    Defaults are type-aware: boards get a ~1×0.7 in rectangle so they fit
+    components, shape annotations get a roomy frame, and small two-pin parts
+    (resistors, caps, diodes, LED, jumpers, symbols) get a ~0.3 in body.
+    Points-list components get a 1-inch segment; single-anchor / multi-node
+    parts go at (x, y) and `Label`'s text defaults to its name.
+
+    Raises ValueError for an unknown type.
     """
     import dataclasses
     from .components import ALL_COMPONENTS
@@ -58,7 +78,11 @@ def make_default_component(type_name: str, name: str, x: float, y: float):
     fields = {f.name for f in dataclasses.fields(cls)}
     kwargs: dict = {"name": name}
     if "x1" in fields and "x2" in fields:
-        kwargs.update(x1=x, y1=y, x2=round(x + 0.3, 4), y2=y)
+        dx, dy = _DEFAULT_TWO_PIN_SIZE.get(type_name, (0.3, 0.0))
+        kwargs.update(
+            x1=x, y1=y,
+            x2=round(x + dx, 4), y2=round(y + dy, 4),
+        )
     elif "points" in fields:
         kwargs["points"] = [(x, y), (round(x + 1.0, 4), y)]
     elif "x" in fields and "y" in fields:

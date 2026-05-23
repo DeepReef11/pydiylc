@@ -250,7 +250,28 @@ def test_make_default_two_pin():
     c = make_default_component("Resistor", "R9", 1.0, 1.0)
     assert isinstance(c, Resistor)
     assert (c.x1, c.y1) == (1.0, 1.0)
-    assert c.x2 == 1.3 and c.y2 == 1.0
+    assert c.x2 == 1.3 and c.y2 == 1.0  # small two-pin default: 0.3in body
+
+
+def test_make_default_board_is_larger():
+    """Boards default to a usable size — not the small-part default."""
+    from pydiylc.tree_editor import make_default_component
+    from pydiylc import BlankBoard, PerfBoard, VeroBoard
+
+    for type_name in ("BlankBoard", "PerfBoard", "VeroBoard"):
+        c = make_default_component(type_name, "B", 1.0, 1.0)
+        assert c.x1 == 1.0 and c.y1 == 1.0
+        # Width ≥ 0.7in and non-zero height — fits actual components on it.
+        assert c.x2 - c.x1 >= 0.7, f"{type_name} too narrow: {c.x2 - c.x1}"
+        assert c.y2 - c.y1 > 0, f"{type_name} flat: y2 == y1"
+
+
+def test_make_default_shape_has_visible_frame():
+    from pydiylc.tree_editor import make_default_component
+
+    c = make_default_component("Rectangle", "Box1", 1.0, 1.0)
+    assert c.x2 - c.x1 >= 0.5
+    assert c.y2 - c.y1 > 0
 
 
 def test_make_default_single_anchor():

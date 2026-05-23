@@ -1319,11 +1319,67 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
 
 
 def _move_list_selection(listbox, delta: int) -> None:
+    """Move the ListBox selection by ``delta`` rows and keep it visible.
+
+    Selecting a row doesn't scroll the enclosing ScrolledWindow on its own,
+    so a row past the viewport stays off-screen. We bring it into view by
+    nudging the vadjustment, *without* grabbing focus (which would steal it
+    from the SearchEntry mid-typing).
+    """
     row = listbox.get_selected_row()
     idx = row.get_index() if row is not None else -1
-    nxt = listbox.get_row_at_index(max(0, idx + delta))
-    if nxt is not None:
-        listbox.select_row(nxt)
+    n_rows = 0
+    while listbox.get_row_at_index(n_rows) is not None:
+        n_rows += 1
+    new_idx = max(0, min(n_rows - 1, idx + delta))
+    nxt = listbox.get_row_at_index(new_idx)
+    if nxt is None:
+        return
+    listbox.select_row(nxt)
+    _scroll_into_view(listbox, nxt)
+
+
+def _scroll_into_view(listbox, row) -> None:
+    """Scroll the row's containing ScrolledWindow so ``row`` is visible.
+
+    Walks up from the listbox to find the ScrolledWindow ancestor, then
+    adjusts its vertical adjustment to expose the row. Defers via
+    GLib.idle_add when the row hasn't been allocated yet.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, GLib
+
+    parent = listbox.get_parent()
+    sw = None
+    while parent is not None:
+        if isinstance(parent, Gtk.ScrolledWindow):
+            sw = parent
+            break
+        parent = parent.get_parent()
+    if sw is None:
+        return
+
+    def do_scroll():
+        adj = sw.get_vadjustment()
+        if adj is None:
+            return False  # don't keep retrying
+        row_alloc = row.get_allocation()
+        if row_alloc.height == 0:
+            return True  # not yet allocated; ask GLib to retry
+        row_top = row_alloc.y
+        row_bottom = row_top + row_alloc.height
+        page = adj.get_page_size()
+        value = adj.get_value()
+        if row_top < value:
+            adj.set_value(row_top)
+        elif row_bottom > value + page:
+            adj.set_value(row_bottom - page)
+        return False  # done
+
+    # If the row already has an allocation, scroll now; otherwise defer.
+    if do_scroll():
+        GLib.idle_add(do_scroll)
 
 
 def _auto_name(state: _ViewerState, type_name: str) -> str:
