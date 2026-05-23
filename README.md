@@ -102,25 +102,30 @@ Keyboard:
 Your `.py` file should expose either a top-level `project = Project(...)` or
 a `def build() -> Project`. The viewer calls it on every reload.
 
-### Keyboard tree editor (press `T`)
+### Edit mode (press `T` — vim-like "insert mode")
 
-A side panel lists components; each two-pin/points component expands to its
-individual nodes. Fully keyboard-driven:
+Outside edit mode the viewer is read-only (mouse pan/zoom/click). Press `T`
+to open the component side panel and enable the full keyboard editing
+surface. The status bar shows ✎ EDIT while you're in.
 
 - **Tab / Shift-Tab** — next / previous component; once you drill in, walks
   the focused component's nodes
 - **Space** — drill into the focused component's nodes / pop back out
+- **PgUp / PgDn** — page 10 components at a time
 - **arrows** — move the focused node by one board hole (grid step off-board)
 - **Ctrl+arrows** — nudge by one grid step; **Ctrl+Shift+arrows** — fine (1/10)
 - **/** — fuzzy-search to focus any node (searchable navigation)
 - **g** — fuzzy-search to send the focused node onto another node
-- **a** — add a component (fuzzy type picker; in-memory, not yet written to source)
+- **a** — add a component (auto-wires to focused pin); **A** — add without wiring
 - **dd** — delete the focused component (press `d` twice)
-- **u** — undo the last edit (move / rotate / add / delete)
+- **u** / **Ctrl+Z** — undo the last edit
+- **U** / **Ctrl+Y** — redo the last undone edit
 - **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
   parts, rotates coordinates otherwise)
-- **Enter** — commit the focused component's position to source (diff dialog)
-- **Esc / Q** — exit tree mode
+- **Enter** — save the working buffer to disk (silent)
+- **Ctrl+S** — save with the diff-on-save dialog (gated by a "don't show
+  again" preference, persisted in `~/.config/pydiylc/prefs.json`)
+- **Esc / Q** — exit edit mode
 
 Moves are connection-aware: moving a board drags the components mounted on it,
 and moving a part stretches any wires attached to it (the wire's far end stays

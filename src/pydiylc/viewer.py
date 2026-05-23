@@ -319,19 +319,26 @@ class _ViewerState:
 def _status_text(state: _ViewerState) -> str:
     n = len(state.project.components)
     title = state.project.title or "untitled"
+    mode = "✎ EDIT  ·  " if state.tree_mode else ""
     sel = f"  ·  sel: {state.selected_name}" if state.selected_name else ""
     err = f"  ·  ⚠ {state.error_msg}" if state.error_msg else ""
     chord = "  ·  d… (press d again to delete)" if state.pending_d else ""
     undo = ""
-    if state.tree_mode and state.history is not None and state.history.can_undo():
-        undo = f"  ·  undo×{state.history.depth()}"
+    if state.tree_mode and state.history is not None:
+        bits = []
+        if state.history.can_undo():
+            bits.append(f"undo×{state.history.depth()}")
+        if state.history.can_redo():
+            bits.append(f"redo×{state.history.redo_depth()}")
+        if bits:
+            undo = "  ·  " + " ".join(bits)
     dirty = ""
     if state.tree_mode and state.buffer is not None and state.buffer.is_dirty:
         dirty = "  ·  ● unsaved"
     cur = ""
     if state.cursor_in is not None:
         cur = f"  ·  ({state.cursor_in[0]:.2f}, {state.cursor_in[1]:.2f}) in"
-    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
+    return f"{mode}{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
 
 
 def _make_close_request_handler(state: _ViewerState):
@@ -488,7 +495,7 @@ def _build_header_buttons(state: _ViewerState, header) -> None:
         return b
 
     # Left side: tree toggle + add.
-    tree_btn = btn("view-list-symbolic", "Toggle tree editor (T)",
+    tree_btn = btn("view-list-symbolic", "Toggle edit mode (T)",
                    lambda: _enter_tree_mode(state) if not state.tree_mode else _exit_tree_mode(state))
     header.pack_start(tree_btn)
     add_btn = btn("list-add-symbolic", "Add component (a)",
@@ -1182,7 +1189,7 @@ def _build_tree_panel(state: _ViewerState):
     box.set_margin_top(6); box.set_margin_bottom(6)
     box.set_margin_start(6); box.set_margin_end(6)
 
-    title = Gtk.Label(label="Components  (T to close)")
+    title = Gtk.Label(label="Edit mode  ·  Components  (T to exit)")
     title.set_xalign(0.0)
     title.add_css_class("heading")
     box.append(title)
@@ -1198,7 +1205,7 @@ def _build_tree_panel(state: _ViewerState):
     hint = Gtk.Label(
         label="Tab component · Space drill · PgUp/PgDn page · arrows hole-move\n"
               "Ctrl+arrows nudge · R rotate · / focus · g send · a add+wire · A add\n"
-              "dd delete · u undo · Enter save · Ctrl+S save (diff dialog)"
+              "dd delete · u undo · U redo · Enter save · Ctrl+S save (diff)"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -1509,6 +1516,18 @@ def _tree_undo(state: _ViewerState) -> None:
         state.canvas.queue_draw()
 
 
+def _tree_redo(state: _ViewerState) -> None:
+    if state.history is None or not state.history.can_redo():
+        return
+    state.history.redo()
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+        state.nav.clamp_cursor()
+    _refresh_tree_panel(state)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+
+
 def _tree_commit(state: _ViewerState) -> None:
     """Commit the focused component's position + any pending in-memory adds.
 
@@ -1725,8 +1744,16 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         state.pending_d = False
         _refresh_status(state)
 
-    # 'u' undo (also Ctrl+Z — universal shortcut).
-    if keyval in (Gdk.KEY_u, Gdk.KEY_U) or (
+    # 'u' undo (also Ctrl+Z). 'U' (shift+u) redo (also Ctrl+Y / Ctrl+Shift+Z).
+    if keyval == Gdk.KEY_U or (
+        ctrl and (
+            keyval in (Gdk.KEY_y, Gdk.KEY_Y) or
+            (shift and keyval in (Gdk.KEY_z, Gdk.KEY_Z))
+        )
+    ):
+        _tree_redo(state)
+        return True
+    if keyval == Gdk.KEY_u or (
         ctrl and keyval in (Gdk.KEY_z, Gdk.KEY_Z)
     ):
         _tree_undo(state)

@@ -180,11 +180,19 @@ against the tested core and verified on real hardware.
   key controllers (in `viewer.py`) are written but **not yet verified on
   hardware** — the sandbox has no display. Toggle with `T`.
 
-### Implemented keybindings (tree mode, press `T` to enter)
+## Edit mode (vim-like "insert mode" toggle)
+
+`T` toggles edit mode. Outside it, the viewer is read-only: mouse drag pans,
+scroll zooms, click selects, and the global shortcuts (`r`/`q`/`0`/`+`/`-`)
+still work. Inside it, the side panel opens, the canvas highlights the
+focused pin, and every letter key + chord has an editing meaning. The
+status bar shows ✎ EDIT while the mode is on.
+
+### Implemented keybindings (edit mode, press `T` to enter)
 
 | Key | Action |
 |---|---|
-| T | toggle tree-editor panel |
+| T | toggle edit mode |
 | Tab / Shift-Tab | at component level: next / prev component; at node level: next / prev node within the focused component |
 | Space | drill into the focused component's nodes / pop back out |
 | Ctrl+arrows | nudge focused component/node by one grid step |
@@ -203,6 +211,8 @@ Additional bindings:
 | a | add a new component (fuzzy type picker), placed near the focused one |
 | dd | delete the focused component (press `d` twice; any other key cancels) |
 | u | undo the last edit (move / rotate / add / delete) |
+| U / Ctrl+Y | redo the last undone edit |
+| Ctrl+Z | undo (same as `u`) |
 
 Undo is a snapshot stack (`pydiylc.history.History`): every mutating action
 deep-copies the component list first; `u` restores the previous snapshot.
