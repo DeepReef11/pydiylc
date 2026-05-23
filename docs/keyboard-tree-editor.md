@@ -264,6 +264,10 @@ Capture phase intercepts keys at the window level first.
     dialog; when off, Ctrl+S writes silently like Enter.
   - `show_panel_hint` — show or hide the keyboard-shortcut hint label at
     the bottom of the edit-mode side panel.
+  - `theme` — `"light"`, `"dark"`, or `"system"`. The component page
+    itself stays white in both themes (CAD convention so label text
+    remains legible); only the chrome (header / panel / status bar /
+    canvas off-page area / dialogs) darkens.
 
 - **Auto-wire on add (implemented):** with a node focused, lowercase `a`
   adds a new component and immediately creates a `HookupWire` from the

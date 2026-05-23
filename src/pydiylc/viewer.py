@@ -182,6 +182,12 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         # Install actions used by the right-click context menu.
         _install_viewer_actions(state, win)
 
+        # Load preferences + apply the theme before the canvas first draws,
+        # so opening in dark mode doesn't flash a white window.
+        from .prefs import Prefs
+        state.prefs = Prefs.load()
+        _apply_prefs(state)
+
         # Main content: canvas in a scrolled window
         sw = Gtk.ScrolledWindow()
         sw.set_hexpand(True)
@@ -300,6 +306,8 @@ class _ViewerState:
         # One-shot placement target for the next add (set by right-click Add
         # Here, cleared after use). When None, add uses cursor_in or focused.
         self.next_add_at: tuple[float, float] | None = None
+        # Canvas off-page backdrop color (RGB), set by _apply_theme.
+        self.canvas_backdrop: tuple[float, float, float] = (0.97, 0.97, 0.97)
         # Active right-click context popover (so callbacks can dismiss it).
         self.context_popover = None
         # Set True once the user has confirmed a close past the unsaved-
@@ -444,11 +452,51 @@ def _unsaved_changes_dialog(state: _ViewerState, parent_win) -> None:
 
 
 def _apply_prefs(state: _ViewerState) -> None:
-    """Apply preference values to live UI widgets (hint visibility etc.)."""
+    """Apply preference values to live UI widgets (theme, hint visibility…)."""
     if state.prefs is None:
         return
     if state.panel_hint_label is not None:
         state.panel_hint_label.set_visible(state.prefs.show_panel_hint)
+    _apply_theme(state, state.prefs.theme)
+
+
+def _apply_theme(state: _ViewerState, theme: str) -> None:
+    """Switch the GTK system theme between light/dark/system-default.
+
+    The component-page itself stays white in both themes — it's the
+    "sheet of paper on the desk" affordance every CAD tool uses, and
+    keeps component label text legible regardless of theme. What changes
+    in dark mode is the chrome: header bar, side panel, status bar,
+    canvas off-page area, dialogs.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    settings = Gtk.Settings.get_default()
+    if settings is None:
+        return
+    if theme == "dark":
+        settings.set_property("gtk-application-prefer-dark-theme", True)
+    elif theme == "light":
+        settings.set_property("gtk-application-prefer-dark-theme", False)
+    # "system" → leave alone, GTK picks based on the desktop's color scheme.
+
+    # The canvas off-page color is drawn by us; pick a tone matching the
+    # current chrome so the page-on-desk look reads right.
+    state.canvas_backdrop = _canvas_backdrop_for(theme)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+
+
+def _canvas_backdrop_for(theme: str) -> tuple[float, float, float]:
+    """RGB triple for the off-page canvas backdrop, per theme."""
+    if theme == "dark":
+        return (0.16, 0.16, 0.18)
+    # light + system both render with a near-white desk so default GTK light
+    # styling doesn't clash. (Detecting "system" actually-dark would need
+    # querying GtkSettings; left for later.)
+    return (0.97, 0.97, 0.97)
 
 
 def _open_export_dialog(state: _ViewerState) -> None:
@@ -544,6 +592,25 @@ def _open_prefs_dialog(state: _ViewerState) -> None:
     panel_hint_chk.set_active(state.prefs.show_panel_hint)
     box.append(panel_hint_chk)
 
+    # Theme picker (radio buttons). The page itself stays white in both
+    # themes (CAD convention); only the chrome darkens.
+    theme_label = Gtk.Label(label="Theme:")
+    theme_label.set_xalign(0.0)
+    box.append(theme_label)
+    theme_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    light_rb = Gtk.CheckButton(label="Light")
+    dark_rb = Gtk.CheckButton(label="Dark")
+    sys_rb = Gtk.CheckButton(label="System")
+    dark_rb.set_group(light_rb)
+    sys_rb.set_group(light_rb)
+    {"light": light_rb, "dark": dark_rb, "system": sys_rb}[
+        state.prefs.theme if state.prefs.theme in ("light", "dark", "system") else "system"
+    ].set_active(True)
+    theme_box.append(light_rb)
+    theme_box.append(dark_rb)
+    theme_box.append(sys_rb)
+    box.append(theme_box)
+
     path_label = Gtk.Label(
         label=f"Saved to {state.prefs._path}" if state.prefs._path else ""
     )
@@ -561,6 +628,12 @@ def _open_prefs_dialog(state: _ViewerState) -> None:
     def do_save():
         state.prefs.show_save_dialog = save_dialog_chk.get_active()
         state.prefs.show_panel_hint = panel_hint_chk.get_active()
+        if dark_rb.get_active():
+            state.prefs.theme = "dark"
+        elif light_rb.get_active():
+            state.prefs.theme = "light"
+        else:
+            state.prefs.theme = "system"
         state.prefs.save()
         _apply_prefs(state)
         win.close()
@@ -733,8 +806,8 @@ def _refresh_status(state: _ViewerState) -> None:
 
 def _make_draw_func(state: _ViewerState):
     def draw(area, cr, width, height):
-        # Background
-        cr.set_source_rgb(0.97, 0.97, 0.97)
+        # Off-page backdrop (changes with the theme).
+        cr.set_source_rgb(*state.canvas_backdrop)
         cr.rectangle(0, 0, width, height)
         cr.fill()
         cr.save()

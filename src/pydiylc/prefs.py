@@ -15,12 +15,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+_VALID_THEMES = ("light", "dark", "system")
+
+
 @dataclass
 class Prefs:
     """User preferences. Read on viewer start, written when changed."""
 
     show_save_dialog: bool = True
     show_panel_hint: bool = True
+    theme: str = "system"  # "light", "dark", or "system"
     _path: Path | None = None
 
     @classmethod
@@ -41,9 +45,13 @@ class Prefs:
                 data = {}
         except (OSError, ValueError):
             data = {}
+        theme = str(data.get("theme", "system"))
+        if theme not in _VALID_THEMES:
+            theme = "system"
         prefs = cls(
             show_save_dialog=bool(data.get("show_save_dialog", True)),
             show_panel_hint=bool(data.get("show_panel_hint", True)),
+            theme=theme,
             _path=p,
         )
         return prefs
@@ -58,6 +66,7 @@ class Prefs:
                 json.dumps({
                     "show_save_dialog": self.show_save_dialog,
                     "show_panel_hint": self.show_panel_hint,
+                    "theme": self.theme,
                 }, indent=2),
                 encoding="utf-8",
             )

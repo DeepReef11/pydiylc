@@ -19,6 +19,10 @@ DIYLC itself remains the canonical renderer; pydiylc produces and consumes the
 same `.diy` format and adds a scriptable, Java-free, Wayland-friendly workflow
 on top.
 
+> **New here?** [**`docs/GETTING_STARTED.md`**](docs/GETTING_STARTED.md) is a
+> 15-minute beginner walkthrough — assumes no Python virtual-environment
+> experience and gets you from `git clone` to an open editor window.
+
 ## Status
 
 Beta (v0.2.0). Current component set (40 types):

@@ -26,6 +26,28 @@ def test_save_and_reload_both_prefs(tmp_path):
     assert p2.show_panel_hint is False
 
 
+def test_theme_default_system():
+    p = Prefs()
+    assert p.theme == "system"
+
+
+def test_theme_persists(tmp_path):
+    path = tmp_path / "prefs.json"
+    p = Prefs.load(path)
+    p.theme = "dark"
+    assert p.save()
+    p2 = Prefs.load(path)
+    assert p2.theme == "dark"
+
+
+def test_invalid_theme_falls_back_to_system(tmp_path):
+    """A garbage theme value in the file shouldn't crash; default safely."""
+    bad = tmp_path / "prefs.json"
+    bad.write_text('{"theme": "garish"}', encoding="utf-8")
+    p = Prefs.load(bad)
+    assert p.theme == "system"
+
+
 def test_load_missing_file_returns_defaults(tmp_path):
     p = Prefs.load(tmp_path / "nope.json")
     assert p.show_save_dialog is True
