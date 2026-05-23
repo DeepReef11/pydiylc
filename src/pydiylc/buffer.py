@@ -68,25 +68,17 @@ class Buffer:
         """
         self.text = proposal.new_text
 
-    def propose(self, *, moves=(), adds=()) -> MoveProposal | None:
+    def propose(self, *, moves=(), adds=(), keyword_ops=(), coords_ops=(),
+                deletes=()) -> MoveProposal | None:
         """Build a MoveProposal against the *buffer* (not disk).
 
-        Returns None if there's nothing to do. The returned proposal's
-        ``new_text`` is what the buffer would become; the caller applies it
-        with ``apply()`` (no dialog needed for buffer edits — the dialog is
-        the *save* dialog, run separately at flush time).
+        Accepts every op type ``propose_changes`` does. Returns None if
+        nothing was requested.
         """
-        if not moves and not adds:
+        if not (moves or adds or keyword_ops or coords_ops or deletes):
             return None
-        # propose_changes reads from disk. We need it to operate on the
-        # buffer text. Write the buffer to a virtual location: easiest is a
-        # temp file that propose_changes can read from. Cleaner: refactor
-        # propose_changes to accept text, but that's a bigger surgery — for
-        # now we round-trip via a temp file in the same directory so file
-        # encoding/newline behavior matches.
         import tempfile, os
 
-        # Use a temp file beside the real one so paths in errors look right.
         fd, temp_path = tempfile.mkstemp(
             prefix=f".{self.path.stem}-buf-", suffix=".py", dir=str(self.path.parent),
         )
@@ -94,8 +86,11 @@ class Buffer:
         temp = Path(temp_path)
         try:
             temp.write_text(self.text, encoding="utf-8")
-            proposal = propose_changes(temp, moves=moves, adds=adds)
-            # Rewrite the proposal's path back to the real file for display.
+            proposal = propose_changes(
+                temp, moves=moves, adds=adds,
+                keyword_ops=keyword_ops, coords_ops=coords_ops,
+                deletes=deletes,
+            )
             return MoveProposal(
                 path=self.path,
                 component_name=proposal.component_name,

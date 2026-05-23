@@ -470,6 +470,119 @@ def test_propose_changes_lookup_error_on_missing_move(tmp_path):
         propose_changes(p, moves=[MoveOp("Nope", 0, 0)])
 
 
+def test_propose_changes_keyword_op_writes_orientation(tmp_path):
+    """Rotation of an oriented part should write the new orientation back."""
+    import importlib.util
+    from pydiylc.edit import propose_changes, KeywordOp, apply_proposal
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, TransistorTO92
+        def build():
+            pr = Project()
+            pr.add(TransistorTO92(name='Q1', x=1.0, y=1.0, orientation='DEFAULT'))
+            return pr
+    """)
+    proposal = propose_changes(p, keyword_ops=[KeywordOp("Q1", "orientation", "_90")])
+    assert "orientation='_90'" in proposal.new_text or 'orientation="_90"' in proposal.new_text
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rt", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.build().components[0].orientation == "_90"
+
+
+def test_propose_changes_keyword_op_appends_when_missing(tmp_path):
+    """A keyword_op for a kwarg not yet on the call should append it."""
+    from pydiylc.edit import propose_changes, KeywordOp
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, TransistorTO92
+        project = Project()
+        project.add(TransistorTO92(name='Q1', x=1.0, y=1.0))
+    """)
+    proposal = propose_changes(p, keyword_ops=[KeywordOp("Q1", "orientation", "_180")])
+    assert "orientation='_180'" in proposal.new_text or 'orientation="_180"' in proposal.new_text
+
+
+def test_propose_changes_coords_op_two_pin(tmp_path):
+    """Coordinate rotation: replace all four coords in one shot."""
+    from pydiylc.edit import propose_changes, CoordsOp
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        project = Project()
+        project.add(Resistor(name='R1', x1=1.0, y1=1.0, x2=2.0, y2=1.0))
+    """)
+    proposal = propose_changes(p, coords_ops=[CoordsOp("R1", two_pin=(1.5, 0.5, 1.5, 1.5))])
+    text = proposal.new_text
+    assert "x1=1.5" in text and "y1=0.5" in text
+    assert "x2=1.5" in text and "y2=1.5" in text
+
+
+def test_propose_changes_delete_op_removes_line(tmp_path):
+    """A DeleteOp removes the matching `<x>.add(...)` line."""
+    import importlib.util
+    from pydiylc.edit import propose_changes, DeleteOp, apply_proposal
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        def build():
+            pr = Project()
+            pr.add(SolderPad(name='P1', x=1.0, y=1.0))
+            pr.add(SolderPad(name='P2', x=2.0, y=2.0))
+            return pr
+    """)
+    proposal = propose_changes(p, deletes=[DeleteOp("P1")])
+    assert "P2" in proposal.new_text
+    assert "P1" not in proposal.new_text
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rt", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    names = [c.name for c in mod.build().components]
+    assert names == ["P2"]
+
+
+def test_propose_changes_delete_missing_raises(tmp_path):
+    from pydiylc.edit import propose_changes, DeleteOp
+    import pytest
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    with pytest.raises(LookupError):
+        propose_changes(p, deletes=[DeleteOp("Nope")])
+
+
+def test_propose_changes_bundles_rotate_and_delete(tmp_path):
+    """A keyword_op + a delete in one proposal applies cleanly."""
+    import importlib.util
+    from pydiylc.edit import propose_changes, KeywordOp, DeleteOp, apply_proposal
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, TransistorTO92, SolderPad
+        def build():
+            pr = Project()
+            pr.add(TransistorTO92(name='Q1', x=1.0, y=1.0, orientation='DEFAULT'))
+            pr.add(SolderPad(name='P_extra', x=2.0, y=2.0))
+            return pr
+    """)
+    proposal = propose_changes(
+        p,
+        keyword_ops=[KeywordOp("Q1", "orientation", "_90")],
+        deletes=[DeleteOp("P_extra")],
+    )
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rt", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    proj = mod.build()
+    assert [c.name for c in proj.components] == ["Q1"]
+    assert proj.components[0].orientation == "_90"
+
+
 def test_propose_changes_adds_only_no_move(tmp_path):
     """`adds=[...]` with no moves still produces a valid proposal."""
     import importlib.util

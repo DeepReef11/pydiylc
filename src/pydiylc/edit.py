@@ -546,6 +546,36 @@ def propose_add(
 
 
 @dataclass
+class KeywordOp:
+    """Set ``<component>.<key> = value`` to a new value, e.g. orientation."""
+
+    component_name: str
+    key: str
+    value: str | int | float | bool
+
+
+@dataclass
+class CoordsOp:
+    """Replace all of x1/y1/x2/y2 (or points=[...]) on a component.
+
+    Used by rotate when the rotation produces new coordinates rather than
+    just cycling an orientation enum. Either ``two_pin`` or ``points`` is
+    populated, never both.
+    """
+
+    component_name: str
+    two_pin: tuple[float, float, float, float] | None = None
+    points: list[tuple[float, float]] | None = None
+
+
+@dataclass
+class DeleteOp:
+    """Remove the `<receiver>.add(<Component>(name='X', ...))` line."""
+
+    component_name: str
+
+
+@dataclass
 class MoveOp:
     """One move/edit to apply within a propose_changes() batch.
 
@@ -566,6 +596,9 @@ def propose_changes(
     *,
     moves: "list[MoveOp] | tuple[MoveOp, ...]" = (),
     adds: "list | tuple" = (),
+    keyword_ops: "list[KeywordOp] | tuple[KeywordOp, ...]" = (),
+    coords_ops: "list[CoordsOp] | tuple[CoordsOp, ...]" = (),
+    deletes: "list[DeleteOp] | tuple[DeleteOp, ...]" = (),
 ) -> MoveProposal:
     """Apply multiple edits to one source file as a single rewrite.
 
@@ -574,11 +607,18 @@ def propose_changes(
     yet-uncommitted adds). Returns one MoveProposal whose new_text contains
     all mutations.
 
+    Op kinds:
+      moves       — coordinate edits (x/y, x2/y2, points[i]).
+      adds        — insert a new `p.add(Component(...))` line.
+      keyword_ops — set a single kwarg (e.g. orientation='_90') on a call.
+      coords_ops  — replace all of x1/y1/x2/y2 (or points=[...]) at once,
+                    used by coordinate-rotation.
+      deletes    — remove the `p.add(<Component>(name='X', ...))` line.
+
     Raises NotImplementedError if no edits were requested, or if any edit
-    can't be performed (positional coords, missing component, etc.). The
-    caller (viewer) translates those into the read-only locate dialog.
+    can't be performed (positional coords, missing component, etc.).
     """
-    if not moves and not adds:
+    if not (moves or adds or keyword_ops or coords_ops or deletes):
         raise NotImplementedError("propose_changes: nothing to do")
 
     p = Path(path)
@@ -602,6 +642,36 @@ def propose_changes(
         else:
             _apply_move(target_call, op.component_name, op.x, op.y,
                         op.second_point, summary_lines)
+
+    for op in keyword_ops:
+        target_call = _find_call_by_name(tree, op.component_name)
+        if target_call is None:
+            raise LookupError(
+                f"component {op.component_name!r} not found by name in {p}"
+            )
+        focus_line = target_call.lineno
+        _apply_keyword(target_call, op.component_name, op.key, op.value,
+                       summary_lines)
+
+    for op in coords_ops:
+        target_call = _find_call_by_name(tree, op.component_name)
+        if target_call is None:
+            raise LookupError(
+                f"component {op.component_name!r} not found by name in {p}"
+            )
+        focus_line = target_call.lineno
+        _apply_coords(target_call, op.component_name, op.two_pin, op.points,
+                      summary_lines)
+
+    for op in deletes:
+        anchor_stmt, body, idx = _find_add_statement_by_name(tree, op.component_name)
+        if anchor_stmt is None:
+            raise LookupError(
+                f"component {op.component_name!r}: no add line to delete in {p}"
+            )
+        focus_line = anchor_stmt.lineno
+        del body[idx]
+        summary_lines.append(f"- {op.component_name!r}")
 
     for component in adds:
         located = _find_last_add_call(tree)
@@ -633,17 +703,114 @@ def propose_changes(
     summary = "; ".join(summary_lines) if summary_lines else "no-op"
     hunk = _line_numbered_hunk(old_lines, new_lines, focus_line)
 
+    # Best-effort focus name for the dialog header.
+    focus_name = ""
+    if moves: focus_name = moves[0].component_name
+    elif keyword_ops: focus_name = keyword_ops[0].component_name
+    elif coords_ops: focus_name = coords_ops[0].component_name
+    elif deletes: focus_name = deletes[0].component_name
+    elif adds: focus_name = getattr(adds[0], "name", "?")
+
     return MoveProposal(
         path=p,
-        component_name=moves[0].component_name if moves else (
-            getattr(adds[0], "name", "?") if adds else ""
-        ),
+        component_name=focus_name,
         old_text=text,
         new_text=new_full + ("\n" if text.endswith("\n") else ""),
         line=focus_line,
         summary=summary,
         diff_hunk=hunk,
     )
+
+
+def _apply_keyword(call: ast.Call, name: str, key: str, value, summary_lines: list[str]) -> None:
+    """Set ``call.<key> = value``. Replaces any existing kwarg of the same name,
+    appends if missing. Used by rotate to write ``orientation='_90'`` back."""
+    new_node = _value_to_ast(value)
+    for kw in call.keywords:
+        if kw.arg == key:
+            old = getattr(kw.value, "value", "?")
+            kw.value = new_node
+            summary_lines.append(f"{name}.{key}: {old!r}→{value!r}")
+            return
+    call.keywords.append(ast.keyword(arg=key, value=new_node))
+    summary_lines.append(f"{name}.{key}: +{value!r}")
+
+
+def _apply_coords(call: ast.Call, name: str,
+                  two_pin: tuple[float, float, float, float] | None,
+                  points: list[tuple[float, float]] | None,
+                  summary_lines: list[str]) -> None:
+    """Replace x1/y1/x2/y2 or points=[...] in one shot. Used by coordinate
+    rotation (no orientation enum to cycle)."""
+    if two_pin is not None:
+        x1, y1, x2, y2 = two_pin
+        for k, v in [("x1", x1), ("y1", y1), ("x2", x2), ("y2", y2)]:
+            node = _arg_position_for(call, k)
+            if node is None:
+                ctor = getattr(call.func, "id", None) or getattr(call.func, "attr", "?")
+                raise NotImplementedError(
+                    f"{name!r}: positional coords prevent rotate. Rewrite as "
+                    f"`{ctor}(name={name!r}, x1=..., y1=..., x2=..., y2=...)`."
+                )
+            _set_keyword(call, k, ast.Constant(value=_clean_float(v)))
+        summary_lines.append(f"{name} rotated → ({x1:g},{y1:g})-({x2:g},{y2:g})")
+        return
+    if points is not None:
+        node = _arg_position_for(call, "points")
+        if node is None or not isinstance(node, (ast.List, ast.Tuple)):
+            raise NotImplementedError(
+                f"{name!r}: needs literal `points=[...]` to rotate."
+            )
+        node.elts = [
+            ast.Tuple(
+                elts=[
+                    ast.Constant(value=_clean_float(px)),
+                    ast.Constant(value=_clean_float(py)),
+                ],
+                ctx=ast.Load(),
+            )
+            for px, py in points
+        ]
+        summary_lines.append(f"{name} rotated ({len(points)} points)")
+
+
+def _find_add_statement_by_name(
+    tree: ast.AST, component_name: str
+) -> tuple[ast.stmt | None, list, int]:
+    """Locate the `<x>.add(<Component>(name='...'))` statement matching name.
+
+    Returns ``(stmt, body_list, index)`` so the caller can ``del body[index]``.
+    """
+    found: tuple[ast.stmt | None, list, int] = (None, [], -1)
+
+    def visit(body: list):
+        nonlocal found
+        if found[0] is not None:
+            return
+        for i, stmt in enumerate(body):
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(stmt.body)
+                continue
+            if isinstance(stmt, (ast.If, ast.With, ast.For)):
+                visit(stmt.body)
+                if hasattr(stmt, "orelse"):
+                    visit(stmt.orelse)
+                continue
+            if (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Attribute)
+                and stmt.value.func.attr == "add"
+                and stmt.value.args
+            ):
+                inner = stmt.value.args[0]
+                if isinstance(inner, ast.Call) and _find_name_arg(inner) == component_name:
+                    found = (stmt, body, i)
+                    return
+
+    if isinstance(tree, ast.Module):
+        visit(tree.body)
+    return found
 
 
 def _find_call_by_name(tree: ast.AST, component_name: str) -> ast.Call | None:

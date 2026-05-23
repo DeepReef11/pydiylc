@@ -1090,6 +1090,59 @@ def _sync_buffer_add(state: _ViewerState, component) -> None:
         state.buffer.apply(proposal)
 
 
+def _sync_buffer_rotate(state: _ViewerState, component) -> None:
+    """Write a rotate back to the working buffer.
+
+    If the component has an ``orientation`` enum we write that keyword;
+    otherwise (raw-coordinate rotation) we replace x1/y1/x2/y2 or
+    points=[...] with the post-rotation values.
+    """
+    if state.buffer is None:
+        return
+    from .edit import KeywordOp, CoordsOp
+    from .graph import control_points_of
+
+    name = getattr(component, "name", None)
+    if not name:
+        return
+    orientation = getattr(component, "orientation", None)
+    try:
+        if orientation is not None:
+            proposal = state.buffer.propose(
+                keyword_ops=[KeywordOp(name, "orientation", orientation)]
+            )
+        elif hasattr(component, "x1") and hasattr(component, "x2"):
+            proposal = state.buffer.propose(
+                coords_ops=[CoordsOp(name, two_pin=(component.x1, component.y1,
+                                                   component.x2, component.y2))]
+            )
+        elif hasattr(component, "points"):
+            proposal = state.buffer.propose(
+                coords_ops=[CoordsOp(name, points=list(component.points))]
+            )
+        else:
+            proposal = None
+    except (LookupError, NotImplementedError) as exc:
+        state.error_msg = f"buffer sync: {exc}"
+        return
+    if proposal is not None:
+        state.buffer.apply(proposal)
+
+
+def _sync_buffer_delete(state: _ViewerState, name: str) -> None:
+    """Remove the component's `p.add(...)` line from the working buffer."""
+    if state.buffer is None or not name:
+        return
+    from .edit import DeleteOp
+    try:
+        proposal = state.buffer.propose(deletes=[DeleteOp(name)])
+    except (LookupError, NotImplementedError) as exc:
+        state.error_msg = f"buffer sync: {exc}"
+        return
+    if proposal is not None:
+        state.buffer.apply(proposal)
+
+
 def _flush_buffer_silent(state: _ViewerState) -> None:
     """Write the buffer to disk with no UI. Used by Enter — the dialog is
     reserved for explicit Ctrl+S saves."""
@@ -1180,14 +1233,12 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     nav = state.nav
     if nav is None or nav.current is None:
         return
+    ci = nav.current.component_index
     _record(state, "rotate")
-    moves.rotate_component(state.project, nav.current.component_index, clockwise=clockwise)
-    # Rotation isn't yet representable as a MoveOp (it changes orientation
-    # enums or rotates coordinates). For now, flag the buffer as out-of-sync
-    # via error_msg so the user knows; a future commit can teach
-    # propose_changes to write an `orientation=` keyword edit.
-    if state.buffer is not None:
-        state.error_msg = "rotate isn't yet written to the buffer — save will skip it"
+    moves.rotate_component(state.project, ci, clockwise=clockwise)
+    # Mirror the rotation in the working buffer (orientation= keyword for
+    # parts with an orientation enum; raw-coord replacement otherwise).
+    _sync_buffer_rotate(state, state.project.components[ci])
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
 
@@ -1204,13 +1255,8 @@ def _tree_delete(state: _ViewerState) -> None:
     name = getattr(comp, "name", None)
     _record(state, "delete")
     del state.project.components[ci]
-    # Buffer sync: removing a component from source needs AST line deletion,
-    # which propose_changes doesn't do yet. Mark the buffer as out-of-sync.
-    if state.buffer is not None and name:
-        state.error_msg = (
-            f"delete of {name!r} isn't yet written to the buffer — "
-            "save will skip it"
-        )
+    # Mirror the delete in the working buffer (removes the `p.add(...)` line).
+    _sync_buffer_delete(state, name)
     nav.rebuild(state.project)
     nav.clamp_cursor()
     _refresh_tree_panel(state)

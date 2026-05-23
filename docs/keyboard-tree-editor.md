@@ -239,10 +239,11 @@ Capture phase intercepts keys at the window level first.
   persisted to `~/.config/pydiylc/prefs.json`); subsequent saves are
   silent. The status bar shows ● unsaved while the buffer is dirty.
 
-  Caveats today: rotate and delete update the in-memory project but don't
-  yet write back to the buffer (no orientation-keyword or line-removal
-  surgery), so they're flagged in the status bar with a "won't be saved"
-  hint. Move + add are fully buffer-synced.
+  Buffer-sync coverage: move, add, **rotate** (orientation= keyword for
+  parts with an orientation enum; raw-coord replacement for two-pin /
+  points-list otherwise via the CoordsOp branch), and **delete** (removes
+  the matching `<x>.add(...)` line). All actions now flush through Enter /
+  Ctrl+S without skipped edits.
 
 - **Auto-wire on add (implemented):** with a node focused, lowercase `a`
   adds a new component and immediately creates a `HookupWire` from the
