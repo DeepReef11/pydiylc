@@ -353,3 +353,78 @@ def test_propose_add_clean_floats(tmp_path):
     proposal = propose_add(p, SolderPad("P2", x=noisy, y=1.0))
     assert "2.4000000000000004" not in proposal.new_text
     assert "x=2.4" in proposal.new_text
+
+
+def test_propose_add_appends_missing_import(tmp_path):
+    """Adding a component whose class isn't imported must extend the import line."""
+    import importlib.util
+    from pydiylc.edit import propose_add, apply_proposal
+    from pydiylc import BlankBoard
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    proposal = propose_add(p, BlankBoard("B1", x1=2.0, y1=2.0, x2=3.0, y2=2.7))
+    # BlankBoard must show up in the import list.
+    assert "BlankBoard" in proposal.new_text
+    # The rewritten file must actually be importable (the original bug).
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rewritten", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # must not raise NameError
+
+
+def test_propose_add_skips_import_when_already_present(tmp_path):
+    """Adding a Resistor when Resistor is already imported doesn't duplicate."""
+    from pydiylc.edit import propose_add
+    from pydiylc import Resistor
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        project = Project()
+        project.add(Resistor(name='R1', x1=0, y1=0, x2=0, y2=0.5))
+    """)
+    proposal = propose_add(p, Resistor("R2", x1=1.0, y1=1.0, x2=1.0, y2=1.5))
+    # Only one "Resistor" mention in the import list — count it on the
+    # import line, not the call lines.
+    import_line = next(
+        ln for ln in proposal.new_text.splitlines()
+        if ln.startswith("from pydiylc import")
+    )
+    assert import_line.count("Resistor") == 1
+
+
+def test_propose_add_star_import_no_op(tmp_path):
+    """A star import already covers any name; we don't extend it."""
+    from pydiylc.edit import propose_add
+    from pydiylc import BlankBoard
+
+    p = _write(tmp_path, """
+        from pydiylc import *
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    proposal = propose_add(p, BlankBoard("B1", x1=2.0, y1=2.0, x2=3.0, y2=2.7))
+    # Still a single star import — we didn't add a parallel named import.
+    import_lines = [
+        ln for ln in proposal.new_text.splitlines()
+        if ln.startswith("from pydiylc import")
+    ]
+    assert import_lines == ["from pydiylc import *"]
+
+
+def test_propose_add_inserts_import_when_missing(tmp_path):
+    """A file with no pydiylc import at all gets one inserted."""
+    from pydiylc.edit import propose_add
+    from pydiylc import Project, Resistor
+
+    p = _write(tmp_path, '''
+        """A layout."""
+        import pydiylc
+        project = pydiylc.Project()
+        project.add(pydiylc.SolderPad(name='P1', x=1.0, y=1.0))
+    ''')
+    proposal = propose_add(p, Resistor("R1", x1=0, y1=0, x2=0, y2=0.5))
+    assert "from pydiylc import Resistor" in proposal.new_text

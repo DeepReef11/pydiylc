@@ -441,6 +441,45 @@ def _find_last_add_call(tree: ast.AST) -> tuple[ast.stmt, ast.AST] | None:
     return (last[0], last[1]) if last else None
 
 
+def _ensure_import(tree: ast.Module, name: str) -> None:
+    """Add ``name`` to a ``from pydiylc import ...`` line if missing.
+
+    - Already imported (by name or star): no-op.
+    - There's an existing ``from pydiylc import X, Y``: append ``name``.
+    - No pydiylc import at all: insert a fresh ``from pydiylc import name``
+      after the file's leading docstring (or at the top).
+    """
+    if not isinstance(tree, ast.Module):
+        return
+
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ImportFrom) and stmt.module == "pydiylc":
+            # `from pydiylc import *` covers everything.
+            if any(a.name == "*" for a in stmt.names):
+                return
+            existing = {a.asname or a.name for a in stmt.names}
+            if name in existing:
+                return
+            stmt.names.append(ast.alias(name=name, asname=None))
+            return
+
+    # No pydiylc import — add one. Place after the module docstring if present.
+    new_import = ast.ImportFrom(
+        module="pydiylc",
+        names=[ast.alias(name=name, asname=None)],
+        level=0,
+    )
+    insert_at = 0
+    if (
+        tree.body
+        and isinstance(tree.body[0], ast.Expr)
+        and isinstance(tree.body[0].value, ast.Constant)
+        and isinstance(tree.body[0].value.value, str)
+    ):
+        insert_at = 1
+    tree.body.insert(insert_at, new_import)
+
+
 def propose_add(
     path: str | Path,
     component,
@@ -478,6 +517,11 @@ def propose_add(
     # Insert after the anchor.
     idx = body.index(anchor_stmt)
     body.insert(idx + 1, new_stmt)
+
+    # Make sure the component's class name is imported. Without this, the
+    # rewritten file blows up at import time with NameError.
+    _ensure_import(tree, type(component).__name__)
+
     ast.fix_missing_locations(tree)
 
     new_full = ast.unparse(tree)
