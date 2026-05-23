@@ -126,6 +126,24 @@ def make_wire(name: str, src: tuple[float, float], dst: tuple[float, float]):
     return HookupWire(name=name, points=[src, dst])
 
 
+def duplicate_names(project) -> list[str]:
+    """Return a sorted list of component names that appear more than once.
+
+    The AST surgery in edit.py locates components by name, so duplicates
+    cause "ghost moves" — you drag one but the other changes. The viewer
+    surfaces this in the status bar so the user can rename before editing.
+    """
+    from collections import Counter
+
+    counts = Counter(
+        getattr(c, "name", None) for c in project.components
+    )
+    return sorted(
+        name for name, n in counts.items()
+        if name is not None and n > 1
+    )
+
+
 def addable_pins(component) -> list[tuple[int, str, float, float]]:
     """Pin choices on a component, for the auto-wire pin picker.
 

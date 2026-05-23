@@ -350,7 +350,20 @@ def _status_text(state: _ViewerState) -> str:
     cur = ""
     if state.cursor_in is not None:
         cur = f"  ·  ({state.cursor_in[0]:.2f}, {state.cursor_in[1]:.2f}) in"
-    return f"{mode}{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
+    # Duplicate-name warning: the AST surgery in edit.py finds components by
+    # name; if two share a name, moves on one accidentally affect the other.
+    dup = ""
+    if state.tree_mode:
+        from .tree_editor import duplicate_names
+        dups = duplicate_names(state.project)
+        if dups:
+            dup = f"  ·  ⚠ duplicate names: {', '.join(dups[:3])}"
+            if len(dups) > 3:
+                dup += f" (+{len(dups) - 3} more)"
+    return (
+        f"{mode}{title}  ·  {n} components  ·  zoom {state.zoom:.2f}"
+        f"{cur}{sel}{undo}{dirty}{chord}{dup}{err}"
+    )
 
 
 def _make_close_request_handler(state: _ViewerState):
