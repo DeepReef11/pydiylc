@@ -118,6 +118,58 @@ def test_temp_file_is_cleaned_up(tmp_path):
     assert before == after  # no leftover .py-buf- files
 
 
+def test_buffer_propose_handles_keyword_op(tmp_path):
+    """Buffer.propose(keyword_ops=[...]) should write back via temp file."""
+    from pydiylc.edit import KeywordOp
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, TransistorTO92
+        def build():
+            pr = Project()
+            pr.add(TransistorTO92(name='Q1', x=1.0, y=1.0, orientation='DEFAULT'))
+            return pr
+    """)
+    buf = Buffer.from_disk(p)
+    proposal = buf.propose(keyword_ops=[KeywordOp("Q1", "orientation", "_90")])
+    assert proposal is not None
+    buf.apply(proposal)
+    assert "orientation='_90'" in buf.text or 'orientation="_90"' in buf.text
+
+
+def test_buffer_propose_handles_delete_op(tmp_path):
+    from pydiylc.edit import DeleteOp
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        def build():
+            pr = Project()
+            pr.add(SolderPad(name='P1', x=1.0, y=1.0))
+            pr.add(SolderPad(name='P2', x=2.0, y=2.0))
+            return pr
+    """)
+    buf = Buffer.from_disk(p)
+    proposal = buf.propose(deletes=[DeleteOp("P1")])
+    buf.apply(proposal)
+    assert "P1" not in buf.text
+    assert "P2" in buf.text
+
+
+def test_buffer_propose_handles_coords_op(tmp_path):
+    from pydiylc.edit import CoordsOp
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        def build():
+            pr = Project()
+            pr.add(Resistor(name='R1', x1=1.0, y1=1.0, x2=2.0, y2=1.0))
+            return pr
+    """)
+    buf = Buffer.from_disk(p)
+    proposal = buf.propose(coords_ops=[CoordsOp("R1", two_pin=(1.5, 0.5, 1.5, 1.5))])
+    buf.apply(proposal)
+    assert "x1=1.5" in buf.text and "y2=1.5" in buf.text
+
+
 def test_refresh_disk_after_self_write(tmp_path):
     """After writing our buffer to disk, refresh_disk re-syncs disk_text so
     a subsequent watcher poll doesn't see the file as 'externally changed'."""
