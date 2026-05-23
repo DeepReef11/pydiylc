@@ -33,6 +33,21 @@ def test_cairo_has_renderer_for_every_component():
     assert not missing, f"Cairo backend missing: {missing}"
 
 
+def test_svg_has_renderer_for_every_component():
+    """The SVG renderer dispatch covers every component too.
+
+    Without this, new components silently render as the gray fallback dot
+    in browser previews, MCP-served renders, and CLI exports.
+    """
+    from pydiylc.components import ALL_COMPONENTS
+    from pydiylc import svg
+
+    missing = [
+        c.__name__ for c in ALL_COMPONENTS if c not in svg._RENDERERS
+    ]
+    assert not missing, f"SVG backend missing: {missing}"
+
+
 def test_hex_to_rgb_short_form():
     r, g, b = cairo_render._hex_to_rgb("abc")
     assert abs(r - 0xAA / 255) < 1e-6

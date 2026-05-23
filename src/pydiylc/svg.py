@@ -36,15 +36,23 @@ from .components import (
     BlankBoard,
     BOM,
     CapacitorSymbol,
+    CliffJack1_4,
     CurvedTrace,
+    DiodeGlass,
     DiodeSymbol,
     Dot,
     Ellipse,
+    EllipticalCutout,
     Eyelet,
+    GroundFill,
     GroundSymbol,
     Image,
     Line,
+    PCBText,
     PerfBoard,
+    PinHeader,
+    Polygon,
+    PotentiometerSymbol,
     Rectangle,
     ResistorSymbol,
     TerminalStrip,
@@ -52,6 +60,7 @@ from .components import (
     TubeSocket,
     Turret,
     VeroBoard,
+    WrapLabel,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1079,6 +1088,144 @@ def _value_label(x1: float, y1: float, x2: float, y2: float, s: float,
     )
 
 
+def _render_ground_fill(c: GroundFill, s: float) -> str:
+    if len(c.points) < 3:
+        return ""
+    pts = " ".join(f"{x*s:.1f},{y*s:.1f}" for x, y in c.points)
+    return (
+        f'<polygon points="{pts}" fill="#{c.color}" fill-opacity="0.35" '
+        f'stroke="#{c.color}" stroke-width="1"/>'
+    )
+
+
+def _render_elliptical_cutout(c: EllipticalCutout, s: float) -> str:
+    cx = (c.x1 + c.x2) / 2 * s
+    cy = (c.y1 + c.y2) / 2 * s
+    rx = abs(c.x2 - c.x1) / 2 * s
+    ry = abs(c.y2 - c.y1) / 2 * s
+    if rx <= 0 or ry <= 0:
+        return ""
+    fa = c.alpha / 255
+    return (
+        f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" '
+        f'fill="#{c.color}" fill-opacity="{fa:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_pin_header(c: PinHeader, s: float) -> str:
+    out = []
+    for x, y in c.points:
+        out.append(
+            f'<circle cx="{x*s:.1f}" cy="{y*s:.1f}" r="3.5" '
+            f'fill="#333" stroke="#000" stroke-width="0.8"/>'
+        )
+    return "<g>" + "".join(out) + "</g>"
+
+
+def _render_polygon(c: Polygon, s: float) -> str:
+    if len(c.points) < 3:
+        return ""
+    pts = " ".join(f"{x*s:.1f},{y*s:.1f}" for x, y in c.points)
+    fa = c.alpha / 255
+    return (
+        f'<polygon points="{pts}" fill="#{c.color}" fill-opacity="{fa:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_wrap_label(c: WrapLabel, s: float) -> str:
+    # SVG has no native wrapping; render at the top-left anchor as a single
+    # line. DIYLC's own wrap layout would need text-extent math we don't have.
+    x = c.x1 * s
+    y = c.y1 * s + c.font_size
+    anchor = {"LEFT": "start", "CENTER": "middle", "RIGHT": "end"}.get(
+        c.horizontal_alignment, "start"
+    )
+    return (
+        f'<text x="{x:.1f}" y="{y:.1f}" font-size="{c.font_size}" '
+        f'text-anchor="{anchor}" fill="#{c.color}">{_esc(c.text)}</text>'
+    )
+
+
+def _render_diode_glass(c: DiodeGlass, s: float) -> str:
+    # Same geometry as DiodePlastic but with the glass body-color default.
+    # Reuse the DiodePlastic renderer to stay consistent.
+    return _render_diode_like(c, s, body_color=c.body_color)
+
+
+def _render_diode_like(c, s: float, *, body_color: str) -> str:
+    import math
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    ux, uy = dx / L, dy / L
+    body_len = max(L * 0.5, 14)
+    body_w = 8
+    px, py = -uy, ux
+    hl = body_len / 2
+    hw = body_w / 2
+    corners = [
+        (cx - ux*hl + px*hw, cy - uy*hl + py*hw),
+        (cx + ux*hl + px*hw, cy + uy*hl + py*hw),
+        (cx + ux*hl - px*hw, cy + uy*hl - py*hw),
+        (cx - ux*hl - px*hw, cy - uy*hl - py*hw),
+    ]
+    pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in corners)
+    fa = c.alpha / 255
+    leads = (
+        f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{cx-ux*hl:.1f}" y2="{cy-uy*hl:.1f}" '
+        f'stroke="#{c.lead_color}" stroke-width="1.2"/>'
+        f'<line x1="{cx+ux*hl:.1f}" y1="{cy+uy*hl:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+        f'stroke="#{c.lead_color}" stroke-width="1.2"/>'
+    )
+    body = (
+        f'<polygon points="{pts}" fill="#{body_color}" fill-opacity="{fa:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+    return "<g>" + leads + body + "</g>"
+
+
+def _render_pcb_text(c: PCBText, s: float) -> str:
+    return (
+        f'<text x="{c.x*s:.1f}" y="{c.y*s + c.font_size:.1f}" '
+        f'font-family="monospace" font-size="{c.font_size}" '
+        f'fill="#{c.color}">{_esc(c.text)}</text>'
+    )
+
+
+def _render_potentiometer_symbol(c: PotentiometerSymbol, s: float) -> str:
+    pts = c._control_points()
+    sx = [p[0] * s for p in pts]
+    sy = [p[1] * s for p in pts]
+    cx, cy = sum(sx) / 3, sum(sy) / 3
+    lines = "".join(
+        f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x:.1f}" y2="{y:.1f}" '
+        f'stroke="#{c.color}" stroke-width="1"/>'
+        for x, y in zip(sx, sy)
+    )
+    body = (
+        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="8" '
+        f'fill="none" stroke="#{c.color}" stroke-width="1"/>'
+    )
+    return "<g>" + lines + body + "</g>"
+
+
+def _render_cliff_jack(c: CliffJack1_4, s: float) -> str:
+    x = c.x * s
+    y = c.y * s
+    w = 0.4 * s
+    h = 0.3 * s
+    fa = c.alpha / 255
+    return (
+        f'<rect x="{x-4:.1f}" y="{y-4:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{fa:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1120,4 +1267,13 @@ _RENDERERS: dict[type, callable] = {
     PlasticDCJack: _render_dc_jack,
     OpenJack1_4: _render_open_jack,
     Label: _render_label,
+    GroundFill: _render_ground_fill,
+    EllipticalCutout: _render_elliptical_cutout,
+    PinHeader: _render_pin_header,
+    Polygon: _render_polygon,
+    WrapLabel: _render_wrap_label,
+    DiodeGlass: _render_diode_glass,
+    PCBText: _render_pcb_text,
+    PotentiometerSymbol: _render_potentiometer_symbol,
+    CliffJack1_4: _render_cliff_jack,
 }
