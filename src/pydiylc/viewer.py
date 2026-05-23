@@ -197,6 +197,13 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         scroll.connect("scroll", _make_scroll_handler(state, canvas))
         canvas.add_controller(scroll)
 
+        # Track cursor position so we can show project coordinates in the
+        # status bar.
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", _make_motion_handler(state))
+        motion.connect("leave", lambda _c: (_clear_cursor(state),))
+        canvas.add_controller(motion)
+
         sw.set_child(canvas)
 
         # Side panel (tree editor) + canvas in a horizontal Paned. The panel
@@ -261,6 +268,8 @@ class _ViewerState:
         self.nav = None  # tree_editor.NavState, lazily built
         self.history = None  # history.History, built on entering tree mode
         self.pending_d: bool = False  # first 'd' of a 'dd' delete chord
+        # Live cursor position in project inches (None when off canvas).
+        self.cursor_in: tuple[float, float] | None = None
         # Working-buffer save flow.
         self.buffer = None  # buffer.Buffer (one per tree-mode session)
         self.prefs = None  # prefs.Prefs (loaded lazily)
@@ -286,7 +295,10 @@ def _status_text(state: _ViewerState) -> str:
     dirty = ""
     if state.tree_mode and state.buffer is not None and state.buffer.is_dirty:
         dirty = "  ·  ● unsaved"
-    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{undo}{dirty}{chord}{err}"
+    cur = ""
+    if state.cursor_in is not None:
+        cur = f"  ·  ({state.cursor_in[0]:.2f}, {state.cursor_in[1]:.2f}) in"
+    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
 
 
 def _build_header_buttons(state: _ViewerState, header) -> None:
@@ -988,17 +1000,23 @@ def _enter_tree_mode(state: _ViewerState) -> None:
     state.nav = NavState(build_tree(state.project))
     state.history = History(state.project)
     state.pending_d = False
-    # Build the working buffer from disk when we have a .py source. For
-    # .json / .diy sources the buffer is None and edits stay in-memory only
-    # (no save flow yet).
-    if state.watch_path is not None and state.watch_path.suffix.lower() == ".py":
-        try:
-            state.buffer = Buffer.from_disk(state.watch_path)
-        except OSError as exc:
-            state.error_msg = f"can't load buffer: {exc}"
+    # Preserve any existing buffer with unsaved changes when re-entering tree
+    # mode (T off then T on should NOT silently discard edits). Only create
+    # a fresh buffer when we don't already have a dirty one for this path.
+    keep_buffer = (
+        state.buffer is not None
+        and state.buffer.path == state.watch_path
+        and state.buffer.is_dirty
+    )
+    if not keep_buffer:
+        if state.watch_path is not None and state.watch_path.suffix.lower() == ".py":
+            try:
+                state.buffer = Buffer.from_disk(state.watch_path)
+            except OSError as exc:
+                state.error_msg = f"can't load buffer: {exc}"
+                state.buffer = None
+        else:
             state.buffer = None
-    else:
-        state.buffer = None
     state.prefs = Prefs.load()
     state.tree_mode = True
     if state.tree_panel is not None:
@@ -1391,6 +1409,23 @@ def _format_context(context: list[tuple[int, str]], focus_line: int) -> str:
         gutter = str(line_no).rjust(width)
         out.append(f"{marker} {gutter} │ {src}")
     return "\n".join(out)
+
+
+def _make_motion_handler(state: _ViewerState):
+    def on_motion(_ctl, x, y):
+        # Convert screen coords (canvas-local) → project inches.
+        cx = (x - state.pan_x) / state.zoom
+        cy = (y - state.pan_y) / state.zoom
+        ix = cx / cairo_render.PX_PER_INCH
+        iy = cy / cairo_render.PX_PER_INCH
+        state.cursor_in = (ix, iy)
+        _refresh_status(state)
+    return on_motion
+
+
+def _clear_cursor(state: _ViewerState) -> None:
+    state.cursor_in = None
+    _refresh_status(state)
 
 
 def _make_scroll_handler(state: _ViewerState, canvas):

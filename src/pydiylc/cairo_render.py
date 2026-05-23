@@ -178,8 +178,14 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
 
 
 def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1) -> None:
+    """Fine grid every ``step_in`` inches, plus emphasized lines every inch.
+
+    The fine grid is a light gray; the inch lines are a touch darker so the
+    eye picks out coordinates at a glance without rulers.
+    """
     cr.save()
-    cr.set_source_rgb(0.91, 0.91, 0.91)
+    # Fine grid (every 0.1 in).
+    cr.set_source_rgb(0.93, 0.93, 0.93)
     cr.set_line_width(0.5)
     n_x = int(w_in / step_in)
     n_y = int(h_in / step_in)
@@ -192,6 +198,31 @@ def _draw_grid(cr, w_in: float, h_in: float, scale: float, step_in: float = 0.1)
         cr.move_to(0, y)
         cr.line_to(w_in * scale, y)
     cr.stroke()
+
+    # Emphasized inch lines.
+    cr.set_source_rgb(0.78, 0.78, 0.82)
+    cr.set_line_width(0.8)
+    nx_in = int(w_in)
+    ny_in = int(h_in)
+    for i in range(nx_in + 1):
+        x = i * scale
+        cr.move_to(x, 0)
+        cr.line_to(x, h_in * scale)
+    for i in range(ny_in + 1):
+        y = i * scale
+        cr.move_to(0, y)
+        cr.line_to(w_in * scale, y)
+    cr.stroke()
+
+    # Inch labels along the top and left edges (small, dim).
+    cr.set_source_rgb(0.55, 0.55, 0.58)
+    cr.set_font_size(8)
+    for i in range(1, nx_in + 1):
+        cr.move_to(i * scale - 6, -3)
+        cr.show_text(str(i))
+    for i in range(1, ny_in + 1):
+        cr.move_to(-12, i * scale + 3)
+        cr.show_text(str(i))
     cr.restore()
 
 
