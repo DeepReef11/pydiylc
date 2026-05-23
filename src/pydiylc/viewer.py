@@ -1347,8 +1347,10 @@ def _apply_dialog(state: _ViewerState, proposal) -> None:
     btn_box.append(apply_btn)
     box.append(btn_box)
 
-    # Enter = Apply, Escape = Cancel.
+    # Enter = Apply, Escape = Cancel. CAPTURE phase so the keys reach us
+    # even when a non-button widget grabs focus (e.g. clicking on the diff).
     key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
 
     def on_key(_ctl, keyval, _code, _mods):
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
@@ -3009,11 +3011,36 @@ def _make_poller(state: _ViewerState):
             mtime = state.watch_path.stat().st_mtime
         except OSError:
             return True
-        if mtime != state.last_mtime:
+        if mtime == state.last_mtime:
+            return True
+
+        # External change. If our buffer is dirty, refuse to clobber it —
+        # surface a conflict in the status bar and update the mtime watermark
+        # so we don't keep re-prompting on the same external mtime. The
+        # buffer's disk_text is intentionally NOT updated; that lets the
+        # save-diff dialog show a clear three-way picture if the user picks
+        # Save (their buffer overwrites the external change).
+        if state.buffer is not None and state.buffer.is_dirty:
+            state.error_msg = (
+                f"{state.watch_path.name} changed on disk while you have "
+                "unsaved edits — Ctrl+S will overwrite, or close without "
+                "saving to discard"
+            )
             state.last_mtime = mtime
-            _reload(state)
-            if state.canvas is not None:
-                state.canvas.queue_draw()
+            _refresh_status(state)
+            return True
+
+        state.last_mtime = mtime
+        _reload(state)
+        # Re-sync the buffer to the new disk state so subsequent edits
+        # build on what's actually on disk.
+        if state.buffer is not None:
+            try:
+                state.buffer.discard()  # re-reads from disk
+            except OSError:
+                pass
+        if state.canvas is not None:
+            state.canvas.queue_draw()
         return True
     return poll
 
