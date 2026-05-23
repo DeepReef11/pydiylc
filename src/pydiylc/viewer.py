@@ -255,6 +255,9 @@ class _ViewerState:
         self.nav = None  # tree_editor.NavState, lazily built
         self.history = None  # history.History, built on entering tree mode
         self.pending_d: bool = False  # first 'd' of a 'dd' delete chord
+        # Working-buffer save flow.
+        self.buffer = None  # buffer.Buffer (one per tree-mode session)
+        self.prefs = None  # prefs.Prefs (loaded lazily)
         # Filled in by show()
         self.canvas = None
         self.status_lbl = None
@@ -274,7 +277,10 @@ def _status_text(state: _ViewerState) -> str:
     undo = ""
     if state.tree_mode and state.history is not None and state.history.can_undo():
         undo = f"  ·  undo×{state.history.depth()}"
-    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{undo}{chord}{err}"
+    dirty = ""
+    if state.tree_mode and state.buffer is not None and state.buffer.is_dirty:
+        dirty = "  ·  ● unsaved"
+    return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{undo}{dirty}{chord}{err}"
 
 
 def _refresh_status(state: _ViewerState) -> None:
@@ -663,6 +669,101 @@ def _apply_dialog(state: _ViewerState, proposal) -> None:
     apply_btn.grab_focus()
 
 
+def _save_dialog(state: _ViewerState) -> None:
+    """Diff-on-save dialog. Save writes the buffer to disk; Cancel discards
+    the dialog (buffer keeps its pending edits). A 'Don't show again'
+    checkbox toggles the show_save_dialog preference.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    buf = state.buffer
+    if buf is None or not buf.is_dirty:
+        return
+
+    win = Gtk.Window()
+    win.set_title(f"Save {buf.path.name}?")
+    win.set_default_size(720, 420)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    box.set_margin_top(12); box.set_margin_bottom(12)
+    box.set_margin_start(12); box.set_margin_end(12)
+
+    heading = Gtk.Label(label=f"Save {buf.path.name}")
+    heading.set_xalign(0.0)
+    heading.add_css_class("heading")
+    box.append(heading)
+
+    file_info = Gtk.Label(label=str(buf.path))
+    file_info.set_xalign(0.0)
+    file_info.add_css_class("dim-label")
+    box.append(file_info)
+
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    tv = Gtk.TextView()
+    tv.set_editable(False)
+    tv.set_monospace(True)
+    tv.get_buffer().set_text(buf.diff_vs_disk())
+    sw.set_child(tv)
+    box.append(sw)
+
+    dont_show = Gtk.CheckButton(label="Don't show this dialog again")
+    box.append(dont_show)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    copy_btn = _make_copy_button(lambda: buf.diff_vs_disk(), win)
+    cancel_btn = Gtk.Button(label="Cancel")
+    save_btn = Gtk.Button(label="Save  (Enter)")
+    save_btn.add_css_class("suggested-action")
+
+    def do_save():
+        if dont_show.get_active() and state.prefs is not None:
+            state.prefs.show_save_dialog = False
+            state.prefs.save()
+        buf.flush()
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        # Acknowledge our own write so the watcher poll won't re-trigger.
+        if state.watch_path is not None:
+            try:
+                state.last_mtime = state.watch_path.stat().st_mtime
+            except OSError:
+                pass
+        win.close()
+
+    cancel_btn.connect("clicked", lambda _b: win.close())
+    save_btn.connect("clicked", lambda _b: do_save())
+    btn_box.append(copy_btn)
+    btn_box.append(cancel_btn)
+    btn_box.append(save_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            do_save()
+            return True
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.set_default_widget(save_btn)
+    win.present()
+    save_btn.grab_focus()
+
+
 def _locate_dialog(state: _ViewerState, loc, new_anchor: tuple[float, float]) -> None:
     """Read-only dialog for moves we can't auto-apply.
 
@@ -772,7 +873,7 @@ def _build_tree_panel(state: _ViewerState):
 
     hint = Gtk.Label(
         label="Tab component · Space drill · arrows hole-move · Ctrl+arrows nudge\n"
-              "R rotate · / focus · g send · a add · dd delete · u undo · Enter commit"
+              "R rotate · / focus · g send · a add · dd delete · u undo · Enter save"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -783,10 +884,24 @@ def _build_tree_panel(state: _ViewerState):
 def _enter_tree_mode(state: _ViewerState) -> None:
     from .tree_editor import build_tree, NavState
     from .history import History
+    from .buffer import Buffer
+    from .prefs import Prefs
 
     state.nav = NavState(build_tree(state.project))
     state.history = History(state.project)
     state.pending_d = False
+    # Build the working buffer from disk when we have a .py source. For
+    # .json / .diy sources the buffer is None and edits stay in-memory only
+    # (no save flow yet).
+    if state.watch_path is not None and state.watch_path.suffix.lower() == ".py":
+        try:
+            state.buffer = Buffer.from_disk(state.watch_path)
+        except OSError as exc:
+            state.error_msg = f"can't load buffer: {exc}"
+            state.buffer = None
+    else:
+        state.buffer = None
+    state.prefs = Prefs.load()
     state.tree_mode = True
     if state.tree_panel is not None:
         state.tree_panel.set_visible(True)
@@ -844,20 +959,95 @@ def _record(state: _ViewerState, label: str) -> None:
         state.history.record(label)
 
 
+def _sync_buffer_move(state: _ViewerState, op) -> None:
+    """Apply a MoveOp to the working buffer. No-op if no buffer is loaded.
+
+    Failures (positional-args / missing component) are recorded in
+    state.error_msg and shown in the status bar; they don't crash the edit
+    since the in-memory project already changed. The user will see the
+    diff-on-save dialog later and can fix the source by hand.
+    """
+    if state.buffer is None:
+        return
+    try:
+        proposal = state.buffer.propose(moves=[op])
+    except (LookupError, NotImplementedError) as exc:
+        state.error_msg = f"buffer sync: {exc}"
+        return
+    if proposal is not None:
+        state.buffer.apply(proposal)
+
+
+def _sync_buffer_add(state: _ViewerState, component) -> None:
+    """Insert a new component into the working buffer."""
+    if state.buffer is None:
+        return
+    try:
+        proposal = state.buffer.propose(adds=[component])
+    except (LookupError, NotImplementedError) as exc:
+        state.error_msg = f"buffer sync: {exc}"
+        return
+    if proposal is not None:
+        state.buffer.apply(proposal)
+
+
+def _save_buffer(state: _ViewerState) -> None:
+    """Save the working buffer to disk, gated by the save dialog preference.
+
+    When ``prefs.show_save_dialog`` is True we open the diff dialog with a
+    'don't show again' checkbox; otherwise we flush directly. No-op if the
+    buffer is clean or absent.
+    """
+    buf = state.buffer
+    if buf is None:
+        _info_dialog(
+            state.window, "No buffer",
+            "No editable working buffer for this source — only .py layouts "
+            "support the save flow today.",
+        )
+        return
+    if not buf.is_dirty:
+        return  # nothing to do
+    if state.prefs is not None and not state.prefs.show_save_dialog:
+        if buf.flush():
+            state.history.record("save") if state.history is not None else None
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        return
+    _save_dialog(state)
+
+
 def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     """Apply a literal nudge to the focused component or node."""
     from . import moves
+    from .edit import MoveOp
+    from .graph import control_points_of
 
     nav = state.nav
     if nav is None or nav.current is None:
         return
     cur = nav.current
+    comp = state.project.components[cur.component_index]
+    name = getattr(comp, "name", None)
     _record(state, "move")
     if cur.is_node and cur.movable:
         moves.move_node(state.project, cur.component_index, cur.point_index, dx, dy)
     else:
         # Header row, single-anchor, or read-only multinode pin → move body.
         moves.move_component(state.project, cur.component_index, dx, dy)
+    # Mirror the change in the working buffer.
+    if name:
+        if cur.is_node and cur.movable and hasattr(comp, "points"):
+            cps = control_points_of(comp, cur.component_index)
+            pt = next(p for p in cps if p.point_index == cur.point_index)
+            _sync_buffer_move(state, MoveOp(name, pt.x, pt.y, point_index=cur.point_index))
+        elif cur.is_node and cur.movable and hasattr(comp, "x2"):
+            cps = control_points_of(comp, cur.component_index)
+            pt = next(p for p in cps if p.point_index == cur.point_index)
+            _sync_buffer_move(state, MoveOp(name, pt.x, pt.y, second_point=(cur.point_index == 1)))
+        else:
+            anchor = _current_anchor(comp)
+            _sync_buffer_move(state, MoveOp(name, anchor[0], anchor[1]))
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
 
@@ -870,20 +1060,35 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
         return
     _record(state, "rotate")
     moves.rotate_component(state.project, nav.current.component_index, clockwise=clockwise)
+    # Rotation isn't yet representable as a MoveOp (it changes orientation
+    # enums or rotates coordinates). For now, flag the buffer as out-of-sync
+    # via error_msg so the user knows; a future commit can teach
+    # propose_changes to write an `orientation=` keyword edit.
+    if state.buffer is not None:
+        state.error_msg = "rotate isn't yet written to the buffer — save will skip it"
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
 
 
 def _tree_delete(state: _ViewerState) -> None:
-    """Remove the focused component (dd). In-memory only."""
+    """Remove the focused component (dd)."""
     nav = state.nav
     if nav is None or nav.current is None:
         return
     ci = nav.current.component_index
     if not (0 <= ci < len(state.project.components)):
         return
+    comp = state.project.components[ci]
+    name = getattr(comp, "name", None)
     _record(state, "delete")
     del state.project.components[ci]
+    # Buffer sync: removing a component from source needs AST line deletion,
+    # which propose_changes doesn't do yet. Mark the buffer as out-of-sync.
+    if state.buffer is not None and name:
+        state.error_msg = (
+            f"delete of {name!r} isn't yet written to the buffer — "
+            "save will skip it"
+        )
     nav.rebuild(state.project)
     nav.clamp_cursor()
     _refresh_tree_panel(state)
@@ -1178,9 +1383,16 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         _open_add_menu(state)
         return True
 
-    # Enter commits the focused component's position to source.
-    if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-        _tree_commit(state)
+    # Enter / Ctrl+S: save the working buffer to disk (diff dialog if the
+    # show_save_dialog preference is on). Falls back to the legacy per-action
+    # commit when there's no buffer (e.g. .json source).
+    if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) or (
+        ctrl and keyval in (Gdk.KEY_s, Gdk.KEY_S)
+    ):
+        if state.buffer is not None:
+            _save_buffer(state)
+        else:
+            _tree_commit(state)
         return True
 
     return False
@@ -1526,6 +1738,8 @@ def _open_add_menu(state: _ViewerState) -> None:
             return
         _record(state, f"add {type_name}")
         state.project.add(comp)
+        # Mirror the add in the working buffer.
+        _sync_buffer_add(state, comp)
         # Refresh the tree + focus the new component.
         if state.nav is not None:
             state.nav.rebuild(state.project)
