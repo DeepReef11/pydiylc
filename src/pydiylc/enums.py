@@ -144,6 +144,19 @@ BREADBOARD_SIZE = ("Half", "Full", "Mini")
 # Breadboard power-strip placement.
 POWER_STRIP_POSITION = ("Inline", "Offset", "None")
 
+# Rotary selector position count (verbal, not numeric).
+POSITION_COUNT = ("TWO", "THREE", "FOUR", "FIVE", "SIX",
+                  "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE")
+
+# IC symbol pin count (3..16 typical for schematic symbols).
+IC_POINT_COUNT = tuple(f"_{n}" for n in range(3, 17))
+
+# Guitar pickup magnetic polarity.
+PICKUP_POLARITY = ("North", "South", "Humbucking")
+
+# Humbucker pickup style.
+HUMBUCKER_TYPE = ("PAF", "DOG_EAR", "MINI")
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 

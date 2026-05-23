@@ -360,6 +360,45 @@
       "Offset",
       "None"
     ],
+    "POSITION_COUNT": [
+      "TWO",
+      "THREE",
+      "FOUR",
+      "FIVE",
+      "SIX",
+      "SEVEN",
+      "EIGHT",
+      "NINE",
+      "TEN",
+      "ELEVEN",
+      "TWELVE"
+    ],
+    "IC_POINT_COUNT": [
+      "_3",
+      "_4",
+      "_5",
+      "_6",
+      "_7",
+      "_8",
+      "_9",
+      "_10",
+      "_11",
+      "_12",
+      "_13",
+      "_14",
+      "_15",
+      "_16"
+    ],
+    "PICKUP_POLARITY": [
+      "North",
+      "South",
+      "Humbucking"
+    ],
+    "HUMBUCKER_TYPE": [
+      "PAF",
+      "DOG_EAR",
+      "MINI"
+    ],
     "BJT_POLARITY": [
       "NPN",
       "PNP"
@@ -4312,6 +4351,939 @@
             "kind": "string"
           },
           "default": "da8a67",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "MiniRelay",
+      "diylc_class": "diylc.electromechanical.MiniRelay",
+      "doc": "Through-hole DIL-package mini relay (8 lugs in 2 rows).\n\nXML: ``<diylc.electromechanical.MiniRelay>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RectangularCutout",
+      "diylc_class": "diylc.chassis.RectangularCutout",
+      "doc": "Rectangular chassis cutout (matches EllipticalCutout's role for rects).\n\nXML: ``<diylc.chassis.RectangularCutout>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "a6a6a6",
+          "required": false
+        },
+        {
+          "name": "border_thickness",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.2,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "edge_radius",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.0,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "JazzBassPickup",
+      "diylc_class": "diylc.guitar.JazzBassPickup",
+      "doc": "Jazz Bass-style single-coil bass pickup (4 pole pieces).\n\nXML: ``<diylc.guitar.JazzBassPickup>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "polarity",
+          "type": {
+            "kind": "string"
+          },
+          "default": "North",
+          "required": false,
+          "enum": [
+            "North",
+            "South",
+            "Humbucking"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "333333",
+          "required": false
+        },
+        {
+          "name": "pole_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PBassPickup",
+      "diylc_class": "diylc.guitar.PBassPickup",
+      "doc": "Precision Bass-style split-coil pickup (4 pole pieces per half).\n\nXML: ``<diylc.guitar.PBassPickup>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "polarity",
+          "type": {
+            "kind": "string"
+          },
+          "default": "North",
+          "required": false,
+          "enum": [
+            "North",
+            "South",
+            "Humbucking"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "333333",
+          "required": false
+        },
+        {
+          "name": "pole_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "HumbuckerPickup",
+      "diylc_class": "diylc.guitar.HumbuckerPickup",
+      "doc": "Humbucker pickup (two coils, hum-cancelling).\n\nXML: ``<diylc.guitar.HumbuckerPickup>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "PAF",
+          "required": false,
+          "enum": [
+            "PAF",
+            "DOG_EAR",
+            "MINI"
+          ]
+        },
+        {
+          "name": "cover",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "c0c0c0",
+          "required": false
+        },
+        {
+          "name": "bobin_color1",
+          "type": {
+            "kind": "string"
+          },
+          "default": "eac86d",
+          "required": false
+        },
+        {
+          "name": "bobin_color2",
+          "type": {
+            "kind": "string"
+          },
+          "default": "eac86d",
+          "required": false
+        },
+        {
+          "name": "pole_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "polarity",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Humbucking",
+          "required": false,
+          "enum": [
+            "North",
+            "South",
+            "Humbucking"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "LPSwitch",
+      "diylc_class": "diylc.guitar.LPSwitch",
+      "doc": "Les Paul-style 3-way toggle (lead/rhythm switch).\n\nXML: ``<diylc.guitar.LPSwitch>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "BatterySnap9V",
+      "diylc_class": "diylc.electromechanical.BatterySnap9V",
+      "doc": "9V battery snap connector (+ / - terminals).\n\nXML: ``<diylc.electromechanical.BatterySnap9V>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "404040",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "ICSymbol",
+      "diylc_class": "diylc.semiconductors.ICSymbol",
+      "doc": "Schematic op-amp / IC symbol (triangle with N input/output pins).\n\nXML: ``<diylc.semiconductors.ICSymbol>``\n\n`ic_point_count` selects the pin layout (3 = op-amp, 5 = quad gate, etc).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "ic_point_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_3",
+          "required": false,
+          "enum": [
+            "_3",
+            "_4",
+            "_5",
+            "_6",
+            "_7",
+            "_8",
+            "_9",
+            "_10",
+            "_11",
+            "_12",
+            "_13",
+            "_14",
+            "_15",
+            "_16"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RotarySelectorSwitch",
+      "diylc_class": "diylc.electromechanical.RotarySelectorSwitch",
+      "doc": "N-position rotary switch (impedance selector, voicing selector, etc).\n\nXML: ``<diylc.electromechanical.RotarySelectorSwitch>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "position_count",
+          "type": {
+            "kind": "string"
+          },
+          "default": "THREE",
+          "required": false,
+          "enum": [
+            "TWO",
+            "THREE",
+            "FOUR",
+            "FIVE",
+            "SIX",
+            "SEVEN",
+            "EIGHT",
+            "NINE",
+            "TEN",
+            "ELEVEN",
+            "TWELVE"
+          ]
+        },
+        {
+          "name": "show_labels",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "BatterySymbol",
+      "diylc_class": "diylc.misc.BatterySymbol",
+      "doc": "Schematic battery symbol (long+short line pair).\n\nXML: ``<diylc.misc.BatterySymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.05,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.15,
+            "unit": "in"
+          },
           "required": false
         },
         {

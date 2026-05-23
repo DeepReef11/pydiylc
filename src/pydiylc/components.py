@@ -4197,6 +4197,454 @@ class MarshallPerfBoard(Component):
         )
 
 
+@dataclass
+class MiniRelay(Component):
+    """Through-hole DIL-package mini relay (8 lugs in 2 rows).
+
+    XML: ``<diylc.electromechanical.MiniRelay>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    display: str = "NAME"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.MiniRelay"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 4 pins × 2 rows.
+        pts: list[Point] = []
+        for col in (0, 1):
+            for row in range(4):
+                pts.append((self.x + col * 0.2, self.y + row * 0.1))
+        return (
+            f"{pad}<diylc.electromechanical.MiniRelay>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}</diylc.electromechanical.MiniRelay>"
+        )
+
+
+@dataclass
+class RectangularCutout(Component):
+    """Rectangular chassis cutout (matches EllipticalCutout's role for rects).
+
+    XML: ``<diylc.chassis.RectangularCutout>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    color: str = "ffffff"
+    border_color: str = "a6a6a6"
+    border_thickness: Measure = field(default_factory=lambda: mm(0.2))
+    edge_radius: Measure = field(default_factory=lambda: mm(0.0))
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.chassis.RectangularCutout"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.chassis.RectangularCutout>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <borderThickness {self.border_thickness.attrs()}/>\n"
+            f"{pad}  <edgeRadius {self.edge_radius.attrs()}/>\n"
+            f"{pad}</diylc.chassis.RectangularCutout>"
+        )
+
+
+@dataclass
+class JazzBassPickup(Component):
+    """Jazz Bass-style single-coil bass pickup (4 pole pieces).
+
+    XML: ``<diylc.guitar.JazzBassPickup>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    polarity: str = "North"
+    color: str = "333333"
+    pole_color: str = "cccccc"
+    label_color: str = "ffffff"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.JazzBassPickup"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "polarity": E.PICKUP_POLARITY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 4 pole pieces along +Y.
+        pts: list[Point] = [(self.x, self.y + i * 0.1) for i in range(4)]
+        return (
+            f"{pad}<diylc.guitar.JazzBassPickup>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <polarity>{self.polarity}</polarity>\n"
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <poleColor hex="{hex_color(self.pole_color)}"/>\n'
+            f"{pad}</diylc.guitar.JazzBassPickup>"
+        )
+
+
+@dataclass
+class PBassPickup(Component):
+    """Precision Bass-style split-coil pickup (4 pole pieces per half).
+
+    XML: ``<diylc.guitar.PBassPickup>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    polarity: str = "North"
+    color: str = "333333"
+    pole_color: str = "cccccc"
+    label_color: str = "ffffff"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.PBassPickup"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "polarity": E.PICKUP_POLARITY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x, self.y + i * 0.1) for i in range(4)]
+        return (
+            f"{pad}<diylc.guitar.PBassPickup>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <polarity>{self.polarity}</polarity>\n"
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <poleColor hex="{hex_color(self.pole_color)}"/>\n'
+            f"{pad}</diylc.guitar.PBassPickup>"
+        )
+
+
+@dataclass
+class HumbuckerPickup(Component):
+    """Humbucker pickup (two coils, hum-cancelling).
+
+    XML: ``<diylc.guitar.HumbuckerPickup>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    type: str = "PAF"
+    cover: bool = False
+    color: str = "c0c0c0"
+    bobin_color1: str = "eac86d"
+    bobin_color2: str = "eac86d"
+    pole_color: str = "808080"
+    label_color: str = "000000"
+    polarity: str = "Humbucking"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.HumbuckerPickup"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "type": E.HUMBUCKER_TYPE,
+        "polarity": E.PICKUP_POLARITY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.guitar.HumbuckerPickup>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}  <cover>{str(self.cover).lower()}</cover>\n"
+            f'{pad}  <bobinColor1 hex="{hex_color(self.bobin_color1)}"/>\n'
+            f'{pad}  <bobinColor2 hex="{hex_color(self.bobin_color2)}"/>\n'
+            f'{pad}  <poleColor hex="{hex_color(self.pole_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}  <polarity>{self.polarity}</polarity>\n"
+            f"{pad}</diylc.guitar.HumbuckerPickup>"
+        )
+
+
+@dataclass
+class LPSwitch(Component):
+    """Les Paul-style 3-way toggle (lead/rhythm switch).
+
+    XML: ``<diylc.guitar.LPSwitch>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.LPSwitch"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 4 control points: tip + 3 lugs.
+        pts: list[Point] = [
+            (self.x,       self.y),
+            (self.x - 0.2, self.y + 1.3),
+            (self.x,       self.y + 1.3),
+            (self.x + 0.2, self.y + 1.3),
+        ]
+        return (
+            f"{pad}<diylc.guitar.LPSwitch>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}</diylc.guitar.LPSwitch>"
+        )
+
+
+@dataclass
+class BatterySnap9V(Component):
+    """9V battery snap connector (+ / - terminals).
+
+    XML: ``<diylc.electromechanical.BatterySnap9V>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    color: str = "404040"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.BatterySnap9V"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.electromechanical.BatterySnap9V>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}</diylc.electromechanical.BatterySnap9V>"
+        )
+
+
+@dataclass
+class ICSymbol(Component):
+    """Schematic op-amp / IC symbol (triangle with N input/output pins).
+
+    XML: ``<diylc.semiconductors.ICSymbol>``
+
+    `ic_point_count` selects the pin layout (3 = op-amp, 5 = quad gate, etc).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    ic_point_count: str = "_3"
+    body_color: str = "ffffff"
+    border_color: str = "000000"
+    display: str = "NAME"
+    flip: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.ICSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "ic_point_count": E.IC_POINT_COUNT,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        n = int(self.ic_point_count.lstrip("_"))
+        # Standard op-amp layout: 2 inputs on the left, 1 output on the right,
+        # 2 power-supply pins (when n >= 5).
+        pts: list[Point] = [
+            (self.x,       self.y),
+            (self.x,       self.y + 0.2),
+            (self.x + 0.4, self.y + 0.1),
+        ]
+        if n >= 5:
+            pts += [(self.x + 0.2, self.y - 0.1),
+                    (self.x + 0.2, self.y + 0.3)]
+        return (
+            f"{pad}<diylc.semiconductors.ICSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <icPointCount>{self.ic_point_count}</icPointCount>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flip>{str(self.flip).lower()}</flip>\n"
+            f"{pad}</diylc.semiconductors.ICSymbol>"
+        )
+
+
+@dataclass
+class RotarySelectorSwitch(Component):
+    """N-position rotary switch (impedance selector, voicing selector, etc).
+
+    XML: ``<diylc.electromechanical.RotarySelectorSwitch>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    position_count: str = "THREE"
+    show_labels: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.RotarySelectorSwitch"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "position_count": E.POSITION_COUNT,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # Center pole + N positions evenly distributed in a circle of radius
+        # 0.4 in. The first point is the rotor; the rest are the contacts.
+        import math
+        n = {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6,
+             "SEVEN": 7, "EIGHT": 8, "NINE": 9, "TEN": 10, "ELEVEN": 11,
+             "TWELVE": 12}.get(self.position_count, 3)
+        r = 0.4
+        pts: list[Point] = [(self.x, self.y)]
+        for i in range(n):
+            theta = -math.pi / 2 + 2 * math.pi * i / n
+            pts.append((self.x + r * math.cos(theta), self.y + r * math.sin(theta)))
+        return (
+            f"{pad}<diylc.electromechanical.RotarySelectorSwitch>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <showLabels>{str(self.show_labels).lower()}</showLabels>\n"
+            f"{pad}  <positionCount>{self.position_count}</positionCount>\n"
+            f"{pad}</diylc.electromechanical.RotarySelectorSwitch>"
+        )
+
+
+@dataclass
+class BatterySymbol(Component):
+    """Schematic battery symbol (long+short line pair).
+
+    XML: ``<diylc.misc.BatterySymbol>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    border_color: str = "0000ff"
+    length: Measure = field(default_factory=lambda: inches(0.05))
+    width: Measure = field(default_factory=lambda: inches(0.15))
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.misc.BatterySymbol"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.misc.BatterySymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.misc.BatterySymbol>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
@@ -4238,6 +4686,16 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     LeverSwitch,
     ZenerDiodeSymbol,
     MarshallPerfBoard,
+    MiniRelay,
+    RectangularCutout,
+    JazzBassPickup,
+    PBassPickup,
+    HumbuckerPickup,
+    LPSwitch,
+    BatterySnap9V,
+    ICSymbol,
+    RotarySelectorSwitch,
+    BatterySymbol,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,

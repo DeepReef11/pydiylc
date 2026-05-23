@@ -87,6 +87,16 @@ from .components import (
     LeverSwitch,
     ZenerDiodeSymbol,
     MarshallPerfBoard,
+    MiniRelay,
+    RectangularCutout,
+    JazzBassPickup,
+    PBassPickup,
+    HumbuckerPickup,
+    LPSwitch,
+    BatterySnap9V,
+    ICSymbol,
+    RotarySelectorSwitch,
+    BatterySymbol,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1547,6 +1557,89 @@ def _render_marshall_perf(c: MarshallPerfBoard, s: float) -> str:
     )
 
 
+def _svg_rect(x, y, w, h, fill, stroke, alpha=1.0, line_w=1.0):
+    return (
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'fill="#{fill}" fill-opacity="{alpha:.2f}" '
+        f'stroke="#{stroke}" stroke-width="{line_w}"/>'
+    )
+
+
+def _render_mini_relay(c: MiniRelay, s: float) -> str:
+    return _svg_rect((c.x - 0.05) * s, (c.y - 0.05) * s,
+                     0.3 * s, 0.4 * s, "404040", "000000", c.alpha / 255)
+
+
+def _render_rect_cutout(c: RectangularCutout, s: float) -> str:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    return _svg_rect(x, y, w, h, c.color, c.border_color, c.alpha / 255)
+
+
+def _render_jazz_bass_pickup(c: JazzBassPickup, s: float) -> str:
+    return _svg_rect((c.x - 0.2) * s, c.y * s, 0.4 * s, 0.5 * s,
+                     c.color, c.pole_color, c.alpha / 255, 1.2)
+
+
+def _render_pbass_pickup(c: PBassPickup, s: float) -> str:
+    return _svg_rect((c.x - 0.2) * s, c.y * s, 0.4 * s, 0.5 * s,
+                     c.color, c.pole_color, c.alpha / 255, 1.2)
+
+
+def _render_humbucker(c: HumbuckerPickup, s: float) -> str:
+    return _svg_rect((c.x - 0.4) * s, c.y * s, 0.8 * s, 1.4 * s,
+                     c.color, c.pole_color, c.alpha / 255, 1.2)
+
+
+def _render_lp_switch(c: LPSwitch, s: float) -> str:
+    return _svg_rect((c.x - 0.05) * s, c.y * s, 0.4 * s, 1.4 * s,
+                     "606060", "000000", c.alpha / 255)
+
+
+def _render_battery_snap_9v(c: BatterySnap9V, s: float) -> str:
+    return _svg_rect((c.x - 0.15) * s, c.y * s, 0.3 * s, 0.5 * s,
+                     c.color, "000000", c.alpha / 255)
+
+
+def _render_ic_symbol(c: ICSymbol, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    pts = f"{x:.1f},{y:.1f} {x:.1f},{y + 0.2*s:.1f} {x + 0.4*s:.1f},{y + 0.1*s:.1f}"
+    return (
+        f'<polygon points="{pts}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_rotary_selector(c: RotarySelectorSwitch, s: float) -> str:
+    return (
+        f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{0.4*s:.1f}" '
+        f'fill="#b3b3b3" fill-opacity="{c.alpha/255:.2f}" stroke="#000" stroke-width="1.2"/>'
+    )
+
+
+def _render_battery_symbol(c: BatterySymbol, s: float) -> str:
+    import math
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    ux, uy = dx / L, dy / L
+    px, py = -uy, ux
+    lines = []
+    for offset, half in ((-3, 8), (3, 4)):
+        sx, sy = cx + ux * offset - px * half, cy + uy * offset - py * half
+        ex, ey = cx + ux * offset + px * half, cy + uy * offset + py * half
+        lines.append(
+            f'<line x1="{sx:.1f}" y1="{sy:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" '
+            f'stroke="#{c.border_color}" stroke-width="1.5"/>'
+        )
+    return "<g>" + "".join(lines) + "</g>"
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1623,4 +1716,14 @@ _RENDERERS: dict[type, callable] = {
     LeverSwitch: _render_lever_switch,
     ZenerDiodeSymbol: _render_zener_symbol,
     MarshallPerfBoard: _render_marshall_perf,
+    MiniRelay: _render_mini_relay,
+    RectangularCutout: _render_rect_cutout,
+    JazzBassPickup: _render_jazz_bass_pickup,
+    PBassPickup: _render_pbass_pickup,
+    HumbuckerPickup: _render_humbucker,
+    LPSwitch: _render_lp_switch,
+    BatterySnap9V: _render_battery_snap_9v,
+    ICSymbol: _render_ic_symbol,
+    RotarySelectorSwitch: _render_rotary_selector,
+    BatterySymbol: _render_battery_symbol,
 }

@@ -93,6 +93,16 @@ from .components import (
     LeverSwitch,
     ZenerDiodeSymbol,
     MarshallPerfBoard,
+    MiniRelay,
+    RectangularCutout,
+    JazzBassPickup,
+    PBassPickup,
+    HumbuckerPickup,
+    LPSwitch,
+    BatterySnap9V,
+    ICSymbol,
+    RotarySelectorSwitch,
+    BatterySymbol,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1565,6 +1575,102 @@ def _render_marshall_perf(cr, c: MarshallPerfBoard, s: float) -> None:
     cr.stroke()
 
 
+def _fill_stroke_rect(cr, x, y, w, h, fill, stroke, alpha=1.0, line_w=1.0):
+    cr.rectangle(x, y, w, h)
+    cr.set_source_rgba(*_hex_to_rgb(fill), alpha)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(stroke))
+    cr.set_line_width(line_w)
+    cr.stroke()
+
+
+def _render_mini_relay(cr, c: MiniRelay, s: float) -> None:
+    _fill_stroke_rect(cr, (c.x - 0.05) * s, (c.y - 0.05) * s,
+                      0.3 * s, 0.4 * s, "404040", "000000", c.alpha / 255)
+
+
+def _render_rect_cutout(cr, c: RectangularCutout, s: float) -> None:
+    x = min(c.x1, c.x2) * s
+    y = min(c.y1, c.y2) * s
+    w = abs(c.x2 - c.x1) * s
+    h = abs(c.y2 - c.y1) * s
+    _fill_stroke_rect(cr, x, y, w, h, c.color, c.border_color, c.alpha / 255)
+
+
+def _render_bass_pickup(cr, c, s, w=0.4, h=0.5) -> None:
+    _fill_stroke_rect(cr, (c.x - w / 2) * s, c.y * s, w * s, h * s,
+                      c.color, c.pole_color, c.alpha / 255, 1.2)
+    cr.set_source_rgb(*_hex_to_rgb(c.pole_color))
+    for i in range(4):
+        cr.arc(c.x * s, (c.y + (i + 0.5) * (h / 4)) * s, 2, 0, 2 * math.pi)
+        cr.fill()
+
+
+def _render_jazz_bass_pickup(cr, c: JazzBassPickup, s: float) -> None:
+    _render_bass_pickup(cr, c, s)
+
+
+def _render_pbass_pickup(cr, c: PBassPickup, s: float) -> None:
+    _render_bass_pickup(cr, c, s)
+
+
+def _render_humbucker(cr, c: HumbuckerPickup, s: float) -> None:
+    _fill_stroke_rect(cr, (c.x - 0.4) * s, c.y * s, 0.8 * s, 1.4 * s,
+                      c.color, c.pole_color, c.alpha / 255, 1.2)
+
+
+def _render_lp_switch(cr, c: LPSwitch, s: float) -> None:
+    _fill_stroke_rect(cr, (c.x - 0.05) * s, c.y * s, 0.4 * s, 1.4 * s,
+                      "606060", "000000", c.alpha / 255)
+
+
+def _render_battery_snap_9v(cr, c: BatterySnap9V, s: float) -> None:
+    _fill_stroke_rect(cr, (c.x - 0.15) * s, c.y * s, 0.3 * s, 0.5 * s,
+                      c.color, "000000", c.alpha / 255)
+
+
+def _render_ic_symbol(cr, c: ICSymbol, s: float) -> None:
+    # Op-amp triangle pointing +X.
+    x, y = c.x * s, c.y * s
+    cr.move_to(x, y)
+    cr.line_to(x, y + 0.2 * s)
+    cr.line_to(x + 0.4 * s, y + 0.1 * s)
+    cr.close_path()
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_rotary_selector(cr, c: RotarySelectorSwitch, s: float) -> None:
+    cr.arc(c.x * s, c.y * s, 0.4 * s, 0, 2 * math.pi)
+    cr.set_source_rgba(0.7, 0.7, 0.7, c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_battery_symbol(cr, c: BatterySymbol, s: float) -> None:
+    # Two parallel lines (long + short) at the midpoint.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    ux, uy = dx / L, dy / L
+    px, py = -uy, ux
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.5)
+    # Long line at cx-4, short at cx+4 (perpendicular).
+    for offset, half in ((-3, 8), (3, 4)):
+        sx, sy = cx + ux * offset - px * half, cy + uy * offset - py * half
+        ex, ey = cx + ux * offset + px * half, cy + uy * offset + py * half
+        cr.move_to(sx, sy); cr.line_to(ex, ey)
+    cr.stroke()
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1641,4 +1747,14 @@ _RENDERERS: dict[type, callable] = {
     LeverSwitch: _render_lever_switch,
     ZenerDiodeSymbol: _render_zener_symbol,
     MarshallPerfBoard: _render_marshall_perf,
+    MiniRelay: _render_mini_relay,
+    RectangularCutout: _render_rect_cutout,
+    JazzBassPickup: _render_jazz_bass_pickup,
+    PBassPickup: _render_pbass_pickup,
+    HumbuckerPickup: _render_humbucker,
+    LPSwitch: _render_lp_switch,
+    BatterySnap9V: _render_battery_snap_9v,
+    ICSymbol: _render_ic_symbol,
+    RotarySelectorSwitch: _render_rotary_selector,
+    BatterySymbol: _render_battery_symbol,
 }
