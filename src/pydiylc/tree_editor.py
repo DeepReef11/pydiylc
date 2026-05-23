@@ -56,6 +56,64 @@ _DEFAULT_TWO_PIN_SIZE: dict[str, tuple[float, float]] = {
 }
 
 
+def primary_value_field(component) -> str | None:
+    """Return the name of the component's "main editable string" field.
+
+    Order of preference: ``value``, ``text``, ``resistance``, ``tube_type``.
+    Returns None when the component has no obvious value-like field
+    (boards, traces, jumpers, etc.).
+    """
+    import dataclasses
+    fields = {f.name for f in dataclasses.fields(component)}
+    for cand in ("value", "text", "resistance", "tube_type"):
+        if cand in fields:
+            return cand
+    return None
+
+
+def duplicate_component(original, new_name: str, dx: float = 0.3, dy: float = 0.0):
+    """Return a deepcopy of ``original`` with a new name, offset by (dx, dy).
+
+    Anchor for the offset is whatever coordinate model the component uses:
+    two-pin endpoints both shift, points-list all shift, single anchor shifts.
+    The new component keeps every other field of the original (color, value,
+    orientation, etc.) — it's the same part type, just at a new spot.
+    """
+    import copy
+    clone = copy.deepcopy(original)
+    if hasattr(clone, "name"):
+        clone.name = new_name
+    if hasattr(clone, "x1") and hasattr(clone, "x2"):
+        clone.x1 = round(clone.x1 + dx, 4); clone.y1 = round(clone.y1 + dy, 4)
+        clone.x2 = round(clone.x2 + dx, 4); clone.y2 = round(clone.y2 + dy, 4)
+    elif hasattr(clone, "points"):
+        clone.points = [(round(px + dx, 4), round(py + dy, 4)) for px, py in clone.points]
+    elif hasattr(clone, "x") and hasattr(clone, "y"):
+        clone.x = round(clone.x + dx, 4)
+        clone.y = round(clone.y + dy, 4)
+    return clone
+
+
+def increment_name(existing_names: set[str], original_name: str) -> str:
+    """Generate a unique name based on ``original_name``.
+
+    If the name ends with digits (``R3`` → trailing ``3``), increment them
+    until we miss the existing set. Otherwise append ``_1``, ``_2``, …
+    """
+    import re
+    m = re.match(r"^(.*?)(\d+)$", original_name)
+    if m:
+        prefix, num_str = m.group(1), m.group(2)
+        n = int(num_str) + 1
+        while f"{prefix}{n}" in existing_names:
+            n += 1
+        return f"{prefix}{n}"
+    n = 1
+    while f"{original_name}_{n}" in existing_names:
+        n += 1
+    return f"{original_name}_{n}"
+
+
 def make_wire(name: str, src: tuple[float, float], dst: tuple[float, float]):
     """Build a HookupWire from ``src`` to ``dst`` (default color/gauge).
 

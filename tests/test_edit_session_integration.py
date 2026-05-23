@@ -130,6 +130,73 @@ def test_no_changes_means_clean_buffer_no_write(tmp_path):
     assert buf.flush() is False  # nothing to write
 
 
+def test_duplicate_via_buffer_round_trip(tmp_path):
+    """Duplicate a component: clone is added, named uniquely, saved cleanly."""
+    src = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        def build():
+            pr = Project()
+            pr.add(Resistor(name='R3', x1=1.0, y1=1.0, x2=1.0, y2=1.5, value='10K'))
+            return pr
+    """)
+    spec = importlib.util.spec_from_file_location("orig", str(src))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    project = mod.build()
+    buf = Buffer.from_disk(src)
+
+    # Duplicate R3 → R4 offset by (0.3, 0.0); same value preserved.
+    from pydiylc.tree_editor import duplicate_component, increment_name
+
+    original = project.components[0]
+    existing = {c.name for c in project.components}
+    new_name = increment_name(existing, original.name)
+    assert new_name == "R4"
+    clone = duplicate_component(original, new_name, dx=0.3, dy=0.0)
+    project.add(clone)
+    buf.apply(buf.propose(adds=[clone]))
+    buf.flush()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        re_project = _reimport(src)
+
+    names = [c.name for c in re_project.components]
+    assert names == ["R3", "R4"]
+    r4 = re_project.components[1]
+    assert r4.value == "10K"
+    assert (r4.x1, r4.y1, r4.x2, r4.y2) == (1.3, 1.0, 1.3, 1.5)
+
+
+def test_edit_value_via_buffer_round_trip(tmp_path):
+    """Editing a component's value field flushes to disk through KeywordOp."""
+    from pydiylc.edit import KeywordOp
+
+    src = _write(tmp_path, """
+        from pydiylc import Project, Resistor
+        def build():
+            pr = Project()
+            pr.add(Resistor(name='R1', x1=1.0, y1=1.0, x2=1.0, y2=1.5, value='10K'))
+            return pr
+    """)
+    spec = importlib.util.spec_from_file_location("orig", str(src))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    project = mod.build()
+    buf = Buffer.from_disk(src)
+
+    # In-memory change
+    project.components[0].value = "47K"
+    # Buffer-sync via KeywordOp
+    buf.apply(buf.propose(keyword_ops=[KeywordOp("R1", "value", "47K")]))
+    buf.flush()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        re_project = _reimport(src)
+    assert re_project.components[0].value == "47K"
+
+
 def test_chained_moves_accumulate_in_buffer(tmp_path):
     """Successive in-buffer edits build on each other (the stale-source fix)."""
     src = _write(tmp_path, """

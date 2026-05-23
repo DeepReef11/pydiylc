@@ -342,6 +342,66 @@ def test_make_wire_two_point_form():
     assert w.points == [(0.0, 0.0), (1.0, 1.0)]
 
 
+def test_primary_value_field_picks_value():
+    from pydiylc.tree_editor import primary_value_field
+    from pydiylc import (
+        Resistor, Label, PotentiometerPanel, TubeSocket, CopperTrace, BOM,
+    )
+
+    assert primary_value_field(Resistor("R1", 0, 0, 0, 0.5)) == "value"
+    assert primary_value_field(Label("L1", x=0, y=0, text="hi")) == "text"
+    assert primary_value_field(PotentiometerPanel("VR1", x=0, y=0)) == "resistance"
+    assert primary_value_field(TubeSocket("V1", x=0, y=0)) == "tube_type"
+    # Components with no editable string return None.
+    assert primary_value_field(CopperTrace("T1", points=[(0, 0), (1, 0)])) is None
+    assert primary_value_field(BOM("BOM1", x=0, y=0)) is None
+
+
+def test_duplicate_component_two_pin():
+    from pydiylc.tree_editor import duplicate_component
+    from pydiylc import Resistor
+
+    r = Resistor("R1", x1=1.0, y1=1.0, x2=1.0, y2=1.5, value="10K")
+    clone = duplicate_component(r, "R2", dx=0.3, dy=0.0)
+    assert clone.name == "R2"
+    assert clone is not r
+    assert clone.x1 == 1.3 and clone.x2 == 1.3
+    assert clone.y1 == 1.0 and clone.y2 == 1.5
+    assert clone.value == "10K"  # value preserved
+
+
+def test_duplicate_component_single_anchor():
+    from pydiylc.tree_editor import duplicate_component
+    from pydiylc import SolderPad
+
+    p = SolderPad("P1", x=1.0, y=1.0)
+    clone = duplicate_component(p, "P2", dx=0.2, dy=0.0)
+    assert (clone.x, clone.y) == (1.2, 1.0)
+
+
+def test_duplicate_component_points_list():
+    from pydiylc.tree_editor import duplicate_component
+    from pydiylc import CopperTrace
+
+    t = CopperTrace("T1", points=[(1.0, 1.0), (2.0, 1.0)])
+    clone = duplicate_component(t, "T2", dx=0.0, dy=0.5)
+    assert clone.points == [(1.0, 1.5), (2.0, 1.5)]
+
+
+def test_increment_name_with_trailing_number():
+    from pydiylc.tree_editor import increment_name
+
+    assert increment_name(set(), "R3") == "R4"
+    assert increment_name({"R4"}, "R3") == "R5"
+
+
+def test_increment_name_without_trailing_number():
+    from pydiylc.tree_editor import increment_name
+
+    assert increment_name(set(), "PadIn") == "PadIn_1"
+    assert increment_name({"PadIn_1"}, "PadIn") == "PadIn_2"
+
+
 def test_make_default_unknown_type():
     from pydiylc.tree_editor import make_default_component
     import pytest

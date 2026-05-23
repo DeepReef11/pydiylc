@@ -209,8 +209,10 @@ Additional bindings:
 | / | fuzzy-search to **focus** any node (searchable Tab nav) |
 | g | fuzzy-search to **send** the focused node onto another node's position |
 | a | add a new component (fuzzy type picker), placed near the focused one |
+| v | edit focused component's primary value (value/text/resistance/tube_type) |
+| D | duplicate the focused component (offset 0.3in right, incremented name) |
 | dd | delete the focused component (press `d` twice; any other key cancels) |
-| u | undo the last edit (move / rotate / add / delete) |
+| u | undo the last edit (move / rotate / add / delete / duplicate / edit) |
 | U / Ctrl+Y | redo the last undone edit |
 | Ctrl+Z | undo (same as `u`) |
 

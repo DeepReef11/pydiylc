@@ -297,6 +297,9 @@ class _ViewerState:
         self.pending_d: bool = False  # first 'd' of a 'dd' delete chord
         # Live cursor position in project inches (None when off canvas).
         self.cursor_in: tuple[float, float] | None = None
+        # One-shot placement target for the next add (set by right-click Add
+        # Here, cleared after use). When None, add uses cursor_in or focused.
+        self.next_add_at: tuple[float, float] | None = None
         # Active right-click context popover (so callbacks can dismiss it).
         self.context_popover = None
         # Set True once the user has confirmed a close past the unsaved-
@@ -448,6 +451,57 @@ def _apply_prefs(state: _ViewerState) -> None:
         state.panel_hint_label.set_visible(state.prefs.show_panel_hint)
 
 
+def _open_export_dialog(state: _ViewerState) -> None:
+    """File picker that renders the current project to SVG or PNG.
+
+    Uses ``Gtk.FileDialog.save`` (GTK4 4.10+). The extension determines the
+    format (.svg or .png). Errors are surfaced through _info_dialog.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gio
+
+    project = state.project
+    suggested = "layout.svg"
+    if state.watch_path is not None:
+        suggested = state.watch_path.with_suffix(".svg").name
+
+    dlg = Gtk.FileDialog()
+    dlg.set_title("Export project")
+    dlg.set_initial_name(suggested)
+
+    def on_done(_d, result):
+        try:
+            gfile = dlg.save_finish(result)
+        except Exception:
+            return  # user cancelled or backend error
+        if gfile is None:
+            return
+        path = gfile.get_path()
+        if not path:
+            return
+        ext = path.rsplit(".", 1)[-1].lower() if "." in path else "svg"
+        try:
+            if ext == "png":
+                from .cairo_render import render_png
+                render_png(project, path)
+            else:
+                from .svg import render_svg_file
+                # default extension is .svg if user didn't add one
+                if "." not in path:
+                    path += ".svg"
+                render_svg_file(project, path)
+        except ImportError as exc:
+            _info_dialog(state.window, "Export failed", str(exc))
+            return
+        except OSError as exc:
+            _info_dialog(state.window, "Export failed", str(exc))
+            return
+        _info_dialog(state.window, "Exported", f"Wrote {path}")
+
+    dlg.save(state.window, None, on_done)
+
+
 def _open_prefs_dialog(state: _ViewerState) -> None:
     """Modal preferences window with checkboxes for the toggleable settings.
 
@@ -566,6 +620,8 @@ def _install_viewer_actions(state: _ViewerState, win) -> None:
         ("send", lambda: _open_fuzzy_menu(state, mode="send")),
         ("add", lambda: _open_add_menu(state, autowire=False)),
         ("focus", lambda: _open_fuzzy_menu(state, mode="focus")),
+        ("edit_value", lambda: _open_edit_value_dialog(state)),
+        ("duplicate", lambda: _tree_duplicate(state)),
     ]:
         a = Gio.SimpleAction.new(name, None)
         a.connect("activate", with_popover(fn))
@@ -600,6 +656,9 @@ def _build_header_buttons(state: _ViewerState, header) -> None:
     prefs_btn = btn("preferences-system-symbolic", "Preferences",
                     lambda: _open_prefs_dialog(state))
     header.pack_start(prefs_btn)
+    export_btn = btn("document-send-symbolic", "Export to SVG / PNG",
+                     lambda: _open_export_dialog(state))
+    header.pack_start(export_btn)
 
     # Right side (before the status label): save / undo / zoom / fit.
     fit_btn = btn("zoom-fit-best-symbolic", "Fit page to viewport (0)",
@@ -737,12 +796,20 @@ def _make_right_click_handler(state: _ViewerState, canvas):
             canvas.queue_draw()
             _refresh_status(state)
 
+        # Remember the click in project inches so the upcoming Add lands here.
+        state.next_add_at = (
+            cx / cairo_render.PX_PER_INCH,
+            cy / cairo_render.PX_PER_INCH,
+        )
+
         menu = Gio.Menu()
         if hit is not None:
+            menu.append("Edit value… (v)", "viewer.edit_value")
+            menu.append("Duplicate (D)", "viewer.duplicate")
             menu.append("Rotate (R)", "viewer.rotate")
             menu.append("Delete (dd)", "viewer.delete")
             menu.append("Send to… (g)", "viewer.send")
-        menu.append("Add component… (a)", "viewer.add")
+        menu.append("Add component here…", "viewer.add")
         menu.append("Focus… (/)", "viewer.focus")
 
         popover = Gtk.PopoverMenu.new_from_model(menu)
@@ -1304,7 +1371,8 @@ def _build_tree_panel(state: _ViewerState):
     hint = Gtk.Label(
         label="Tab component · Space drill · PgUp/PgDn page · arrows hole-move\n"
               "Ctrl+arrows nudge · R rotate · / focus · g send · a add+wire · A add\n"
-              "dd delete · u undo · U redo · Enter save · Ctrl+S save (diff)"
+              "v edit value · D duplicate · dd delete · u undo · U redo\n"
+              "Enter save · Ctrl+S save (diff)"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -1591,6 +1659,146 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     _refresh_tree_panel(state)
 
 
+def _tree_duplicate(state: _ViewerState) -> None:
+    """Clone the focused component to the right, with an incremented name.
+
+    Uses the same value/orientation/color fields as the original; just
+    shifts coords by 0.3 in to the right. Mirrors to the working buffer.
+    """
+    from . import tree_editor
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return
+    ci = nav.current.component_index
+    if not (0 <= ci < len(state.project.components)):
+        return
+    original = state.project.components[ci]
+    existing = {getattr(c, "name", None) for c in state.project.components}
+    existing.discard(None)
+    new_name = tree_editor.increment_name(existing, getattr(original, "name", "X"))
+    clone = tree_editor.duplicate_component(original, new_name, dx=0.3, dy=0.0)
+    _record(state, f"duplicate {original.__class__.__name__}")
+    state.project.add(clone)
+    _sync_buffer_add(state, clone)
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+        state.nav.focus_node(len(state.project.components) - 1, None)
+    _refresh_tree_panel(state)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+
+
+def _open_edit_value_dialog(state: _ViewerState) -> None:
+    """Inline editor for the focused component's primary value/text field.
+
+    Opens a small popup with a single text entry pre-filled with the
+    current value; Enter applies, Escape cancels. The edit flows through
+    a KeywordOp so the working buffer stays in sync.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+    from . import tree_editor
+    from .edit import KeywordOp
+
+    nav = state.nav
+    if nav is None or nav.current is None:
+        _info_dialog(state.window, "Nothing to edit",
+                     "Focus a component first (Tab or click).")
+        return
+    ci = nav.current.component_index
+    comp = state.project.components[ci]
+    field = tree_editor.primary_value_field(comp)
+    if field is None:
+        _info_dialog(state.window, "No editable value",
+                     f"{type(comp).__name__} has no value/text/resistance "
+                     "field to edit.")
+        return
+    name = getattr(comp, "name", None)
+    if not name:
+        _info_dialog(state.window, "No name",
+                     "This component has no name= argument, so the buffer "
+                     "can't locate it for an edit.")
+        return
+
+    win = Gtk.Window()
+    win.set_title(f"Edit {name}.{field}")
+    win.set_default_size(360, 130)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    box.set_margin_top(14); box.set_margin_bottom(14)
+    box.set_margin_start(14); box.set_margin_end(14)
+
+    label = Gtk.Label(label=f"{name}.{field} =")
+    label.set_xalign(0.0)
+    box.append(label)
+
+    entry = Gtk.Entry()
+    entry.set_text(str(getattr(comp, field, "")))
+    box.append(entry)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    cancel_btn = Gtk.Button(label="Cancel  (Esc)")
+    apply_btn = Gtk.Button(label="Apply  (Enter)")
+    apply_btn.add_css_class("suggested-action")
+
+    def do_apply():
+        new_value = entry.get_text()
+        old_value = getattr(comp, field, None)
+        if new_value == str(old_value):
+            win.close()
+            return
+        _record(state, f"edit {name}.{field}")
+        try:
+            setattr(comp, field, new_value)
+        except (ValueError, TypeError) as exc:
+            _info_dialog(state.window, "Invalid value", str(exc))
+            return
+        # Buffer-sync via KeywordOp.
+        if state.buffer is not None:
+            try:
+                proposal = state.buffer.propose(
+                    keyword_ops=[KeywordOp(name, field, new_value)]
+                )
+                if proposal is not None:
+                    state.buffer.apply(proposal)
+            except (LookupError, NotImplementedError) as exc:
+                state.error_msg = f"buffer sync: {exc}"
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        _refresh_tree_panel(state)
+        win.close()
+
+    cancel_btn.connect("clicked", lambda _b: win.close())
+    apply_btn.connect("clicked", lambda _b: do_apply())
+    btn_box.append(cancel_btn)
+    btn_box.append(apply_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            do_apply(); return True
+        if keyval == Gdk.KEY_Escape:
+            win.close(); return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.set_default_widget(apply_btn)
+    win.present()
+    entry.grab_focus()
+    entry.select_region(0, -1)  # select-all so user can just type
+
+
 def _tree_delete(state: _ViewerState) -> None:
     """Remove the focused component (dd)."""
     nav = state.nav
@@ -1837,9 +2045,14 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
     grid = state.project.grid_inches or 0.1
     step = grid if not shift else grid / 10.0  # Shift = finer
 
+    # 'D' (uppercase, Shift+d) — duplicate the focused component. Not a chord.
+    if keyval == Gdk.KEY_D:
+        state.pending_d = False  # cancel any half-typed 'dd'
+        _tree_duplicate(state)
+        return True
     # 'dd' chord to delete the focused component. First 'd' arms it; a second
     # 'd' deletes; any other key cancels the pending state.
-    if keyval in (Gdk.KEY_d, Gdk.KEY_D):
+    if keyval == Gdk.KEY_d:
         if state.pending_d:
             state.pending_d = False
             _tree_delete(state)
@@ -1935,12 +2148,17 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         _open_fuzzy_menu(state, mode="send")
         return True
 
-    # "a" — add a new component (type picker, placed near the focused one).
+    # "a" — add a new component (type picker, placed at cursor or focused).
     # Lowercase 'a' auto-wires the new component to the focused node when it
     # makes sense; uppercase 'A' (Shift) skips the auto-wire.
     if keyval in (Gdk.KEY_a, Gdk.KEY_A):
         autowire = not shift
         _open_add_menu(state, autowire=autowire)
+        return True
+
+    # "v" — edit the focused component's primary value/text field.
+    if keyval in (Gdk.KEY_v, Gdk.KEY_V):
+        _open_edit_value_dialog(state)
         return True
 
     # Enter: silent flush of the working buffer to disk. No dialog, no
@@ -2489,12 +2707,19 @@ def _open_add_menu(state: _ViewerState, *, autowire: bool = False) -> None:
     entry.connect("search-changed", on_changed)
 
     def placement() -> tuple[float, float]:
+        # Prefer the explicit click position (right-click Add Here) or the
+        # current cursor — most natural placement target.
+        target = state.next_add_at or state.cursor_in
+        if target is not None:
+            grid = state.project.grid_inches or 0.1
+            return (round(round(target[0] / grid) * grid, 4),
+                    round(round(target[1] / grid) * grid, 4))
+        # Fall back to "near focused component".
         nav = state.nav
         if nav is not None and nav.current is not None:
             comp = state.project.components[nav.current.component_index]
             ax, ay = _current_anchor(comp)
             return (round(ax + 0.5, 4), round(ay + 0.5, 4))
-        # Default near top-left of the canvas in project inches.
         return (1.0, 1.0)
 
     def choose():
@@ -2515,6 +2740,8 @@ def _open_add_menu(state: _ViewerState, *, autowire: bool = False) -> None:
             return
         _record(state, f"add {type_name}")
         state.project.add(comp)
+        # Consume any one-shot placement target.
+        state.next_add_at = None
         # Mirror the add in the working buffer.
         _sync_buffer_add(state, comp)
         # Refresh the tree + focus the new component.

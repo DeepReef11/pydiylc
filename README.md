@@ -93,6 +93,7 @@ Keyboard:
 - **mouse drag** — pan
 - **scroll** — zoom
 - **click** — select component (name shown in header bar)
+- **Right-click** — context menu: Add component here / Edit value / Duplicate / Rotate / Delete / Send to / Focus. The "Add here" option places the new component at the cursor (snapped to the project grid).
 - **Ctrl + drag** — move a component; on release the viewer proposes the
   source edit (snapped to the grid) and shows a diff with an **Apply** button.
   Auto-apply works when the layout is a `.py` file whose components are built
@@ -117,6 +118,8 @@ surface. The status bar shows ✎ EDIT while you're in.
 - **/** — fuzzy-search to focus any node (searchable navigation)
 - **g** — fuzzy-search to send the focused node onto another node
 - **a** — add a component (auto-wires to focused pin); **A** — add without wiring
+- **v** — edit the focused component's primary value (value/text/resistance/tube_type)
+- **D** — duplicate the focused component (offset 0.3in right, incremented name)
 - **dd** — delete the focused component (press `d` twice)
 - **u** / **Ctrl+Z** — undo the last edit
 - **U** / **Ctrl+Y** — redo the last undone edit
