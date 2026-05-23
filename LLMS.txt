@@ -163,17 +163,56 @@ diylc -convert layout.diy layout.png
 
 ## MCP tool surface
 
-`pydiylc-mcp` exposes the following tools to MCP clients:
+`pydiylc-mcp` exposes the following to MCP clients:
+
+**Catalog / reference**
 
 - `list_component_types()` → full catalog (same as `catalog.json`)
+- `describe_component_type(type_name)` → one component's catalog entry
+- `enum_values(enum_name)` → allowed values for a named enum pool
+
+**Project lifecycle**
+
 - `create_project(project_id, title, width_cm, height_cm)`
 - `create_project_from_dict(payload, project_id)`
-- `add_component(component, project_id)` — `component` is a dict with `type` + kwargs
-- `list_components(project_id)` / `remove_component(name, project_id)`
+- `list_projects()`, `delete_project(project_id)`
+- `set_project_metadata(project_id, title=, author=, width_cm=, height_cm=)`
+
+**Inspection**
+
+- `list_components(project_id)` — anchors + value summary
+- `get_component(name, project_id)` — full field dict
+- `find_components(query, project_id, limit=20)` — fzf-style fuzzy match
+
+**Edits (mirror the GUI's actions)**
+
+- `add_component(component, project_id)` — `component` is `{type, kwargs…}`
+- `remove_component(name, project_id)`
+- `move_component(name, dx, dy, project_id)` — connection-aware: drags
+  mounted components / stretches wires
+- `move_node(name, point_index, dx, dy)` — single-point detach move
+- `move_node_to(name, point_index, x, y)` — snap-to-target
+- `rotate_component(name, clockwise, project_id)`
+- `duplicate_component(name, new_name?, dx, dy, project_id)`
+- `set_value(name, value, field?, project_id)` — auto-picks value/text/resistance/tube_type
+- `add_wire(src, dst, name?, color, project_id)`
+
+**I/O**
+
 - `save(path, project_id)` → writes `.diy`
-- `render_svg(path, project_id, dpi)`
+- `render_svg(path, project_id, dpi)` / `render_png(path, project_id, dpi)`
 - `to_json(project_id)` → round-trip-clean JSON
 - `read_diy(path, project_id)` → parses an existing `.diy` into a slot
+
+**Resources**
+
+- `pydiylc://catalog` → the catalog JSON
+- `pydiylc://llms.txt` → this guide
+
+**Prompts**
+
+- `build_pedal_layout(name)` — canned multi-step walkthrough
+- `modify_existing_layout(diy_path)` — read + tweak workflow
 
 In-memory state keyed by `project_id` (defaulting to `"default"`).
 

@@ -152,9 +152,13 @@ pip install -e ".[mcp]"
 pydiylc-mcp                  # stdio transport
 ```
 
-Exposes `list_component_types`, `create_project`, `add_component`, `save`,
-`render_svg`, `read_diy`, and friends. Project state lives in-process keyed
-by a `project_id` argument so a client can manage multiple parallel layouts.
+**24 tools** spanning the full lifecycle — catalog inspection (`list_component_types`, `describe_component_type`, `enum_values`), project management (`create_project`, `list_projects`, `set_project_metadata`), component edits that mirror the GUI (`add_component`, `move_component`, `move_node`, `rotate_component`, `duplicate_component`, `set_value`, `add_wire`, `remove_component`), fuzzy search (`find_components`), and I/O (`save`, `render_svg`, `render_png`, `to_json`, `read_diy`).
+
+**Resources** for the static reference data: `pydiylc://catalog` and `pydiylc://llms.txt`.
+
+**Prompts** for common workflows: `build_pedal_layout`, `modify_existing_layout`.
+
+In-memory state is keyed by a `project_id` argument so a client can manage multiple parallel layouts. Full list with field signatures in `LLMS.txt`.
 
 ## AI-friendly by design
 
