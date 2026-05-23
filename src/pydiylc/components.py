@@ -3698,6 +3698,505 @@ class TransistorTO1(Component):
         )
 
 
+@dataclass
+class TransistorTO220(Component):
+    """High-power TO-220 transistor / voltage regulator.
+
+    XML: ``<diylc.semiconductors.TransistorTO220>``
+
+    Three control points (often E/B/C, but G/D/S for FETs and
+    Gnd/Out/In for 78xx regulators — interpretation depends on ``pinout``).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    pinout: str = "BJT_EBC"
+    pin_spacing: Measure = field(default_factory=lambda: inches(0.1))
+    body_color: str = "808080"
+    border_color: str = "3b3b3b"
+    label_color: str = "ffffff"
+    lead_color: str = "636363"
+    display: str = "NAME"
+    folded: bool = False
+    alpha: int = 64
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.TransistorTO220"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "pinout": E.TRANSISTOR_PINOUT,
+        "display": E.TRANSISTOR_DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        ps = self.pin_spacing.to_inches()
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x, self.y + ps),
+            (self.x, self.y + 2 * ps),
+        ]
+        return (
+            f"{pad}<diylc.semiconductors.TransistorTO220>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <pinout>{self.pinout}</pinout>\n"
+            f"{pad}  <pinSpacing {self.pin_spacing.attrs()}/>\n"
+            f"{pad}  <folded>{str(self.folded).lower()}</folded>\n"
+            f"{pad}</diylc.semiconductors.TransistorTO220>"
+        )
+
+
+@dataclass
+class IECSocket(Component):
+    """Chassis-mount IEC power inlet (common in tube amps).
+
+    XML: ``<diylc.electromechanical.IECSocket>``
+
+    Three control points: live, neutral, earth.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    body_color: str = "555555"
+    border_color: str = "3b3b3b"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.IECSocket"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [
+            (self.x,        self.y),
+            (self.x - 0.3,  self.y + 0.2),
+            (self.x + 0.3,  self.y + 0.2),
+        ]
+        return (
+            f"{pad}<diylc.electromechanical.IECSocket>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}</diylc.electromechanical.IECSocket>"
+        )
+
+
+@dataclass
+class TantalumCapacitor(Component):
+    """Tantalum capacitor (typically axial-leaded, with polarity marking).
+
+    XML: ``<diylc.passive.TantalumCapacitor>``
+
+    Same general shape as an AxialFilmCapacitor with a tantalum-yellow body.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    voltage: str = "_16V"
+    body_color: str = "cfad28"
+    border_color: str = "90791c"
+    label_color: str = "ffffff"
+    lead_color: str = "cccccc"
+    length: Measure = field(default_factory=lambda: inches(0.35))
+    display: str = "BOTH"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    alpha: int = 88
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.TantalumCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "voltage": E.VOLTAGE,
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.TantalumCapacitor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <voltage>{self.voltage}</voltage>\n"
+            f"{pad}</diylc.passive.TantalumCapacitor>"
+        )
+
+
+@dataclass
+class EyeletBoard(Component):
+    """Eyelet board — a board with through-hole metallic eyelets.
+
+    XML: ``<diylc.boards.EyeletBoard>``
+
+    Two corners define the rectangular board.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    board_color: str = "ccffcc"
+    border_color: str = "808080"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.EyeletBoard"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.boards.EyeletBoard>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <boardColor hex="{hex_color(self.board_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f"{pad}</diylc.boards.EyeletBoard>"
+        )
+
+
+@dataclass
+class InductorSymbol(Component):
+    """Schematic symbol for an inductor (loops drawn between two leads).
+
+    XML: ``<diylc.passive.InductorSymbol>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    border_color: str = "0000ff"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.3))
+    width: Measure = field(default_factory=lambda: inches(0.08))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.InductorSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.passive.InductorSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.passive.InductorSymbol>"
+        )
+
+
+@dataclass
+class PentodeSymbol(Component):
+    """Schematic symbol for a pentode tube section (5-grid vacuum tube).
+
+    XML: ``<diylc.tube.PentodeSymbol>``
+
+    7 control points around the envelope (plate, grid 1-3, cathode, two
+    helpers).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    color: str = "0000ff"
+    display: str = "NAME"
+    show_heaters: bool = False
+    orientation: str = "DEFAULT"
+    flip: str = "NONE"
+
+    __diylc_class__: ClassVar[str] = "diylc.tube.PentodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "orientation": E.ORIENTATION,
+        "flip": E.SYMBOL_FLIPPING,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [
+            (self.x,       self.y),
+            (self.x + 0.3, self.y - 0.4),
+            (self.x + 0.2, self.y + 0.2),
+            (self.x + 0.4, self.y + 0.1),
+            (self.x,       self.y + 0.2),
+            (self.x + 0.3, self.y + 0.4),
+            (self.x + 0.4, self.y + 0.4),
+        ]
+        return (
+            f"{pad}<diylc.tube.PentodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <showHeaters>{str(self.show_heaters).lower()}</showHeaters>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <flip>{self.flip}</flip>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}</diylc.tube.PentodeSymbol>"
+        )
+
+
+@dataclass
+class Breadboard(Component):
+    """Solderless breadboard.
+
+    XML: ``<diylc.boards.Breadboard>``
+
+    Anchor (`x`, `y`) is one corner. ``size`` controls dimensions; the
+    DIYLC renderer draws the contact rows from a fixed template.
+    """
+
+    name: str
+    x: float
+    y: float
+    size: str = "Half"
+    power_strip_position: str = "Inline"
+    orientation: str = "DEFAULT"
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.Breadboard"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "size": E.BREADBOARD_SIZE,
+        "power_strip_position": E.POWER_STRIP_POSITION,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.boards.Breadboard>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f'{pad}  <point x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <breadboardSize>{self.size}</breadboardSize>\n"
+            f"{pad}  <powerStripPosition>{self.power_strip_position}</powerStripPosition>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}</diylc.boards.Breadboard>"
+        )
+
+
+@dataclass
+class LeverSwitch(Component):
+    """Guitar pickup-selector lever switch (Strat/Tele/etc).
+
+    XML: ``<diylc.guitar.LeverSwitch>``
+
+    Up to 8 control points (4 poles × 2 throws); ``type`` selects layout.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    type: str = "DP3T"
+    orientation: str = "DEFAULT"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.LeverSwitch"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "type": E.LEVER_SWITCH_TYPE,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def _pin_count(self) -> int:
+        return {
+            "DP3T": 8, "DP3T_5pos": 10, "DPDT": 4,
+            "_4P5T": 20, "_3P3T": 9,
+        }.get(self.type, 8)
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        n = self._pin_count()
+        # Two columns spaced 0.1 in apart, n/2 rows of 0.2 in.
+        pts: list[Point] = []
+        for i in range(n):
+            col = i % 2
+            row = i // 2
+            pts.append((self.x + col * 0.1, self.y + row * 0.1))
+        return (
+            f"{pad}<diylc.guitar.LeverSwitch>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}</diylc.guitar.LeverSwitch>"
+        )
+
+
+@dataclass
+class ZenerDiodeSymbol(Component):
+    """Schematic Zener diode symbol (triangle + breakdown-arrow cathode bar).
+
+    XML: ``<diylc.semiconductors.ZenerDiodeSymbol>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    body_color: str = "000000"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.1))
+    width: Measure = field(default_factory=lambda: inches(0.1))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.ZenerDiodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.semiconductors.ZenerDiodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.semiconductors.ZenerDiodeSymbol>"
+        )
+
+
+@dataclass
+class MarshallPerfBoard(Component):
+    """Marshall-style perfboard (slightly different hole pattern than generic).
+
+    XML: ``<diylc.boards.MarshallPerfBoard>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    board_color: str = "cd8500"
+    border_color: str = "ada47d"
+    pad_color: str = "da8a67"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.boards.MarshallPerfBoard"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.boards.MarshallPerfBoard>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <firstPoint x="{fmt(self.x1)}" y="{fmt(self.y1)}"/>\n'
+            f'{pad}  <secondPoint x="{fmt(self.x2)}" y="{fmt(self.y2)}"/>\n'
+            f'{pad}  <boardColor hex="{hex_color(self.board_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <padColor hex="{hex_color(self.pad_color)}"/>\n'
+            f"{pad}</diylc.boards.MarshallPerfBoard>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
@@ -3729,6 +4228,16 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     SIL_IC,
     ChassisPanel,
     TransistorTO1,
+    TransistorTO220,
+    IECSocket,
+    TantalumCapacitor,
+    EyeletBoard,
+    InductorSymbol,
+    PentodeSymbol,
+    Breadboard,
+    LeverSwitch,
+    ZenerDiodeSymbol,
+    MarshallPerfBoard,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,

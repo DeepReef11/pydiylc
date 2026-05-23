@@ -83,6 +83,16 @@ from .components import (
     SIL_IC,
     ChassisPanel,
     TransistorTO1,
+    TransistorTO220,
+    IECSocket,
+    TantalumCapacitor,
+    EyeletBoard,
+    InductorSymbol,
+    PentodeSymbol,
+    Breadboard,
+    LeverSwitch,
+    ZenerDiodeSymbol,
+    MarshallPerfBoard,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1453,6 +1463,108 @@ def _render_transistor_to1(cr, c: TransistorTO1, s: float) -> None:
     cr.stroke()
 
 
+def _render_transistor_to220(cr, c: TransistorTO220, s: float) -> None:
+    ps = c.pin_spacing.to_inches()
+    cr.rectangle((c.x - 0.15) * s, (c.y - 0.05) * s, 0.3 * s, (2 * ps + 0.1) * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_iec_socket(cr, c: IECSocket, s: float) -> None:
+    cr.rectangle((c.x - 0.3) * s, (c.y - 0.05) * s, 0.6 * s, 0.3 * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_tantalum_cap(cr, c: TantalumCapacitor, s: float) -> None:
+    _render_axial_film_cap(cr, c, s)  # same shape, different colors
+
+
+def _render_eyelet_board(cr, c: EyeletBoard, s: float) -> None:
+    cr.rectangle(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_inductor_symbol(cr, c: InductorSymbol, s: float) -> None:
+    # Series of small arcs along the lead direction.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    bumps = 4
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    for i in range(bumps):
+        t = (i + 0.5) / bumps
+        cx = x1 + dx * t
+        cy = y1 + dy * t
+        cr.arc(cx, cy, L / (bumps * 2), 0, math.pi)
+    cr.stroke()
+
+
+def _render_pentode_symbol(cr, c: PentodeSymbol, s: float) -> None:
+    x, y = (c.x + 0.3) * s, (c.y + 0.1) * s
+    cr.arc(x, y, 0.3 * s, 0, 2 * math.pi)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_breadboard(cr, c: Breadboard, s: float) -> None:
+    # Half breadboard ≈ 3.3 × 2.2 in; rough placeholder.
+    sz = {"Half": (3.3, 2.2), "Full": (6.5, 2.2), "Mini": (1.7, 1.3)}.get(c.size, (3.3, 2.2))
+    cr.rectangle(c.x * s, c.y * s, sz[0] * s, sz[1] * s)
+    cr.set_source_rgb(0.95, 0.95, 0.95)
+    cr.fill_preserve()
+    cr.set_source_rgb(0.5, 0.5, 0.5)
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_lever_switch(cr, c: LeverSwitch, s: float) -> None:
+    n = c._pin_count()
+    h = (n // 2) * 0.1 + 0.1
+    cr.rectangle((c.x - 0.05) * s, (c.y - 0.05) * s, 0.3 * s, h * s)
+    cr.set_source_rgba(0.6, 0.6, 0.6, c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_zener_symbol(cr, c: ZenerDiodeSymbol, s: float) -> None:
+    # Same triangle as a regular diode symbol.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    size = 8
+    cr.move_to(cx - size, cy - size)
+    cr.line_to(cx + size, cy)
+    cr.line_to(cx - size, cy + size)
+    cr.close_path()
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.fill()
+
+
+def _render_marshall_perf(cr, c: MarshallPerfBoard, s: float) -> None:
+    cr.rectangle(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1519,4 +1631,14 @@ _RENDERERS: dict[type, callable] = {
     SIL_IC: _render_sil_ic,
     ChassisPanel: _render_chassis_panel,
     TransistorTO1: _render_transistor_to1,
+    TransistorTO220: _render_transistor_to220,
+    IECSocket: _render_iec_socket,
+    TantalumCapacitor: _render_tantalum_cap,
+    EyeletBoard: _render_eyelet_board,
+    InductorSymbol: _render_inductor_symbol,
+    PentodeSymbol: _render_pentode_symbol,
+    Breadboard: _render_breadboard,
+    LeverSwitch: _render_lever_switch,
+    ZenerDiodeSymbol: _render_zener_symbol,
+    MarshallPerfBoard: _render_marshall_perf,
 }

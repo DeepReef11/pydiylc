@@ -247,10 +247,12 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         ("diylc.passive.RadialElectrolytic", "value"),
         ("diylc.passive.AxialFilmCapacitor", "value"),
         ("diylc.passive.AxialElectrolyticCapacitor", "value"),
+        ("diylc.passive.TantalumCapacitor", "value"),
         ("diylc.passive.PotentiometerPanel", "resistance"),
         ("diylc.passive.TrimmerPotentiometer", "resistance"),
         ("diylc.passive.ResistorSymbol", "value"),
         ("diylc.passive.CapacitorSymbol", "value"),
+        ("diylc.passive.InductorSymbol", "value"),
     }
 
     values: dict[str, Any] = {}

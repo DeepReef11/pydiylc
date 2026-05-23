@@ -3,7 +3,7 @@
 ![tests](https://img.shields.io/badge/tests-383%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
-![corpus](https://img.shields.io/badge/corpus%20recognition-99.8%25-brightgreen)
+![corpus](https://img.shields.io/badge/corpus%20recognition-99.9%25-brightgreen)
 
 A scriptable Python library — and a native Wayland GTK4 viewer — for
 [DIYLC](https://github.com/bancika/diy-layout-creator) circuit layouts.
@@ -38,7 +38,7 @@ Beta (v0.2.0). Current component set (40 types):
 - **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
 - **Misc**: `Label`, `GroundSymbol`, `Image`, `BOM`
 
-**Corpus coverage:** 99.84% component recognition on the DIYLC regression corpus (106,429 of 106,599 components across 709 of 711 real community layouts, including legacy v1 `<Layout>` files), with **all 709 readable files round-tripping cleanly with identical component count + type signature** through read → save → re-read. The 2 read misses are physically truncated XML in the upstream corpus; the ~170 still-dropped components are a long tail of niche types (`TransistorTO220`, `IECSocket`, `EyeletBoard`, `PentodeSymbol`, `Breadboard`, `LeverSwitch`, `ZenerDiodeSymbol`, …), each appearing in a handful of files at most.
+**Corpus coverage:** 99.92% component recognition on the DIYLC regression corpus (106,518 of 106,599 components across 709 of 711 real community layouts, including legacy v1 `<Layout>` files), with **all 709 readable files round-tripping cleanly with identical component count + type signature** through read → save → re-read. The 2 read misses are physically truncated XML in the upstream corpus; the remaining ~80 dropped components are a deep long tail of niche types (`MiniRelay`, `JazzBassPickup`, `HumbuckerPickup`, `RotarySelectorSwitch`, `ICSymbol`, `BatterySnap9V`, …), each appearing in only a handful of files.
 
 ## CLI
 

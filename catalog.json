@@ -343,6 +343,23 @@
       "_50",
       "_51"
     ],
+    "LEVER_SWITCH_TYPE": [
+      "DP3T",
+      "DP3T_5pos",
+      "DPDT",
+      "_4P5T",
+      "_3P3T"
+    ],
+    "BREADBOARD_SIZE": [
+      "Half",
+      "Full",
+      "Mini"
+    ],
+    "POWER_STRIP_POSITION": [
+      "Inline",
+      "Offset",
+      "None"
+    ],
     "BJT_POLARITY": [
       "NPN",
       "PNP"
@@ -3172,6 +3189,1130 @@
             "BOTH",
             "PINOUT"
           ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TransistorTO220",
+      "diylc_class": "diylc.semiconductors.TransistorTO220",
+      "doc": "High-power TO-220 transistor / voltage regulator.\n\nXML: ``<diylc.semiconductors.TransistorTO220>``\n\nThree control points (often E/B/C, but G/D/S for FETs and\nGnd/Out/In for 78xx regulators \u2014 interpretation depends on ``pinout``).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "pinout",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BJT_EBC",
+          "required": false,
+          "enum": [
+            "BJT_EBC",
+            "BJT_CBE",
+            "BJT_BCE",
+            "BJT_ECB",
+            "JFET_DSG",
+            "JFET_GSD",
+            "JFET_DGS",
+            "JFET_SGD",
+            "JFET_GDS",
+            "MOSFET_DSG",
+            "MOSFET_GSD",
+            "MOSFET_DGS",
+            "MOSFET_SGD",
+            "MOSFET_GDS",
+            "REGULATOR_IGO",
+            "REGULATOR_OGI",
+            "REGULATOR_GOI",
+            "REGULATOR_AOI",
+            "REGULATOR_GIO"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3b3b3b",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH",
+            "PINOUT"
+          ]
+        },
+        {
+          "name": "folded",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 64,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "IECSocket",
+      "diylc_class": "diylc.electromechanical.IECSocket",
+      "doc": "Chassis-mount IEC power inlet (common in tube amps).\n\nXML: ``<diylc.electromechanical.IECSocket>``\n\nThree control points: live, neutral, earth.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "555555",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3b3b3b",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TantalumCapacitor",
+      "diylc_class": "diylc.passive.TantalumCapacitor",
+      "doc": "Tantalum capacitor (typically axial-leaded, with polarity marking).\n\nXML: ``<diylc.passive.TantalumCapacitor>``\n\nSame general shape as an AxialFilmCapacitor with a tantalum-yellow body.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_16V",
+          "required": false,
+          "enum": [
+            "_4V",
+            "_6V3",
+            "_10V",
+            "_16V",
+            "_25V",
+            "_35V",
+            "_50V",
+            "_63V",
+            "_100V",
+            "_160V",
+            "_200V",
+            "_250V",
+            "_400V",
+            "_450V",
+            "_600V",
+            "_1kV"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cfad28",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "90791c",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cccccc",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.35,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BOTH",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 88,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "EyeletBoard",
+      "diylc_class": "diylc.boards.EyeletBoard",
+      "doc": "Eyelet board \u2014 a board with through-hole metallic eyelets.\n\nXML: ``<diylc.boards.EyeletBoard>``\n\nTwo corners define the rectangular board.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ccffcc",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "InductorSymbol",
+      "diylc_class": "diylc.passive.InductorSymbol",
+      "doc": "Schematic symbol for an inductor (loops drawn between two leads).\n\nXML: ``<diylc.passive.InductorSymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.3,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.08,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PentodeSymbol",
+      "diylc_class": "diylc.tube.PentodeSymbol",
+      "doc": "Schematic symbol for a pentode tube section (5-grid vacuum tube).\n\nXML: ``<diylc.tube.PentodeSymbol>``\n\n7 control points around the envelope (plate, grid 1-3, cathode, two\nhelpers).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "show_heaters",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "flip",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NONE",
+          "required": false,
+          "enum": [
+            "NONE",
+            "X",
+            "Y"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "Breadboard",
+      "diylc_class": "diylc.boards.Breadboard",
+      "doc": "Solderless breadboard.\n\nXML: ``<diylc.boards.Breadboard>``\n\nAnchor (`x`, `y`) is one corner. ``size`` controls dimensions; the\nDIYLC renderer draws the contact rows from a fixed template.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Half",
+          "required": false,
+          "enum": [
+            "Half",
+            "Full",
+            "Mini"
+          ]
+        },
+        {
+          "name": "power_strip_position",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Inline",
+          "required": false,
+          "enum": [
+            "Inline",
+            "Offset",
+            "None"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "LeverSwitch",
+      "diylc_class": "diylc.guitar.LeverSwitch",
+      "doc": "Guitar pickup-selector lever switch (Strat/Tele/etc).\n\nXML: ``<diylc.guitar.LeverSwitch>``\n\nUp to 8 control points (4 poles \u00d7 2 throws); ``type`` selects layout.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DP3T",
+          "required": false,
+          "enum": [
+            "DP3T",
+            "DP3T_5pos",
+            "DPDT",
+            "_4P5T",
+            "_3P3T"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "ZenerDiodeSymbol",
+      "diylc_class": "diylc.semiconductors.ZenerDiodeSymbol",
+      "doc": "Schematic Zener diode symbol (triangle + breakdown-arrow cathode bar).\n\nXML: ``<diylc.semiconductors.ZenerDiodeSymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "MarshallPerfBoard",
+      "diylc_class": "diylc.boards.MarshallPerfBoard",
+      "doc": "Marshall-style perfboard (slightly different hole pattern than generic).\n\nXML: ``<diylc.boards.MarshallPerfBoard>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "board_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "cd8500",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ada47d",
+          "required": false
+        },
+        {
+          "name": "pad_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "da8a67",
+          "required": false
         },
         {
           "name": "alpha",

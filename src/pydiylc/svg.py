@@ -77,6 +77,16 @@ from .components import (
     SIL_IC,
     ChassisPanel,
     TransistorTO1,
+    TransistorTO220,
+    IECSocket,
+    TantalumCapacitor,
+    EyeletBoard,
+    InductorSymbol,
+    PentodeSymbol,
+    Breadboard,
+    LeverSwitch,
+    ZenerDiodeSymbol,
+    MarshallPerfBoard,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1439,6 +1449,104 @@ def _render_transistor_to1(c: TransistorTO1, s: float) -> str:
     )
 
 
+def _render_transistor_to220(c: TransistorTO220, s: float) -> str:
+    ps = c.pin_spacing.to_inches()
+    return (
+        f'<rect x="{(c.x-0.15)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
+        f'width="{0.3*s:.1f}" height="{(2*ps+0.1)*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_iec_socket(c: IECSocket, s: float) -> str:
+    return (
+        f'<rect x="{(c.x-0.3)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
+        f'width="{0.6*s:.1f}" height="{0.3*s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_tantalum_cap(c: TantalumCapacitor, s: float) -> str:
+    return _render_axial_film_cap(c, s)
+
+
+def _render_eyelet_board(c: EyeletBoard, s: float) -> str:
+    return (
+        f'<rect x="{c.x1*s:.1f}" y="{c.y1*s:.1f}" '
+        f'width="{(c.x2-c.x1)*s:.1f}" height="{(c.y2-c.y1)*s:.1f}" '
+        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
+def _render_inductor_symbol(c: InductorSymbol, s: float) -> str:
+    import math
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    bumps = 4
+    r = L / (bumps * 2)
+    parts = [f"M {x1:.1f},{y1:.1f}"]
+    for i in range(bumps):
+        t = (i + 1) / bumps
+        bx, by = x1 + dx * t, y1 + dy * t
+        parts.append(f"A {r:.1f},{r:.1f} 0 0 1 {bx:.1f},{by:.1f}")
+    return f'<path d="{" ".join(parts)}" fill="none" stroke="#{c.border_color}" stroke-width="1.2"/>'
+
+
+def _render_pentode_symbol(c: PentodeSymbol, s: float) -> str:
+    x = (c.x + 0.3) * s
+    y = (c.y + 0.1) * s
+    return (
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{0.3*s:.1f}" '
+        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_breadboard(c: Breadboard, s: float) -> str:
+    sz = {"Half": (3.3, 2.2), "Full": (6.5, 2.2), "Mini": (1.7, 1.3)}.get(c.size, (3.3, 2.2))
+    return (
+        f'<rect x="{c.x*s:.1f}" y="{c.y*s:.1f}" '
+        f'width="{sz[0]*s:.1f}" height="{sz[1]*s:.1f}" '
+        f'fill="#f2f2f2" stroke="#808080" stroke-width="1"/>'
+    )
+
+
+def _render_lever_switch(c: LeverSwitch, s: float) -> str:
+    n = c._pin_count()
+    h = (n // 2) * 0.1 + 0.1
+    return (
+        f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
+        f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
+        f'fill="#999" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#000" stroke-width="1"/>'
+    )
+
+
+def _render_zener_symbol(c: ZenerDiodeSymbol, s: float) -> str:
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    size = 8
+    return (
+        f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
+        f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
+        f'fill="#{c.body_color}"/>'
+    )
+
+
+def _render_marshall_perf(c: MarshallPerfBoard, s: float) -> str:
+    return (
+        f'<rect x="{c.x1*s:.1f}" y="{c.y1*s:.1f}" '
+        f'width="{(c.x2-c.x1)*s:.1f}" height="{(c.y2-c.y1)*s:.1f}" '
+        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1"/>'
+    )
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1505,4 +1613,14 @@ _RENDERERS: dict[type, callable] = {
     SIL_IC: _render_sil_ic,
     ChassisPanel: _render_chassis_panel,
     TransistorTO1: _render_transistor_to1,
+    TransistorTO220: _render_transistor_to220,
+    IECSocket: _render_iec_socket,
+    TantalumCapacitor: _render_tantalum_cap,
+    EyeletBoard: _render_eyelet_board,
+    InductorSymbol: _render_inductor_symbol,
+    PentodeSymbol: _render_pentode_symbol,
+    Breadboard: _render_breadboard,
+    LeverSwitch: _render_lever_switch,
+    ZenerDiodeSymbol: _render_zener_symbol,
+    MarshallPerfBoard: _render_marshall_perf,
 }

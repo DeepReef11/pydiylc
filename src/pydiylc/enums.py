@@ -135,6 +135,15 @@ TAG_STRIP_MOUNT = ("Central", "Panel", "CHASSIS", "PCB")
 # SIL IC pin count: 3..50 (single-in-line includes voltage regulators with 3 pins).
 SIL_PIN_COUNT = tuple(f"_{n}" for n in range(3, 52))
 
+# Lever switch types (guitar pickup selectors).
+LEVER_SWITCH_TYPE = ("DP3T", "DP3T_5pos", "DPDT", "_4P5T", "_3P3T")
+
+# Breadboard physical size.
+BREADBOARD_SIZE = ("Half", "Full", "Mini")
+
+# Breadboard power-strip placement.
+POWER_STRIP_POSITION = ("Inline", "Offset", "None")
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 
