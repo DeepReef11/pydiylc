@@ -108,7 +108,16 @@ Some components have a `type` *field of their own* (jack mono/stereo selector, s
 {"_type": "OpenJack1_4", "name": "J_in", "type": "MONO"}
 ```
 
-Components affected (i.e. those with a `type` field): `OpenJack1_4`, `ClosedJack1_4`, `CliffJack1_4`, `NeutrikJack1_4`, `RCAJack` (mono/stereo), `SolderPad` (ROUND/SQUARE/OVAL), `BlankBoard` (SQUARE/ROUND), `HumbuckerPickup` (PAF/DOG_EAR/MINI), `P90Pickup` (DOG_EAR/SOAP_BAR), `LeverSwitch` (DP3T/...), `MarshallPerfBoard`, `TriPadBoard`, `EyeletBoard` (board enums), `SMDResistor` / `SMDCapacitor` (size codes — though `size` is the actual field there, not `type`), and a few others. When in doubt, use `_type` everywhere — it always works.
+Components affected (exhaustive list — i.e. every component whose dataclass has a `type` field):
+
+- **Jacks** — `OpenJack1_4`, `ClosedJack1_4`, `CliffJack1_4`, `NeutrikJack1_4` (MONO/STEREO/SWITCHED)
+- **Pads + boards** — `SolderPad` (ROUND/SQUARE/OVAL_*), `BlankBoard` (SQUARE/ROUND)
+- **Pickups** — `SingleCoilPickup` (Stratocaster/Telecaster/etc.), `HumbuckerPickup` (PAF/DOG_EAR/MINI), `P90Pickup` (DOG_EAR/SOAP_BAR)
+- **Switches** — `LeverSwitch` (DP3T/DP3T_5pos/DPDT/_4P5T/_3P3T)
+- **Pots** — `PotentiometerPanel`, `TrimmerPotentiometer` (ThroughHole/PCB)
+- **Symbols** — `GroundSymbol` (DEFAULT/TRIANGLE)
+
+**Rule of thumb: when in doubt, use `_type` everywhere — it always works** and side-steps every possible collision. The MCP server's error message will report the offending component's name and the literal fix to apply, but it's cheaper to write `_type` from the start.
 
 The loader raises a clear error when a `type` collision is detected and reports the component name so you can fix it in your batch.
 

@@ -3125,17 +3125,21 @@ class TriodeSymbol(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 5 control points around the triode envelope (DIYLC sets them
+        # precisely; we use a reasonable default cluster). The graph
+        # module reads this for pin-aware wiring (connect, get_pins).
+        return [
+            (self.x, self.y),                  # 0 — grid (signal in)
+            (self.x + 0.3, self.y - 0.3),      # 1 — plate (signal out)
+            (self.x + 0.2, self.y + 0.3),      # 2 — cathode
+            (self.x + 0.3, self.y + 0.3),      # 3 — heater
+            (self.x + 0.4, self.y + 0.3),      # 4 — heater
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        # 5 control points around the triode envelope (DIYLC sets them
-        # precisely; we use a reasonable default cluster).
-        pts: list[Point] = [
-            (self.x, self.y),
-            (self.x + 0.3, self.y - 0.3),
-            (self.x + 0.2, self.y + 0.3),
-            (self.x + 0.3, self.y + 0.3),
-            (self.x + 0.4, self.y + 0.3),
-        ]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.tube.TriodeSymbol>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3481,18 +3485,24 @@ class AudioTransformer(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
+        # 6 control points: 3 primary lugs (top row) + 3 secondary lugs
+        # (bottom row), spaced by lead_spacing horizontally and
+        # winding_spacing vertically.
         ls = self.lead_spacing.to_inches()
         ws = self.winding_spacing.to_inches()
-        pts: list[Point] = [
-            (self.x,          self.y),
-            (self.x - ls,     self.y),
-            (self.x - 2 * ls, self.y),
-            (self.x,          self.y + ws),
-            (self.x - ls,     self.y + ws),
-            (self.x - 2 * ls, self.y + ws),
+        return [
+            (self.x,          self.y),         # 0 — primary lug 1
+            (self.x - ls,     self.y),         # 1 — primary lug 2 (center tap)
+            (self.x - 2 * ls, self.y),         # 2 — primary lug 3
+            (self.x,          self.y + ws),    # 3 — secondary lug 1
+            (self.x - ls,     self.y + ws),    # 4 — secondary lug 2 (center tap)
+            (self.x - 2 * ls, self.y + ws),    # 5 — secondary lug 3
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.passive.AudioTransformer>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3986,17 +3996,21 @@ class PentodeSymbol(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 7 control points around the pentode envelope.
+        return [
+            (self.x,       self.y),            # 0 — control grid (signal in)
+            (self.x + 0.3, self.y - 0.4),      # 1 — plate (signal out)
+            (self.x + 0.2, self.y + 0.2),      # 2 — screen grid
+            (self.x + 0.4, self.y + 0.1),      # 3 — suppressor grid
+            (self.x,       self.y + 0.2),      # 4 — cathode
+            (self.x + 0.3, self.y + 0.4),      # 5 — heater
+            (self.x + 0.4, self.y + 0.4),      # 6 — heater
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [
-            (self.x,       self.y),
-            (self.x + 0.3, self.y - 0.4),
-            (self.x + 0.2, self.y + 0.2),
-            (self.x + 0.4, self.y + 0.1),
-            (self.x,       self.y + 0.2),
-            (self.x + 0.3, self.y + 0.4),
-            (self.x + 0.4, self.y + 0.4),
-        ]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.tube.PentodeSymbol>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4083,15 +4097,17 @@ class LeverSwitch(Component):
             "_4P5T": 20, "_3P3T": 9,
         }.get(self.type, 8)
 
+    def _control_points(self) -> list[Point]:
+        # Two columns spaced 0.1 in apart, n/2 rows of 0.1 in.
+        n = self._pin_count()
+        return [
+            (self.x + (i % 2) * 0.1, self.y + (i // 2) * 0.1)
+            for i in range(n)
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        n = self._pin_count()
-        # Two columns spaced 0.1 in apart, n/2 rows of 0.2 in.
-        pts: list[Point] = []
-        for i in range(n):
-            col = i % 2
-            row = i // 2
-            pts.append((self.x + col * 0.1, self.y + row * 0.1))
+        pts = self._control_points()
         return (
             f"{pad}<diylc.guitar.LeverSwitch>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4221,13 +4237,17 @@ class MiniRelay(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 4 pins × 2 rows. Pin order: col 0 top→bottom, then col 1 top→bottom.
+        return [
+            (self.x + col * 0.2, self.y + row * 0.1)
+            for col in (0, 1)
+            for row in range(4)
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        # 4 pins × 2 rows.
-        pts: list[Point] = []
-        for col in (0, 1):
-            for row in range(4):
-                pts.append((self.x + col * 0.2, self.y + row * 0.1))
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.MiniRelay>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4530,19 +4550,25 @@ class ICSymbol(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
-        n = int(self.ic_point_count.lstrip("_"))
+    def _control_points(self) -> list[Point]:
         # Standard op-amp layout: 2 inputs on the left, 1 output on the right,
         # 2 power-supply pins (when n >= 5).
+        n = int(self.ic_point_count.lstrip("_"))
         pts: list[Point] = [
-            (self.x,       self.y),
-            (self.x,       self.y + 0.2),
-            (self.x + 0.4, self.y + 0.1),
+            (self.x,       self.y),            # 0 — input + (non-inverting)
+            (self.x,       self.y + 0.2),      # 1 — input − (inverting)
+            (self.x + 0.4, self.y + 0.1),      # 2 — output
         ]
         if n >= 5:
-            pts += [(self.x + 0.2, self.y - 0.1),
-                    (self.x + 0.2, self.y + 0.3)]
+            pts += [
+                (self.x + 0.2, self.y - 0.1),  # 3 — V+
+                (self.x + 0.2, self.y + 0.3),  # 4 — V−
+            ]
+        return pts
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.ICSymbol>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4583,10 +4609,9 @@ class RotarySelectorSwitch(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # Center pole + N positions evenly distributed in a circle of radius
-        # 0.4 in. The first point is the rotor; the rest are the contacts.
+        # 0.4 in. Pin 0 is the rotor; pins 1..N are the contacts.
         import math
         n = {"TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5, "SIX": 6,
              "SEVEN": 7, "EIGHT": 8, "NINE": 9, "TEN": 10, "ELEVEN": 11,
@@ -4596,6 +4621,11 @@ class RotarySelectorSwitch(Component):
         for i in range(n):
             theta = -math.pi / 2 + 2 * math.pi * i / n
             pts.append((self.x + r * math.cos(theta), self.y + r * math.sin(theta)))
+        return pts
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.RotarySelectorSwitch>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4818,16 +4848,19 @@ class TubeDiodeSymbol(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 5 control points around the envelope (plate, cathode, heaters).
+        return [
+            (self.x,       self.y),            # 0 — plate (anode)
+            (self.x - 0.3, self.y + 0.3),      # 1 — cathode
+            (self.x + 0.3, self.y + 0.2),      # 2 — heater
+            (self.x + 0.3, self.y + 0.3),      # 3 — heater center tap
+            (self.x + 0.3, self.y + 0.4),      # 4 — heater
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        # 5 control points around the envelope.
-        pts: list[Point] = [
-            (self.x,       self.y),
-            (self.x - 0.3, self.y + 0.3),
-            (self.x + 0.3, self.y + 0.2),
-            (self.x + 0.3, self.y + 0.3),
-            (self.x + 0.3, self.y + 0.4),
-        ]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.tube.DiodeSymbol>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4871,13 +4904,17 @@ class JFETSymbol(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 3 control points: gate (input), source, drain.
+        return [
+            (self.x,       self.y),            # 0 — gate
+            (self.x + 0.2, self.y - 0.2),      # 1 — drain (or source for P-channel)
+            (self.x + 0.2, self.y + 0.2),      # 2 — source (or drain)
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [
-            (self.x,       self.y),
-            (self.x + 0.2, self.y - 0.2),
-            (self.x + 0.2, self.y + 0.2),
-        ]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.JFETSymbol>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -5282,14 +5319,18 @@ class BridgeRectifier(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 4 corners labeled +, ~, ~, - (DC out, AC in, AC in, DC out).
+        return [
+            (self.x,       self.y),            # 0 — +
+            (self.x + 0.2, self.y),            # 1 — ~
+            (self.x,       self.y + 0.2),      # 2 — ~
+            (self.x + 0.2, self.y + 0.2),      # 3 — -
+        ]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [
-            (self.x,       self.y),
-            (self.x + 0.2, self.y),
-            (self.x,       self.y + 0.2),
-            (self.x + 0.2, self.y + 0.2),
-        ]
+        pts = self._control_points()
         labels = "".join(
             f"{pad}    <string>{s}</string>\n"
             for s in ("+", "~", "~", "-")

@@ -381,6 +381,58 @@ def test_add_components_stop_on_error(mcp_fixture):
     assert len(listed) == 0  # nothing committed
 
 
+def test_get_pins_multi_pin_schematic_symbols(mcp_fixture):
+    """Schematic-symbol components (tubes, transformers, op-amps, rectifiers,
+    etc.) must surface every control point through get_pins().
+
+    Regression for the round where the AMP-schematic stress test found
+    that TriodeSymbol et al. were reporting only 1 pin instead of their
+    actual 5+ pins, making pin-by-pin wiring impossible. The fix was to
+    promote the inline pts list to a _control_points() method on each
+    affected class so graph.control_points_of() picks it up.
+    """
+    _call(mcp_fixture, "create_project", {"project_id": "pins"})
+    _call(mcp_fixture, "add_components", {
+        "project_id": "pins",
+        "components": [
+            {"type": "TriodeSymbol", "name": "V1", "x": 1, "y": 1,
+             "value": "12AX7"},
+            {"type": "PentodeSymbol", "name": "V2", "x": 3, "y": 1,
+             "value": "EL84"},
+            {"type": "TubeDiodeSymbol", "name": "V3", "x": 5, "y": 1,
+             "value": "5Y3"},
+            {"type": "AudioTransformer", "name": "T1", "x": 7, "y": 1},
+            {"type": "JFETSymbol", "name": "Q1", "x": 9, "y": 1},
+            {"type": "BridgeRectifier", "name": "BR1", "x": 1, "y": 3},
+            {"type": "ICSymbol", "name": "U1", "x": 3, "y": 3,
+             "ic_point_count": "_5"},
+            {"type": "RotarySelectorSwitch", "name": "S1", "x": 5, "y": 3,
+             "position_count": "FIVE"},
+            {"type": "MiniRelay", "name": "K1", "x": 7, "y": 3},
+            {"_type": "LeverSwitch", "name": "SW1", "x": 9, "y": 3,
+             "type": "DPDT"},
+        ],
+    })
+    expected_pin_counts = {
+        "V1": 5,    # TriodeSymbol
+        "V2": 7,    # PentodeSymbol
+        "V3": 5,    # TubeDiodeSymbol
+        "T1": 6,    # AudioTransformer (3 primary + 3 secondary)
+        "Q1": 3,    # JFET (gate, source, drain)
+        "BR1": 4,   # BridgeRectifier (+, ~, ~, -)
+        "U1": 5,    # ICSymbol _5 (2 inputs + output + V+ + V-)
+        "S1": 6,    # rotary FIVE: rotor + 5 positions
+        "K1": 8,    # MiniRelay 4×2
+        "SW1": 4,   # LeverSwitch DPDT = 4 lugs
+    }
+    for name, expected in expected_pin_counts.items():
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": "pins", "name": name})
+        assert len(pins) == expected, (
+            f"{name}: expected {expected} pins, got {len(pins)}: {pins}"
+        )
+
+
 def test_get_pins(mcp_fixture):
     """get_pins surfaces control-point coordinates by index."""
     _call(mcp_fixture, "create_project", {"project_id": "g"})
@@ -976,6 +1028,78 @@ def test_end_to_end_pedal_build(mcp_fixture, tmp_path):
         "project_id": f"{project_id}_rt", "path": str(out),
     })
     assert reread["components"] == st["components"]
+    assert reread["warnings"] == []
+
+
+def test_end_to_end_tube_amp_schematic(mcp_fixture, tmp_path):
+    """Second real-world stress test: build a tube-amp schematic.
+
+    Complements test_end_to_end_pedal_build by exercising the schematic
+    side: multi-pin tube symbols, audio transformer, ground references.
+    Found three real bugs the first time it ran (GroundSymbol type-
+    collision, missing _control_points on TriodeSymbol/PentodeSymbol/
+    AudioTransformer, connect() silently picking the same pin every
+    time). All fixed; this test locks them down.
+    """
+    project_id = "amp"
+    _call(mcp_fixture, "create_project", {
+        "project_id": project_id, "title": "Champ schematic",
+        "width_cm": 36, "height_cm": 22,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": project_id,
+        "components": [
+            {"_type": "TriodeSymbol", "name": "V1a",
+             "x": 3.0, "y": 2.0, "value": "12AX7"},
+            {"_type": "PentodeSymbol", "name": "V2",
+             "x": 7.0, "y": 2.0, "value": "6V6"},
+            {"type": "AudioTransformer", "name": "T1",
+             "x": 9.0, "y": 1.5, "value": "Champ OT"},
+            {"type": "ResistorSymbol", "name": "R1",
+             "x1": 3.5, "y1": 1.5, "x2": 3.5, "y2": 0.5, "value": "100K"},
+            # Both type collisions in one go — GroundSymbol uses the
+            # discriminator trick the doc warns about.
+            {"_type": "GroundSymbol", "name": "G1",
+             "x": 1.5, "y": 3.2, "type": "DEFAULT"},
+            {"_type": "GroundSymbol", "name": "G2",
+             "x": 7.3, "y": 3.2, "type": "TRIANGLE"},
+        ],
+    })
+    assert res["added"] == 6
+    assert res["errors"] == []
+
+    # Multi-pin schematic symbols expose every pin (bug regression).
+    pins = {
+        "V1a": 5,   # TriodeSymbol: grid, plate, cathode, 2 heaters
+        "V2":  7,   # PentodeSymbol
+        "T1":  6,   # AudioTransformer: 3 primary + 3 secondary
+    }
+    for name, want in pins.items():
+        got = _call(mcp_fixture, "get_pins",
+                    {"project_id": project_id, "name": name})
+        assert len(got) == want, (
+            f"{name}: expected {want} pins, got {len(got)}: {got}"
+        )
+
+    # Wire signal path — exercises connect()'s nearest-pin heuristic
+    # across single-anchor (GroundSymbol) and multi-pin (TriodeSymbol).
+    _call(mcp_fixture, "connect", {
+        "project_id": project_id,
+        "from_name": "V1a", "to_name": "T1",
+    })
+
+    rep = _call(mcp_fixture, "validate", {"project_id": project_id})
+    assert rep["ok"], f"validate found issues: {rep['issues']}"
+
+    # Round-trip through disk.
+    out = tmp_path / "amp.diy"
+    _call(mcp_fixture, "save", {
+        "project_id": project_id, "path": str(out),
+    })
+    reread = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{project_id}_rt", "path": str(out),
+    })
+    assert reread["components"] == 7   # 6 added + 1 wire
     assert reread["warnings"] == []
 
 
