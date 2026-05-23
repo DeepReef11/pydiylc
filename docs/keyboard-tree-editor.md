@@ -244,14 +244,23 @@ Capture phase intercepts keys at the window level first.
   surgery), so they're flagged in the status bar with a "won't be saved"
   hint. Move + add are fully buffer-synced.
 
-- **Auto-wire-on-add (parked):** when adding a component with a node
-  focused (e.g. VR1 pin 1), automatically create a wire/connection
-  linking the new component to the focused pin. For multi-pin added
-  components, fuzzy-select which of its pins to attach to. Uppercase
-  `A` would add without auto-attaching.
+- **Auto-wire on add (implemented):** with a node focused, lowercase `a`
+  adds a new component and immediately creates a `HookupWire` from the
+  focused node to one of the new component's pins. For multi-pin parts
+  a fuzzy pin-picker opens; single-pin parts wire silently. Uppercase
+  `A` (Shift+a) adds without the auto-wire.
 
-- **Page-Up/Page-Down navigation (parked):** scroll a page at a time
-  in fuzzy menus and in the side tree panel. Simple addition to
-  `_move_list_selection` (jump by page-size rows) and the tree-mode key
-  handler.
+  Implementation: `tree_editor.addable_pins()` lists pin choices on any
+  component with the same labels the tree panel uses (`end 1` / `point 1`
+  / `pin 1`). `tree_editor.make_wire()` builds the `HookupWire`.
+  `_focused_pin_position()` captures the source point at menu-open time
+  (before the cursor moves to the new component). `_create_wire()` runs
+  the add through the same `_record` + `_sync_buffer_add` path so the
+  wire saves through the buffer like any other add.
+
+- **Page-Up/Page-Down navigation (implemented):** PgUp / PgDn page by
+  `_PAGE_STEP` (10) rows in fuzzy menus and the side tree panel.
+  `NavState.page_component()` is the pure helper; the viewer key
+  handler maps the keys; `_refresh_tree_panel` now uses
+  `_scroll_into_view` to keep the focused row visible after a page jump.
 ```

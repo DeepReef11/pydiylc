@@ -56,6 +56,45 @@ _DEFAULT_TWO_PIN_SIZE: dict[str, tuple[float, float]] = {
 }
 
 
+def make_wire(name: str, src: tuple[float, float], dst: tuple[float, float]):
+    """Build a HookupWire from ``src`` to ``dst`` (default color/gauge).
+
+    The wire is constructed with the 2-point form which HookupWire expands
+    to 4 control points on emit; that round-trips through the reader
+    without trouble.
+    """
+    from .components import HookupWire
+
+    return HookupWire(name=name, points=[src, dst])
+
+
+def addable_pins(component) -> list[tuple[int, str, float, float]]:
+    """Pin choices on a component, for the auto-wire pin picker.
+
+    Returns ``(point_index, label, x, y)`` rows. Single-anchor components
+    return one row at point 0. Two-pin / points-list / multi-node return
+    one per node, with labels matching the tree-editor convention so the
+    pin-picker UI is familiar.
+    """
+    from .graph import control_points_of  # local import to avoid cycle
+
+    cps = control_points_of(component, -1)
+    if not cps:
+        return []
+    if hasattr(component, "x1") and hasattr(component, "x2"):
+        labels = {0: "end 1", 1: "end 2"}
+    elif hasattr(component, "points"):
+        labels = {cp.point_index: f"point {cp.point_index + 1}" for cp in cps}
+    elif hasattr(component, "_control_points"):
+        labels = {cp.point_index: f"pin {cp.point_index + 1}" for cp in cps}
+    else:
+        labels = {cp.point_index: "" for cp in cps}
+    out: list[tuple[int, str, float, float]] = []
+    for cp in cps:
+        out.append((cp.point_index, labels.get(cp.point_index, ""), cp.x, cp.y))
+    return out
+
+
 def make_default_component(type_name: str, name: str, x: float, y: float):
     """Create a component of ``type_name`` at (x, y) with sensible defaults.
 
@@ -287,6 +326,27 @@ class NavState:
             self.cursor = nodes[(pos - 1) % len(nodes)]
         else:
             self.cursor = nodes[-1]
+
+    def page_component(self, delta: int) -> None:
+        """Page-Up/Down: jump ``delta`` components (positive=forward).
+
+        Stays at component level (clears node_level), clamps at the ends
+        rather than wrapping — paging past the bottom shouldn't bounce you
+        back to the top.
+        """
+        self.node_level = False
+        headers = self._header_indices()
+        if not headers:
+            return
+        cur_comp = self.current.component_index if self.current else -1
+        comp_indices = [self.rows[h].component_index for h in headers]
+        try:
+            pos = comp_indices.index(cur_comp)
+        except ValueError:
+            pos = 0
+        new_pos = max(0, min(len(headers) - 1, pos + delta))
+        self.cursor = headers[new_pos]
+        self.tab_owner = self.rows[headers[new_pos]].component_index
 
     def focus_node(self, component_index: int, point_index: int | None) -> bool:
         """Move the cursor to a specific component/node (used by / search).

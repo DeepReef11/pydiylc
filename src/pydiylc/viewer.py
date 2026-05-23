@@ -872,8 +872,9 @@ def _build_tree_panel(state: _ViewerState):
     box.append(sw)
 
     hint = Gtk.Label(
-        label="Tab component · Space drill · arrows hole-move · Ctrl+arrows nudge\n"
-              "R rotate · / focus · g send · a add · dd delete · u undo · Enter save"
+        label="Tab component · Space drill · PgUp/PgDn page · arrows hole-move\n"
+              "Ctrl+arrows nudge · R rotate · / focus · g send · a add+wire · A add\n"
+              "dd delete · u undo · Enter save"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -944,6 +945,7 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
             selected_row = lr
     if selected_row is not None:
         lb.select_row(selected_row)
+        _scroll_into_view(lb, selected_row)
     # Sync the canvas highlight to the focused component.
     cur = nav.current
     if cur is not None:
@@ -1363,6 +1365,16 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         _refresh_tree_panel(state)
         return True
 
+    # Page Up/Down: jump _PAGE_STEP components at a time in the side panel.
+    if keyval == Gdk.KEY_Page_Down:
+        nav.page_component(+_PAGE_STEP)
+        _refresh_tree_panel(state)
+        return True
+    if keyval == Gdk.KEY_Page_Up:
+        nav.page_component(-_PAGE_STEP)
+        _refresh_tree_panel(state)
+        return True
+
     # R / Shift+R rotate.
     if keyval in (Gdk.KEY_r, Gdk.KEY_R):
         _tree_rotate(state, clockwise=not shift)
@@ -1379,8 +1391,11 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         return True
 
     # "a" — add a new component (type picker, placed near the focused one).
+    # Lowercase 'a' auto-wires the new component to the focused node when it
+    # makes sense; uppercase 'A' (Shift) skips the auto-wire.
     if keyval in (Gdk.KEY_a, Gdk.KEY_A):
-        _open_add_menu(state)
+        autowire = not shift
+        _open_add_menu(state, autowire=autowire)
         return True
 
     # Enter / Ctrl+S: save the working buffer to disk (diff dialog if the
@@ -1557,6 +1572,12 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
         if keyval == Gdk.KEY_Up:
             _move_list_selection(listbox, -1)
             return True
+        if keyval == Gdk.KEY_Page_Down:
+            _move_list_selection(listbox, +_PAGE_STEP)
+            return True
+        if keyval == Gdk.KEY_Page_Up:
+            _move_list_selection(listbox, -_PAGE_STEP)
+            return True
         return False
 
     key.connect("key-pressed", on_key)
@@ -1565,6 +1586,9 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
     win.set_child(box)
     win.present()
     entry.grab_focus()
+
+
+_PAGE_STEP = 10  # rows per Page Up/Down keystroke (fuzzy menus + tree panel)
 
 
 def _move_list_selection(listbox, delta: int) -> None:
@@ -1631,6 +1655,178 @@ def _scroll_into_view(listbox, row) -> None:
         GLib.idle_add(do_scroll)
 
 
+def _focused_pin_position(state: _ViewerState) -> tuple[float, float] | None:
+    """Where would an auto-wire start? Position of the focused node, or None
+    if the cursor isn't sitting on a wire-able point.
+
+    Wire-able means: a single-anchor component, a two-pin endpoint when
+    drilled into nodes, or a points-list / multi-node pin. A component
+    *header* on a multi-node body returns the anchor (so wiring from "VR1"
+    starts from its center) — usable but less precise than focusing a
+    specific lug.
+    """
+    nav = state.nav
+    if nav is None or nav.current is None:
+        return None
+    cur = nav.current
+    comp = state.project.components[cur.component_index]
+    if cur.is_node and cur.x is not None and cur.y is not None:
+        return (float(cur.x), float(cur.y))
+    # Header row on a single-anchor component: use its position.
+    if hasattr(comp, "x") and hasattr(comp, "y") and not hasattr(comp, "x1"):
+        return (float(comp.x), float(comp.y))
+    return None
+
+
+def _create_wire(state: _ViewerState, src: tuple[float, float],
+                 dst: tuple[float, float]) -> None:
+    """Add a HookupWire from src to dst, syncing the buffer."""
+    from . import tree_editor
+
+    name = _auto_name(state, "HookupWire")
+    wire = tree_editor.make_wire(name, src, dst)
+    _record(state, "auto-wire")
+    state.project.add(wire)
+    _sync_buffer_add(state, wire)
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+    _refresh_tree_panel(state)
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+
+
+def _autowire_after_add(state: _ViewerState,
+                        source_pin: tuple[float, float], new_comp) -> None:
+    """Hook up the freshly-added component to the source pin.
+
+    Decides per pin count:
+      - 0 pins (shouldn't happen for any add-able type): no-op.
+      - 1 pin: wire immediately.
+      - >1 pins: open the pin-picker fuzzy menu.
+    """
+    from . import tree_editor
+
+    pins = tree_editor.addable_pins(new_comp)
+    if not pins:
+        return
+    if len(pins) == 1:
+        _create_wire(state, source_pin, (pins[0][2], pins[0][3]))
+        return
+    _open_pin_picker(state, source_pin, new_comp, pins)
+
+
+def _open_pin_picker(state: _ViewerState,
+                     source_pin: tuple[float, float], new_comp,
+                     pins: list[tuple[int, str, float, float]]) -> None:
+    """Fuzzy menu to pick which pin of ``new_comp`` to wire to."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    name = getattr(new_comp, "name", type(new_comp).__name__)
+
+    win = Gtk.Window()
+    win.set_title(f"Wire to {name}…")
+    win.set_default_size(420, 360)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    box.set_margin_top(10); box.set_margin_bottom(10)
+    box.set_margin_start(10); box.set_margin_end(10)
+    entry = Gtk.SearchEntry()
+    entry.set_placeholder_text(f"Pick a pin on {name}…")
+    box.append(entry)
+    sw = Gtk.ScrolledWindow()
+    sw.set_vexpand(True)
+    listbox = Gtk.ListBox()
+    listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+    sw.set_child(listbox)
+    box.append(sw)
+
+    # Each item carries its (point_index, label, x, y) tuple.
+    items_state: dict[str, list[tuple[int, str, float, float]]] = {"items": list(pins)}
+
+    def populate(items):
+        child = listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            listbox.remove(child)
+            child = nxt
+        for pi, lbl, x, y in items:
+            row = Gtk.ListBoxRow()
+            l = Gtk.Label(label=f"{lbl}   ({x:g}, {y:g})")
+            l.set_xalign(0.0)
+            row.set_child(l)
+            listbox.append(row)
+        first = listbox.get_row_at_index(0)
+        if first is not None:
+            listbox.select_row(first)
+
+    populate(items_state["items"])
+
+    def filter_pins(q):
+        q = q.lower().replace(" ", "")
+        if not q:
+            return list(pins)
+        out = []
+        for item in pins:
+            hay = f"{name} {item[1]}".lower().replace(" ", "")
+            qi = 0
+            for ch in hay:
+                if qi < len(q) and ch == q[qi]:
+                    qi += 1
+            if qi == len(q):
+                out.append(item)
+        return out
+
+    def on_changed(_e):
+        items = filter_pins(entry.get_text())
+        items_state["items"] = items
+        populate(items)
+    entry.connect("search-changed", on_changed)
+
+    def choose():
+        items = items_state["items"]
+        row = listbox.get_selected_row()
+        idx = row.get_index() if row is not None else 0
+        if not items or not (0 <= idx < len(items)):
+            win.close()
+            return
+        _pi, _lbl, x, y = items[idx]
+        win.close()
+        _create_wire(state, source_pin, (x, y))
+
+    listbox.connect("row-activated", lambda _lb, _row: choose())
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            choose()
+            return True
+        if keyval == Gdk.KEY_Down:
+            _move_list_selection(listbox, +1); return True
+        if keyval == Gdk.KEY_Up:
+            _move_list_selection(listbox, -1); return True
+        if keyval == Gdk.KEY_Page_Down:
+            _move_list_selection(listbox, +_PAGE_STEP); return True
+        if keyval == Gdk.KEY_Page_Up:
+            _move_list_selection(listbox, -_PAGE_STEP); return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.present()
+    entry.grab_focus()
+
+
 def _auto_name(state: _ViewerState, type_name: str) -> str:
     """Generate a unique name like 'Resistor1' for a new component."""
     existing = {getattr(c, "name", None) for c in state.project.components}
@@ -1640,12 +1836,23 @@ def _auto_name(state: _ViewerState, type_name: str) -> str:
     return f"{type_name}{i}"
 
 
-def _open_add_menu(state: _ViewerState) -> None:
-    """Fuzzy picker of component types; creates one near the focused component."""
+def _open_add_menu(state: _ViewerState, *, autowire: bool = False) -> None:
+    """Fuzzy picker of component types; creates one near the focused component.
+
+    When ``autowire`` is True and the cursor is on a wire-able node (single
+    anchor or a movable endpoint), after the new component is created we
+    add a HookupWire connecting the focused node to one of the new
+    component's pins. Multi-pin parts get a pin-picker dialog.
+    """
     import gi
     gi.require_version("Gtk", "4.0")
     from gi.repository import Gtk, Gdk
     from . import tree_editor
+
+    # Snapshot the source node (where the wire would start) at menu-open
+    # time — once `a` selection lands, the cursor will have moved to the
+    # newly-added component.
+    source_pin = _focused_pin_position(state) if autowire else None
 
     type_names = tree_editor.addable_component_types()
 
@@ -1748,6 +1955,11 @@ def _open_add_menu(state: _ViewerState) -> None:
         if state.canvas is not None:
             state.canvas.queue_draw()
         win.close()
+        # Auto-wire: if we captured a source pin at menu-open time and the
+        # user didn't suppress with Shift, run the wire flow now. The wire
+        # flow either fires immediately (1 pin) or opens a pin-picker.
+        if source_pin is not None:
+            _autowire_after_add(state, source_pin, comp)
 
     listbox.connect("row-activated", lambda _lb, _row: choose())
 
@@ -1767,6 +1979,12 @@ def _open_add_menu(state: _ViewerState) -> None:
             return True
         if keyval == Gdk.KEY_Up:
             _move_list_selection(listbox, -1)
+            return True
+        if keyval == Gdk.KEY_Page_Down:
+            _move_list_selection(listbox, +_PAGE_STEP)
+            return True
+        if keyval == Gdk.KEY_Page_Up:
+            _move_list_selection(listbox, -_PAGE_STEP)
             return True
         return False
 

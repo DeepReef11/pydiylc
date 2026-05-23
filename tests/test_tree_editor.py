@@ -302,12 +302,94 @@ def test_make_default_label_gets_text():
     assert c.text == "MyLabel"
 
 
+def test_addable_pins_two_pin():
+    from pydiylc.tree_editor import addable_pins
+    from pydiylc import Resistor
+
+    r = Resistor("R1", x1=1.0, y1=1.0, x2=1.0, y2=1.5)
+    pins = addable_pins(r)
+    assert [(p[0], p[1]) for p in pins] == [(0, "end 1"), (1, "end 2")]
+    assert pins[0][2:] == (1.0, 1.0)
+    assert pins[1][2:] == (1.0, 1.5)
+
+
+def test_addable_pins_multi_node():
+    from pydiylc.tree_editor import addable_pins
+    from pydiylc import TransistorTO92
+
+    q = TransistorTO92("Q1", x=2.0, y=2.0)
+    pins = addable_pins(q)
+    assert len(pins) == 3
+    assert all(label.startswith("pin ") for _i, label, _x, _y in pins)
+
+
+def test_addable_pins_single_anchor():
+    from pydiylc.tree_editor import addable_pins
+    from pydiylc import SolderPad
+
+    p = SolderPad("P1", x=1.0, y=2.0)
+    pins = addable_pins(p)
+    assert len(pins) == 1
+    assert pins[0][0] == 0
+    assert pins[0][2:] == (1.0, 2.0)
+
+
+def test_make_wire_two_point_form():
+    from pydiylc.tree_editor import make_wire
+
+    w = make_wire("W1", (0.0, 0.0), (1.0, 1.0))
+    assert w.name == "W1"
+    assert w.points == [(0.0, 0.0), (1.0, 1.0)]
+
+
 def test_make_default_unknown_type():
     from pydiylc.tree_editor import make_default_component
     import pytest
 
     with pytest.raises(ValueError, match="unknown component type"):
         make_default_component("Nonexistent", "X", 0, 0)
+
+
+def test_page_component_jumps_forward_by_n():
+    """page_component(+N) skips N components ahead, clamped at the end."""
+    p = Project()
+    for i in range(15):
+        p.add(SolderPad(f"P{i}", x=float(i), y=0.0))
+    nav = NavState(build_tree(p))
+    assert nav.current.component_index == 0
+    nav.page_component(+10)
+    assert nav.current.component_index == 10
+    nav.page_component(+10)  # would be 20, clamps to last (14)
+    assert nav.current.component_index == 14
+
+
+def test_page_component_jumps_backward():
+    p = Project()
+    for i in range(15):
+        p.add(SolderPad(f"P{i}", x=float(i), y=0.0))
+    nav = NavState(build_tree(p))
+    nav.page_component(+12)
+    assert nav.current.component_index == 12
+    nav.page_component(-10)
+    assert nav.current.component_index == 2
+    nav.page_component(-10)
+    assert nav.current.component_index == 0
+
+
+def test_page_component_clears_node_level():
+    nav = NavState(build_tree(_project()))
+    nav.next_component()  # R1 — has nodes
+    nav.enter_nodes()
+    assert nav.node_level is True
+    nav.page_component(+1)
+    assert nav.node_level is False
+    assert not nav.current.is_node
+
+
+def test_page_component_empty_project_safe():
+    nav = NavState(build_tree(Project()))
+    nav.page_component(+5)  # no crash
+    assert nav.current is None
 
 
 def test_clamp_cursor_after_shrink():
