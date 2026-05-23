@@ -4998,6 +4998,374 @@ class NeutrikJack1_4(Component):
         )
 
 
+@dataclass
+class TransistorTO126(Component):
+    """TO-126 medium-power transistor (flat tab, common for amp drivers).
+
+    XML: ``<diylc.semiconductors.TransistorTO126>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    pinout: str = "BJT_EBC"
+    pin_spacing: Measure = field(default_factory=lambda: inches(0.1))
+    lead_length: Measure = field(default_factory=lambda: mm(3.5))
+    body_color: str = "808080"
+    border_color: str = "595959"
+    label_color: str = "000000"
+    lead_color: str = "636363"
+    display: str = "NAME"
+    folded: bool = False
+    alpha: int = 100
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.TransistorTO126"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "pinout": E.TRANSISTOR_PINOUT,
+        "display": E.TRANSISTOR_DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        ps = self.pin_spacing.to_inches()
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x, self.y + ps),
+            (self.x, self.y + 2 * ps),
+        ]
+        return (
+            f"{pad}<diylc.semiconductors.TransistorTO126>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <folded>{str(self.folded).lower()}</folded>\n"
+            f"{pad}  <leadLength {self.lead_length.attrs()}/>\n"
+            f"{pad}  <pinout>{self.pinout}</pinout>\n"
+            f"{pad}  <pinSpacing {self.pin_spacing.attrs()}/>\n"
+            f"{pad}</diylc.semiconductors.TransistorTO126>"
+        )
+
+
+@dataclass
+class P90Pickup(Component):
+    """P-90 single-coil guitar pickup (Gibson, dog-ear or soap-bar body).
+
+    XML: ``<diylc.guitar.P90Pickup>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    type: str = "DOG_EAR"
+    color: str = "d8c989"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.P90Pickup"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "type": E.P90_TYPE,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.guitar.P90Pickup>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}</diylc.guitar.P90Pickup>"
+        )
+
+
+@dataclass
+class SMDResistor(Component):
+    """Surface-mount resistor (1206, 0805, etc.).
+
+    XML: ``<diylc.smd.SMDResistor>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    size: str = "_1206"
+    display: str = "NAME"
+    body_color: str = "595959"
+    border_color: str = "3b3b3b"
+    label_color: str = "ffffff"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.smd.SMDResistor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "size": E.SMD_SIZE,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 1206 ≈ 0.12 × 0.06 in. Two pad endpoints along +X.
+        sz = float(self.size.lstrip("_"))
+        len_in = sz / 1000
+        pts: list[Point] = [(self.x, self.y), (self.x + len_in, self.y)]
+        return (
+            f"{pad}<diylc.smd.SMDResistor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <size>{self.size}</size>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <display>{self.display}</display>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}</diylc.smd.SMDResistor>"
+        )
+
+
+@dataclass
+class SMDCapacitor(Component):
+    """Surface-mount capacitor.
+
+    XML: ``<diylc.smd.SMDCapacitor>``
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    size: str = "_1206"
+    display: str = "NAME"
+    body_color: str = "bd9347"
+    border_color: str = "8c6c34"
+    label_color: str = "ffffff"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.smd.SMDCapacitor"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+        "size": E.SMD_SIZE,
+        "display": E.DISPLAY,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        sz = float(self.size.lstrip("_"))
+        len_in = sz / 1000
+        pts: list[Point] = [(self.x, self.y), (self.x + len_in, self.y)]
+        return (
+            f"{pad}<diylc.smd.SMDCapacitor>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <size>{self.size}</size>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <display>{self.display}</display>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.smd.SMDCapacitor>"
+        )
+
+
+@dataclass
+class SchottkyDiodeSymbol(Component):
+    """Schematic Schottky diode (triangle with stepped cathode bar).
+
+    XML: ``<diylc.semiconductors.SchottkyDiodeSymbol>``
+
+    Geometry mirrors DiodeSymbol; the renderer adds the Schottky-specific
+    cathode-bar L-shape.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    body_color: str = "000000"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.1))
+    width: Measure = field(default_factory=lambda: inches(0.1))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.SchottkyDiodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.semiconductors.SchottkyDiodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.semiconductors.SchottkyDiodeSymbol>"
+        )
+
+
+@dataclass
+class BridgeRectifier(Component):
+    """Bridge rectifier (4-pin square package — AC, AC, +, -).
+
+    XML: ``<diylc.semiconductors.BridgeRectifier>``
+
+    Four control points labeled +, ~, ~, - in DIYLC's own convention.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    body_color: str = "000000"
+    border_color: str = "595959"
+    label_color: str = "ffffff"
+    alpha: int = 100
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.BridgeRectifier"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [
+            (self.x,       self.y),
+            (self.x + 0.2, self.y),
+            (self.x,       self.y + 0.2),
+            (self.x + 0.2, self.y + 0.2),
+        ]
+        labels = "".join(
+            f"{pad}    <string>{s}</string>\n"
+            for s in ("+", "~", "~", "-")
+        )
+        return (
+            f"{pad}<diylc.semiconductors.BridgeRectifier>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <pointLabels>\n"
+            f"{labels}"
+            f"{pad}  </pointLabels>\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}</diylc.semiconductors.BridgeRectifier>"
+        )
+
+
+@dataclass
+class PhotoDiodeSymbol(Component):
+    """Schematic photodiode (DiodeSymbol with incoming-light arrows).
+
+    XML: ``<diylc.semiconductors.PhotoDiodeSymbol>``
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    value: str = ""
+    body_color: str = "0000ff"
+    label_color: str = "000000"
+    lead_color: str = "000000"
+    length: Measure = field(default_factory=lambda: inches(0.1))
+    width: Measure = field(default_factory=lambda: inches(0.1))
+    display: str = "NAME"
+    flip_standing: bool = False
+    label_orientation: str = "Directional"
+    move_label: bool = False
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.semiconductors.PhotoDiodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "label_orientation": E.LABEL_ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = _two_point_with_mid((self.x1, self.y1), (self.x2, self.y2))
+        return (
+            f"{pad}<diylc.semiconductors.PhotoDiodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <length {self.length.attrs()}/>\n"
+            f"{pad}  <width {self.width.attrs()}/>\n"
+            f"{_points_block('points', pts, indent + 2)}\n"
+            f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
+            f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <flipStanding>{str(self.flip_standing).lower()}</flipStanding>\n"
+            f"{pad}  <labelOriantation>{self.label_orientation}</labelOriantation>\n"
+            f"{pad}  <moveLabel>{str(self.move_label).lower()}</moveLabel>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.semiconductors.PhotoDiodeSymbol>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
@@ -5056,6 +5424,13 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     JFETSymbol,
     CrystalOscillator,
     NeutrikJack1_4,
+    TransistorTO126,
+    P90Pickup,
+    SMDResistor,
+    SMDCapacitor,
+    SchottkyDiodeSymbol,
+    BridgeRectifier,
+    PhotoDiodeSymbol,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,

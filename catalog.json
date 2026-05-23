@@ -408,6 +408,21 @@
       "NEGATIVE",
       "POSITIVE"
     ],
+    "SMD_SIZE": [
+      "_0201",
+      "_0402",
+      "_0603",
+      "_0805",
+      "_1206",
+      "_1210",
+      "_1812",
+      "_2010",
+      "_2512"
+    ],
+    "P90_TYPE": [
+      "DOG_EAR",
+      "SOAP_BAR"
+    ],
     "BJT_POLARITY": [
       "NPN",
       "PNP"
@@ -6089,6 +6104,883 @@
             "_180",
             "_270"
           ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TransistorTO126",
+      "diylc_class": "diylc.semiconductors.TransistorTO126",
+      "doc": "TO-126 medium-power transistor (flat tab, common for amp drivers).\n\nXML: ``<diylc.semiconductors.TransistorTO126>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "pinout",
+          "type": {
+            "kind": "string"
+          },
+          "default": "BJT_EBC",
+          "required": false,
+          "enum": [
+            "BJT_EBC",
+            "BJT_CBE",
+            "BJT_BCE",
+            "BJT_ECB",
+            "JFET_DSG",
+            "JFET_GSD",
+            "JFET_DGS",
+            "JFET_SGD",
+            "JFET_GDS",
+            "MOSFET_DSG",
+            "MOSFET_GSD",
+            "MOSFET_DGS",
+            "MOSFET_SGD",
+            "MOSFET_GDS",
+            "REGULATOR_IGO",
+            "REGULATOR_OGI",
+            "REGULATOR_GOI",
+            "REGULATOR_AOI",
+            "REGULATOR_GIO"
+          ]
+        },
+        {
+          "name": "pin_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "lead_length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 3.5,
+            "unit": "mm"
+          },
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "595959",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH",
+            "PINOUT"
+          ]
+        },
+        {
+          "name": "folded",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 100,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "P90Pickup",
+      "diylc_class": "diylc.guitar.P90Pickup",
+      "doc": "P-90 single-coil guitar pickup (Gibson, dog-ear or soap-bar body).\n\nXML: ``<diylc.guitar.P90Pickup>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DOG_EAR",
+          "required": false,
+          "enum": [
+            "DOG_EAR",
+            "SOAP_BAR"
+          ]
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "d8c989",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "SMDResistor",
+      "diylc_class": "diylc.smd.SMDResistor",
+      "doc": "Surface-mount resistor (1206, 0805, etc.).\n\nXML: ``<diylc.smd.SMDResistor>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_1206",
+          "required": false,
+          "enum": [
+            "_0201",
+            "_0402",
+            "_0603",
+            "_0805",
+            "_1206",
+            "_1210",
+            "_1812",
+            "_2010",
+            "_2512"
+          ]
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "595959",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "3b3b3b",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "SMDCapacitor",
+      "diylc_class": "diylc.smd.SMDCapacitor",
+      "doc": "Surface-mount capacitor.\n\nXML: ``<diylc.smd.SMDCapacitor>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "string"
+          },
+          "default": "_1206",
+          "required": false,
+          "enum": [
+            "_0201",
+            "_0402",
+            "_0603",
+            "_0805",
+            "_1206",
+            "_1210",
+            "_1812",
+            "_2010",
+            "_2512"
+          ]
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "bd9347",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "8c6c34",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "SchottkyDiodeSymbol",
+      "diylc_class": "diylc.semiconductors.SchottkyDiodeSymbol",
+      "doc": "Schematic Schottky diode (triangle with stepped cathode bar).\n\nXML: ``<diylc.semiconductors.SchottkyDiodeSymbol>``\n\nGeometry mirrors DiodeSymbol; the renderer adds the Schottky-specific\ncathode-bar L-shape.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "BridgeRectifier",
+      "diylc_class": "diylc.semiconductors.BridgeRectifier",
+      "doc": "Bridge rectifier (4-pin square package \u2014 AC, AC, +, -).\n\nXML: ``<diylc.semiconductors.BridgeRectifier>``\n\nFour control points labeled +, ~, ~, - in DIYLC's own convention.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "border_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "595959",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 100,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "PhotoDiodeSymbol",
+      "diylc_class": "diylc.semiconductors.PhotoDiodeSymbol",
+      "doc": "Schematic photodiode (DiodeSymbol with incoming-light arrows).\n\nXML: ``<diylc.semiconductors.PhotoDiodeSymbol>``",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "body_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "label_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "lead_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "000000",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 0.1,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "flip_standing",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "label_orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Directional",
+          "required": false,
+          "enum": [
+            "Directional",
+            "Horizontal"
+          ]
+        },
+        {
+          "name": "move_label",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
         },
         {
           "name": "alpha",

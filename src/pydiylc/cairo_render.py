@@ -110,6 +110,13 @@ from .components import (
     JFETSymbol,
     CrystalOscillator,
     NeutrikJack1_4,
+    TransistorTO126,
+    P90Pickup,
+    SMDResistor,
+    SMDCapacitor,
+    SchottkyDiodeSymbol,
+    BridgeRectifier,
+    PhotoDiodeSymbol,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1739,6 +1746,67 @@ def _render_neutrik_jack(cr, c: NeutrikJack1_4, s: float) -> None:
                       0.7 * s, 0.5 * s, "303030", "000000", c.alpha / 255)
 
 
+def _render_transistor_to126(cr, c: TransistorTO126, s: float) -> None:
+    ps = c.pin_spacing.to_inches()
+    _fill_stroke_rect(cr, (c.x - 0.15) * s, (c.y - 0.05) * s,
+                      0.3 * s, (2 * ps + 0.1) * s,
+                      c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_p90_pickup(cr, c: P90Pickup, s: float) -> None:
+    _fill_stroke_rect(cr, (c.x - 0.5) * s, c.y * s, 1.0 * s, 1.5 * s,
+                      c.color, "404040", c.alpha / 255, 1.2)
+
+
+def _render_smd_resistor(cr, c: SMDResistor, s: float) -> None:
+    sz = float(c.size.lstrip("_"))
+    len_in = sz / 1000
+    _fill_stroke_rect(cr, c.x * s, (c.y - len_in / 4) * s,
+                      len_in * s, (len_in / 2) * s,
+                      c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_smd_capacitor(cr, c: SMDCapacitor, s: float) -> None:
+    sz = float(c.size.lstrip("_"))
+    len_in = sz / 1000
+    _fill_stroke_rect(cr, c.x * s, (c.y - len_in / 4) * s,
+                      len_in * s, (len_in / 2) * s,
+                      c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_schottky_symbol(cr, c: SchottkyDiodeSymbol, s: float) -> None:
+    # Triangle pointing along x1→x2.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    size = 8
+    cr.move_to(cx - size, cy - size)
+    cr.line_to(cx + size, cy)
+    cr.line_to(cx - size, cy + size)
+    cr.close_path()
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.fill()
+
+
+def _render_bridge_rectifier(cr, c: BridgeRectifier, s: float) -> None:
+    _fill_stroke_rect(cr, c.x * s, c.y * s, 0.2 * s, 0.2 * s,
+                      c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_photo_diode_symbol(cr, c: PhotoDiodeSymbol, s: float) -> None:
+    # Triangle + a couple of small arrows pointing in.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    size = 8
+    cr.move_to(cx - size, cy - size)
+    cr.line_to(cx + size, cy)
+    cr.line_to(cx - size, cy + size)
+    cr.close_path()
+    cr.set_source_rgb(*_hex_to_rgb(c.body_color))
+    cr.fill()
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1832,4 +1900,11 @@ _RENDERERS: dict[type, callable] = {
     JFETSymbol: _render_jfet_symbol,
     CrystalOscillator: _render_crystal,
     NeutrikJack1_4: _render_neutrik_jack,
+    TransistorTO126: _render_transistor_to126,
+    P90Pickup: _render_p90_pickup,
+    SMDResistor: _render_smd_resistor,
+    SMDCapacitor: _render_smd_capacitor,
+    SchottkyDiodeSymbol: _render_schottky_symbol,
+    BridgeRectifier: _render_bridge_rectifier,
+    PhotoDiodeSymbol: _render_photo_diode_symbol,
 }

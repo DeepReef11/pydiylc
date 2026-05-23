@@ -104,6 +104,13 @@ from .components import (
     JFETSymbol,
     CrystalOscillator,
     NeutrikJack1_4,
+    TransistorTO126,
+    P90Pickup,
+    SMDResistor,
+    SMDCapacitor,
+    SchottkyDiodeSymbol,
+    BridgeRectifier,
+    PhotoDiodeSymbol,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1699,6 +1706,59 @@ def _render_neutrik_jack(c: NeutrikJack1_4, s: float) -> str:
                      "303030", "000000", c.alpha / 255)
 
 
+def _render_transistor_to126(c: TransistorTO126, s: float) -> str:
+    ps = c.pin_spacing.to_inches()
+    return _svg_rect((c.x - 0.15) * s, (c.y - 0.05) * s,
+                     0.3 * s, (2 * ps + 0.1) * s,
+                     c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_p90_pickup(c: P90Pickup, s: float) -> str:
+    return _svg_rect((c.x - 0.5) * s, c.y * s, 1.0 * s, 1.5 * s,
+                     c.color, "404040", c.alpha / 255, 1.2)
+
+
+def _render_smd_resistor(c: SMDResistor, s: float) -> str:
+    sz = float(c.size.lstrip("_"))
+    len_in = sz / 1000
+    return _svg_rect(c.x * s, (c.y - len_in / 4) * s,
+                     len_in * s, (len_in / 2) * s,
+                     c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_smd_capacitor(c: SMDCapacitor, s: float) -> str:
+    sz = float(c.size.lstrip("_"))
+    len_in = sz / 1000
+    return _svg_rect(c.x * s, (c.y - len_in / 4) * s,
+                     len_in * s, (len_in / 2) * s,
+                     c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_schottky_symbol(c: SchottkyDiodeSymbol, s: float) -> str:
+    cx, cy = (c.x1 + c.x2) / 2 * s, (c.y1 + c.y2) / 2 * s
+    size = 8
+    return (
+        f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
+        f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
+        f'fill="#{c.body_color}"/>'
+    )
+
+
+def _render_bridge_rectifier(c: BridgeRectifier, s: float) -> str:
+    return _svg_rect(c.x * s, c.y * s, 0.2 * s, 0.2 * s,
+                     c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_photo_diode_symbol(c: PhotoDiodeSymbol, s: float) -> str:
+    cx, cy = (c.x1 + c.x2) / 2 * s, (c.y1 + c.y2) / 2 * s
+    size = 8
+    return (
+        f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
+        f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
+        f'fill="#{c.body_color}"/>'
+    )
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1792,4 +1852,11 @@ _RENDERERS: dict[type, callable] = {
     JFETSymbol: _render_jfet_symbol,
     CrystalOscillator: _render_crystal,
     NeutrikJack1_4: _render_neutrik_jack,
+    TransistorTO126: _render_transistor_to126,
+    P90Pickup: _render_p90_pickup,
+    SMDResistor: _render_smd_resistor,
+    SMDCapacitor: _render_smd_capacitor,
+    SchottkyDiodeSymbol: _render_schottky_symbol,
+    BridgeRectifier: _render_bridge_rectifier,
+    PhotoDiodeSymbol: _render_photo_diode_symbol,
 }

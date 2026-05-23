@@ -163,6 +163,13 @@ NEUTRIK_MOUNT = ("Panel", "PCB", "CHASSIS")
 # JFET polarity (N-channel vs P-channel).
 JFET_POLARITY = ("NEGATIVE", "POSITIVE")
 
+# SMD package size (industry standard imperial codes).
+SMD_SIZE = ("_0201", "_0402", "_0603", "_0805", "_1206", "_1210",
+            "_1812", "_2010", "_2512")
+
+# P90-pickup body style.
+P90_TYPE = ("DOG_EAR", "SOAP_BAR")
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 
