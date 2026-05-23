@@ -97,6 +97,13 @@ from .components import (
     ICSymbol,
     RotarySelectorSwitch,
     BatterySymbol,
+    ElectrolyticCanCapacitor,
+    TriPadBoard,
+    FuseSymbol,
+    TubeDiodeSymbol,
+    JFETSymbol,
+    CrystalOscillator,
+    NeutrikJack1_4,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,
@@ -1640,6 +1647,58 @@ def _render_battery_symbol(c: BatterySymbol, s: float) -> str:
     return "<g>" + "".join(lines) + "</g>"
 
 
+def _render_electrolytic_can(c: ElectrolyticCanCapacitor, s: float) -> str:
+    return (
+        f'<circle cx="{c.x*s:.1f}" cy="{(c.y+1.0)*s:.1f}" r="{s:.1f}" '
+        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_tripad_board(c: TriPadBoard, s: float) -> str:
+    return _svg_rect(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s,
+                     c.board_color, c.border_color, c.alpha / 255)
+
+
+def _render_fuse_symbol(c: FuseSymbol, s: float) -> str:
+    import math
+    cx, cy = (c.x1 + c.x2) / 2 * s, (c.y1 + c.y2) / 2 * s
+    dx, dy = (c.x2 - c.x1) * s, (c.y2 - c.y1) * s
+    L = math.hypot(dx, dy) or 1
+    body_l = max(L * 0.6, 14)
+    angle = math.degrees(math.atan2(dy, dx))
+    return (
+        f'<rect x="{-body_l/2:.1f}" y="-4" width="{body_l:.1f}" height="8" '
+        f'fill="none" stroke="#{c.border_color}" stroke-width="1.2" '
+        f'transform="translate({cx:.1f},{cy:.1f}) rotate({angle:.1f})"/>'
+    )
+
+
+def _render_tube_diode(c: TubeDiodeSymbol, s: float) -> str:
+    return (
+        f'<circle cx="{(c.x+0.15)*s:.1f}" cy="{(c.y+0.2)*s:.1f}" r="{0.25*s:.1f}" '
+        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_jfet_symbol(c: JFETSymbol, s: float) -> str:
+    return (
+        f'<circle cx="{(c.x+0.1)*s:.1f}" cy="{c.y*s:.1f}" r="{0.15*s:.1f}" '
+        f'fill="none" stroke="#{c.color}" stroke-width="1"/>'
+    )
+
+
+def _render_crystal(c: CrystalOscillator, s: float) -> str:
+    return _svg_rect(min(c.x1, c.x2) * s - 6, (min(c.y1, c.y2) - 0.1) * s,
+                     abs(c.x2 - c.x1) * s + 12, c.width.to_inches() * s,
+                     c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_neutrik_jack(c: NeutrikJack1_4, s: float) -> str:
+    return _svg_rect(c.x * s, (c.y - 0.5) * s, 0.7 * s, 0.5 * s,
+                     "303030", "000000", c.alpha / 255)
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1726,4 +1785,11 @@ _RENDERERS: dict[type, callable] = {
     ICSymbol: _render_ic_symbol,
     RotarySelectorSwitch: _render_rotary_selector,
     BatterySymbol: _render_battery_symbol,
+    ElectrolyticCanCapacitor: _render_electrolytic_can,
+    TriPadBoard: _render_tripad_board,
+    FuseSymbol: _render_fuse_symbol,
+    TubeDiodeSymbol: _render_tube_diode,
+    JFETSymbol: _render_jfet_symbol,
+    CrystalOscillator: _render_crystal,
+    NeutrikJack1_4: _render_neutrik_jack,
 }

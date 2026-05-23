@@ -253,6 +253,8 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         ("diylc.passive.ResistorSymbol", "value"),
         ("diylc.passive.CapacitorSymbol", "value"),
         ("diylc.passive.InductorSymbol", "value"),
+        ("diylc.passive.FuseSymbol", "value"),
+        ("diylc.passive.CrystalOscillator", "value"),
     }
 
     values: dict[str, Any] = {}

@@ -103,6 +103,13 @@ from .components import (
     ICSymbol,
     RotarySelectorSwitch,
     BatterySymbol,
+    ElectrolyticCanCapacitor,
+    TriPadBoard,
+    FuseSymbol,
+    TubeDiodeSymbol,
+    JFETSymbol,
+    CrystalOscillator,
+    NeutrikJack1_4,
 )
 from .core import Measure, Project
 from .svg import PX_PER_INCH
@@ -1671,6 +1678,67 @@ def _render_battery_symbol(cr, c: BatterySymbol, s: float) -> None:
     cr.stroke()
 
 
+def _render_electrolytic_can(cr, c: ElectrolyticCanCapacitor, s: float) -> None:
+    cr.arc(c.x * s, (c.y + 1.0) * s, s, 0, 2 * math.pi)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_tripad_board(cr, c: TriPadBoard, s: float) -> None:
+    _fill_stroke_rect(cr, c.x1 * s, c.y1 * s,
+                      (c.x2 - c.x1) * s, (c.y2 - c.y1) * s,
+                      c.board_color, c.border_color, c.alpha / 255)
+
+
+def _render_fuse_symbol(cr, c: FuseSymbol, s: float) -> None:
+    # A rectangle outline with no fill (just the body).
+    cx, cy = (c.x1 + c.x2) / 2 * s, (c.y1 + c.y2) / 2 * s
+    dx, dy = (c.x2 - c.x1) * s, (c.y2 - c.y1) * s
+    L = math.hypot(dx, dy) or 1
+    body_l = max(L * 0.6, 14)
+    cr.save()
+    cr.translate(cx, cy)
+    cr.rotate(math.atan2(dy, dx))
+    cr.rectangle(-body_l / 2, -4, body_l, 8)
+    cr.set_source_rgb(*_hex_to_rgb(c.border_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+    cr.restore()
+
+
+def _render_tube_diode(cr, c: TubeDiodeSymbol, s: float) -> None:
+    x, y = (c.x + 0.15) * s, (c.y + 0.2) * s
+    cr.arc(x, y, 0.25 * s, 0, 2 * math.pi)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+
+
+def _render_jfet_symbol(cr, c: JFETSymbol, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    cr.arc(x + 0.1 * s, y, 0.15 * s, 0, 2 * math.pi)
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_crystal(cr, c: CrystalOscillator, s: float) -> None:
+    _fill_stroke_rect(cr,
+                      min(c.x1, c.x2) * s - 6,
+                      (min(c.y1, c.y2) - 0.1) * s,
+                      abs(c.x2 - c.x1) * s + 12,
+                      c.width.to_inches() * s,
+                      c.body_color, c.border_color, c.alpha / 255)
+
+
+def _render_neutrik_jack(cr, c: NeutrikJack1_4, s: float) -> None:
+    _fill_stroke_rect(cr, c.x * s, (c.y - 0.5) * s,
+                      0.7 * s, 0.5 * s, "303030", "000000", c.alpha / 255)
+
+
 _RENDERERS: dict[type, callable] = {
     BlankBoard: _render_blank_board,
     PerfBoard: _render_perf_board,
@@ -1757,4 +1825,11 @@ _RENDERERS: dict[type, callable] = {
     ICSymbol: _render_ic_symbol,
     RotarySelectorSwitch: _render_rotary_selector,
     BatterySymbol: _render_battery_symbol,
+    ElectrolyticCanCapacitor: _render_electrolytic_can,
+    TriPadBoard: _render_tripad_board,
+    FuseSymbol: _render_fuse_symbol,
+    TubeDiodeSymbol: _render_tube_diode,
+    JFETSymbol: _render_jfet_symbol,
+    CrystalOscillator: _render_crystal,
+    NeutrikJack1_4: _render_neutrik_jack,
 }

@@ -157,6 +157,12 @@ PICKUP_POLARITY = ("North", "South", "Humbucking")
 # Humbucker pickup style.
 HUMBUCKER_TYPE = ("PAF", "DOG_EAR", "MINI")
 
+# Neutrik jack chassis-vs-PCB mount.
+NEUTRIK_MOUNT = ("Panel", "PCB", "CHASSIS")
+
+# JFET polarity (N-channel vs P-channel).
+JFET_POLARITY = ("NEGATIVE", "POSITIVE")
+
 # Schematic-symbol BJT polarity
 BJT_POLARITY = ("NPN", "PNP")
 
