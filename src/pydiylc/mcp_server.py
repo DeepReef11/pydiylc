@@ -1098,12 +1098,20 @@ def build_server():
     def validate(project_id: str = "default") -> dict:
         """Check the project for problems. Returns a structured report.
 
-        Surfaces issues that DIYLC users routinely run into: duplicate
-        component names (silent bugs in the AST-edit path), components
-        outside the canvas bounds, wires whose endpoints aren't aligned
-        to the 0.1-inch grid, and the boards-cluttered-with-overlapping-
-        components case. All warnings, never raises — meant to be run
-        right before ``save``.
+        Each issue has a ``severity``: ``"error"`` for things that will
+        actually break (duplicate names corrupt the viewer's AST edits;
+        missing names break the catalog), or ``"info"`` for things that
+        are technically off but are common in real DIYLC layouts (e.g.
+        off-canvas hardware, since ~half the upstream corpus places
+        jacks, pots, and labels outside the strict canvas bounds for
+        layout clarity).
+
+        ``ok`` is True when there are no ``error``-severity issues.
+        Errors block save-time confidence; infos are informational and
+        a clean project may still have them.
+
+        Returns ``{ok, components, issues, errors, infos}`` where
+        ``errors`` and ``infos`` are convenience filters over ``issues``.
         """
         from collections import Counter
         from .graph import control_points_of
@@ -1111,35 +1119,42 @@ def build_server():
         p = _get(project_id)
         issues: list[dict] = []
 
-        # 1. Duplicate names — these break the viewer's AST edits.
+        # 1. Duplicate names — error. These break the viewer's AST edits
+        # (move_component finds the wrong instance by name).
         names = [getattr(c, "name", None) for c in p.components]
         counts = Counter(n for n in names if n)
         for nm, n in counts.items():
             if n > 1:
                 issues.append({
+                    "severity": "error",
                     "kind": "duplicate_name",
                     "name": nm,
                     "count": n,
                     "message": f"{n} components share the name {nm!r}",
                 })
 
-        # 2. Empty / missing names.
+        # 2. Empty / missing names — error. Catalog and search depend on names.
         for i, n in enumerate(names):
             if not n:
                 issues.append({
+                    "severity": "error",
                     "kind": "missing_name",
                     "index": i,
                     "type": type(p.components[i]).__name__,
                     "message": "component has no name",
                 })
 
-        # 3. Off-canvas geometry. Use the project's width/height in inches.
+        # 3. Off-canvas geometry — info. About half the upstream DIYLC
+        # corpus has off-canvas components (jacks, pots, labels deliberately
+        # offset from the PCB area for layout clarity). Flagging this as
+        # an error would make validate noisy and untrustworthy.
         w_in = p.width_cm / 2.54
         h_in = p.height_cm / 2.54
         for i, c in enumerate(p.components):
             for cp in control_points_of(c, i):
                 if cp.x < 0 or cp.x > w_in or cp.y < 0 or cp.y > h_in:
                     issues.append({
+                        "severity": "info",
                         "kind": "off_canvas",
                         "name": getattr(c, "name", None),
                         "type": type(c).__name__,
@@ -1147,15 +1162,20 @@ def build_server():
                         "canvas": [w_in, h_in],
                         "message": (
                             f"control point ({cp.x:.2f}, {cp.y:.2f}) is outside "
-                            f"the {w_in:.1f}×{h_in:.1f} in canvas"
+                            f"the {w_in:.1f}×{h_in:.1f} in canvas — common for "
+                            "off-board hardware (jacks, pots, labels)"
                         ),
                     })
                     break  # one issue per component is enough
 
+        errors = [i for i in issues if i["severity"] == "error"]
+        infos = [i for i in issues if i["severity"] == "info"]
         return {
-            "ok": not issues,
+            "ok": not errors,
             "components": len(p.components),
             "issues": issues,
+            "errors": errors,
+            "infos": infos,
         }
 
     # =====================================================================

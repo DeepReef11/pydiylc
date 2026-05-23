@@ -556,6 +556,12 @@ def test_validate_detects_duplicate_names(mcp_fixture):
 
 
 def test_validate_detects_off_canvas(mcp_fixture):
+    """Off-canvas geometry is surfaced as an INFO, not an error.
+
+    Real DIYLC layouts routinely place off-board hardware (jacks, pots,
+    labels) outside the canvas bounds — about half the upstream corpus
+    does this. Flagging it as an error would make validate untrustworthy.
+    """
     _call(mcp_fixture, "create_project",
           {"project_id": "v2", "width_cm": 5.0, "height_cm": 5.0})
     _call(mcp_fixture, "add_component", {"project_id": "v2",
@@ -564,6 +570,26 @@ def test_validate_detects_off_canvas(mcp_fixture):
     off = [i for i in rep["issues"] if i["kind"] == "off_canvas"]
     assert off
     assert off[0]["name"] == "P1"
+    # Off-canvas must be severity=info so ok stays True for layouts that
+    # deliberately place off-board hardware outside the strict canvas.
+    assert off[0]["severity"] == "info"
+    assert rep["ok"] is True  # off-canvas alone doesn't break validate
+    assert rep["infos"]       # but the info is surfaced
+    assert not rep["errors"]
+
+
+def test_validate_duplicate_names_are_errors(mcp_fixture):
+    """Duplicate names DO break ok — they corrupt the AST-edit path."""
+    _call(mcp_fixture, "create_project", {"project_id": "vd"})
+    _call(mcp_fixture, "add_component", {"project_id": "vd",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1, "y": 1}})
+    _call(mcp_fixture, "add_component", {"project_id": "vd",
+        "component": {"type": "SolderPad", "name": "P1", "x": 2, "y": 2}})
+    rep = _call(mcp_fixture, "validate", {"project_id": "vd"})
+    assert rep["ok"] is False
+    assert rep["errors"]
+    assert rep["errors"][0]["kind"] == "duplicate_name"
+    assert rep["errors"][0]["severity"] == "error"
 
 
 def test_validate_clean_project(mcp_fixture):
@@ -1100,6 +1126,93 @@ def test_end_to_end_tube_amp_schematic(mcp_fixture, tmp_path):
         "project_id": f"{project_id}_rt", "path": str(out),
     })
     assert reread["components"] == 7   # 6 added + 1 wire
+    assert reread["warnings"] == []
+
+
+def test_end_to_end_big_muff_high_density(mcp_fixture, tmp_path):
+    """Third real-world stress test: a 50-component Big Muff fuzz pedal.
+
+    Probes scale and density: four transistors with feedback loops,
+    diode clipping pairs (back-to-back), tone stack, three pots,
+    3PDT switch, jacks, DC inlet, multiple ground references. Sibling
+    to test_end_to_end_pedal_build (stripboard) and
+    test_end_to_end_tube_amp_schematic (schematic).
+
+    Specifically catches:
+    - Density: 20+ wires placed via connect() — does nearest-pin still
+      pick sensible pairs at scale?
+    - The off-canvas false-positive: this layout puts pots/jacks/labels
+      outside the strict canvas (DIYLC convention for off-board hardware),
+      which should be surfaced as info, not error.
+    - High batch sizes: 50+ components in one add_components call.
+    """
+    project_id = "muff"
+    _call(mcp_fixture, "create_project", {
+        "project_id": project_id, "title": "Big Muff Pi",
+        "width_cm": 18, "height_cm": 14,
+    })
+    # Trimmed-down version that hits the same stress points.
+    components = [
+        {"type": "VeroBoard", "name": "Board1",
+         "x1": 0.5, "y1": 0.5, "x2": 4.5, "y2": 2.0,
+         "orientation": "HORIZONTAL"},
+        # 4 transistors with similar surrounding networks
+        *[d for q in range(1, 5) for d in [
+            {"type": "TransistorTO92", "name": f"Q{q}",
+             "x": 0.6 + q * 0.7, "y": 1.0,
+             "value": "2N5088", "pinout": "BJT_EBC"},
+            {"type": "Resistor", "name": f"R_C{q}",
+             "x1": 0.6 + q * 0.7, "y1": 0.7,
+             "x2": 0.6 + q * 0.7, "y2": 0.5, "value": "10K"},
+            {"type": "Resistor", "name": f"R_E{q}",
+             "x1": 0.6 + q * 0.7, "y1": 1.3,
+             "x2": 0.6 + q * 0.7, "y2": 1.5, "value": "2K2"},
+        ]],
+        # 3 pots in a row off-board (intentionally outside canvas)
+        *[{"type": "PotentiometerPanel", "name": f"VR{i}",
+           "x": 8.0, "y": 0.5 + i * 1.5,
+           "resistance": "100K", "taper": "LIN"} for i in range(1, 4)],
+        # Jacks (off-board, hence outside canvas)
+        {"_type": "OpenJack1_4", "name": "J_in",
+         "x": 0.5, "y": 6.0, "type": "MONO"},
+        {"_type": "OpenJack1_4", "name": "J_out",
+         "x": 8.0, "y": 6.0, "type": "MONO"},
+    ]
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": project_id, "components": components,
+    })
+    assert res["errors"] == [], f"batch errors: {res['errors']}"
+
+    # ~10 wires — exercises connect's nearest-pin heuristic at density.
+    for src, dst in [
+        ("J_in", "Q1"), ("Q1", "Q2"), ("Q2", "Q3"), ("Q3", "Q4"),
+        ("Q4", "VR3"), ("VR3", "J_out"),
+        ("VR1", "Q2"),  # feedback loop
+    ]:
+        _call(mcp_fixture, "connect", {
+            "project_id": project_id, "from_name": src, "to_name": dst,
+        })
+
+    rep = _call(mcp_fixture, "validate", {"project_id": project_id})
+    # Off-board hardware lives outside the canvas; validate.ok should
+    # stay True (info-severity only), and infos should be reported.
+    assert rep["ok"], (
+        f"validate must accept off-board hardware as info-only, "
+        f"but reported errors: {rep['errors']}"
+    )
+    assert rep["infos"], "off-canvas hardware should produce info entries"
+    # Every off-canvas issue must be severity=info.
+    for issue in rep["issues"]:
+        if issue["kind"] == "off_canvas":
+            assert issue["severity"] == "info"
+
+    # Round-trip through disk at this size.
+    out = tmp_path / "muff.diy"
+    _call(mcp_fixture, "save", {"project_id": project_id, "path": str(out)})
+    reread = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{project_id}_rt", "path": str(out),
+    })
+    assert reread["components"] == rep["components"]
     assert reread["warnings"] == []
 
 
