@@ -415,6 +415,83 @@ def test_propose_add_star_import_no_op(tmp_path):
     assert import_lines == ["from pydiylc import *"]
 
 
+def test_propose_changes_bundles_move_and_adds(tmp_path):
+    """A move + an uncommitted add must produce ONE rewrite containing both."""
+    import importlib.util
+    from pydiylc.edit import propose_changes, MoveOp, apply_proposal
+    from pydiylc import BlankBoard
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        def build():
+            pr = Project()
+            pr.add(SolderPad(name='P1', x=1.0, y=1.0))
+            return pr
+    """)
+    proposal = propose_changes(
+        p,
+        moves=[MoveOp("P1", 5.0, 5.0)],
+        adds=[BlankBoard("B1", x1=2.0, y1=2.0, x2=3.0, y2=2.7)],
+    )
+    text = proposal.new_text
+    # The move took effect…
+    assert "x=5.0" in text and "y=5.0" in text
+    # …AND the new component is present (the previously-lost-on-commit bug).
+    assert "B1" in text
+    assert "BlankBoard" in text  # both in import line and in the call
+    # And the rewritten file actually imports cleanly with both parts.
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rewritten", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    project = mod.build()
+    names = [c.name for c in project.components]
+    assert "P1" in names and "B1" in names
+
+
+def test_propose_changes_empty_raises():
+    from pydiylc.edit import propose_changes
+    import pytest
+
+    with pytest.raises(NotImplementedError, match="nothing to do"):
+        propose_changes("/tmp/whatever.py")
+
+
+def test_propose_changes_lookup_error_on_missing_move(tmp_path):
+    from pydiylc.edit import propose_changes, MoveOp
+    import pytest
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """)
+    with pytest.raises(LookupError):
+        propose_changes(p, moves=[MoveOp("Nope", 0, 0)])
+
+
+def test_propose_changes_adds_only_no_move(tmp_path):
+    """`adds=[...]` with no moves still produces a valid proposal."""
+    import importlib.util
+    from pydiylc.edit import propose_changes, apply_proposal
+    from pydiylc import Resistor
+
+    p = _write(tmp_path, """
+        from pydiylc import Project, SolderPad
+        def build():
+            pr = Project()
+            pr.add(SolderPad(name='P1', x=1.0, y=1.0))
+            return pr
+    """)
+    proposal = propose_changes(p, adds=[Resistor("R1", x1=2, y1=2, x2=2, y2=2.5)])
+    apply_proposal(proposal)
+    spec = importlib.util.spec_from_file_location("rt", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    names = [c.name for c in mod.build().components]
+    assert names == ["P1", "R1"]
+
+
 def test_propose_add_inserts_import_when_missing(tmp_path):
     """A file with no pydiylc import at all gets one inserted."""
     from pydiylc.edit import propose_add

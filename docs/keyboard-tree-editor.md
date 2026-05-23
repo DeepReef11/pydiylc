@@ -230,12 +230,20 @@ Capture phase intercepts keys at the window level first.
   arrows). Currently plain arrows navigate the tree; literal nudge is
   Ctrl+arrows. The jump overlay needs canvas-space candidate rendering.
 - Shared-node "n / p jump to neighbor component" keys.
-- **Vim-style save flow (parked):** treat the whole document as an editable
-  buffer; `Ctrl+S` / `:w` opens a diff-on-save dialog (gated by a "don't
-  show again" preference) and writes all pending changes to source in one
-  go. No-op when there are no changes. Could use git for an external undo
-  history (one commit per save, `u` walks the log). Bigger feature than the
-  current per-action `propose_move` / `propose_add` flow — would unify
-  add/delete/move into a single end-of-session commit instead of per-edit
-  dialogs.
+- **Working-buffer save flow (parked, motivated):** the current "commit per
+  Enter" model treats the disk file as the source of truth for every edit
+  — each Apply dialog re-parses, rewrites, and writes the file, with the
+  watcher then reloading. That model leaks: between a pending add and a
+  later move-commit the disk content is stale, so the move's write can
+  clobber the in-memory add. (`propose_changes` patches this by bundling
+  pending adds with the move, but it's a workaround.)
+
+  Cleaner architecture: keep a **working buffer** (a temp file or in-memory
+  string) that reflects the current intended source state. Every edit
+  mutates the buffer immediately. `Enter` or `:w`/`Ctrl+S` opens a
+  diff-on-save dialog (gated by a "don't show again" preference) and
+  flushes the buffer to the real file in one write. No-op when buffer
+  matches disk. Could use git for an undo history (one commit per save,
+  `u` walks the log). Naturally fixes the stale-source race and matches
+  the editor mental model the user already described.
 ```

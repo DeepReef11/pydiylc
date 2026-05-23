@@ -545,6 +545,168 @@ def propose_add(
     )
 
 
+@dataclass
+class MoveOp:
+    """One move/edit to apply within a propose_changes() batch.
+
+    Exactly one of (x, y), (point_index, x, y), or (second_point=True) shape
+    is meaningful, mirroring the standalone propose_move / propose_point_move
+    entry points.
+    """
+
+    component_name: str
+    x: float
+    y: float
+    point_index: int | None = None  # for points-list components
+    second_point: bool = False       # for two-pin x2/y2
+
+
+def propose_changes(
+    path: str | Path,
+    *,
+    moves: "list[MoveOp] | tuple[MoveOp, ...]" = (),
+    adds: "list | tuple" = (),
+) -> MoveProposal:
+    """Apply multiple edits to one source file as a single rewrite.
+
+    Used when a commit needs to bundle pending in-memory adds with a normal
+    move so nothing gets lost (otherwise the move's write would clobber the
+    yet-uncommitted adds). Returns one MoveProposal whose new_text contains
+    all mutations.
+
+    Raises NotImplementedError if no edits were requested, or if any edit
+    can't be performed (positional coords, missing component, etc.). The
+    caller (viewer) translates those into the read-only locate dialog.
+    """
+    if not moves and not adds:
+        raise NotImplementedError("propose_changes: nothing to do")
+
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+
+    summary_lines: list[str] = []
+    focus_line = 1
+
+    for op in moves:
+        target_call = _find_call_by_name(tree, op.component_name)
+        if target_call is None:
+            raise LookupError(
+                f"component {op.component_name!r} not found by name in {p}"
+            )
+        focus_line = target_call.lineno
+
+        if op.point_index is not None:
+            _apply_point_move(target_call, op.component_name, op.point_index,
+                              op.x, op.y, summary_lines)
+        else:
+            _apply_move(target_call, op.component_name, op.x, op.y,
+                        op.second_point, summary_lines)
+
+    for component in adds:
+        located = _find_last_add_call(tree)
+        if located is None:
+            raise NotImplementedError(
+                "Can't auto-insert: no existing `<project>.add(...)` call found "
+                "to anchor the new line."
+            )
+        anchor_stmt, body = located
+        call_expr = _component_to_call(component)
+        receiver = anchor_stmt.value.func.value  # type: ignore[attr-defined]
+        new_call = ast.Call(
+            func=ast.Attribute(value=receiver, attr="add", ctx=ast.Load()),
+            args=[call_expr],
+            keywords=[],
+        )
+        new_stmt = ast.Expr(value=new_call)
+        body.insert(body.index(anchor_stmt) + 1, new_stmt)
+        _ensure_import(tree, type(component).__name__)
+        focus_line = anchor_stmt.lineno + 1
+        summary_lines.append(
+            f"+ {type(component).__name__}({getattr(component, 'name', '?')!r})"
+        )
+
+    ast.fix_missing_locations(tree)
+    new_full = ast.unparse(tree)
+    old_lines = text.splitlines()
+    new_lines = new_full.splitlines()
+    summary = "; ".join(summary_lines) if summary_lines else "no-op"
+    hunk = _line_numbered_hunk(old_lines, new_lines, focus_line)
+
+    return MoveProposal(
+        path=p,
+        component_name=moves[0].component_name if moves else (
+            getattr(adds[0], "name", "?") if adds else ""
+        ),
+        old_text=text,
+        new_text=new_full + ("\n" if text.endswith("\n") else ""),
+        line=focus_line,
+        summary=summary,
+        diff_hunk=hunk,
+    )
+
+
+def _find_call_by_name(tree: ast.AST, component_name: str) -> ast.Call | None:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _find_name_arg(node) == component_name:
+            return node
+    return None
+
+
+def _apply_move(call: ast.Call, name: str, new_x: float, new_y: float,
+                second_point: bool, summary_lines: list[str]) -> None:
+    if second_point:
+        x_key, y_key = "x2", "y2"
+    else:
+        x_key, y_key = ("x", "y") if _arg_position_for(call, "x") else ("x1", "y1")
+    x_node = _arg_position_for(call, x_key)
+    y_node = _arg_position_for(call, y_key)
+    if x_node is None or y_node is None:
+        ctor = getattr(call.func, "id", None) or getattr(call.func, "attr", "?")
+        raise NotImplementedError(
+            f"{name!r} is built with positional coordinates "
+            f"(`{ctor}({name!r}, ...)`). Rewrite as "
+            f"`{ctor}(name={name!r}, {x_key}=..., {y_key}=...)` to enable "
+            "drag-to-move."
+        )
+    old_x = x_node.value if isinstance(x_node, ast.Constant) else None
+    old_y = y_node.value if isinstance(y_node, ast.Constant) else None
+    _set_keyword(call, x_key, ast.Constant(value=_clean_float(new_x)))
+    _set_keyword(call, y_key, ast.Constant(value=_clean_float(new_y)))
+    summary_lines.append(
+        f"{name}.{x_key}: {old_x!r}→{new_x:g}, {name}.{y_key}: {old_y!r}→{new_y:g}"
+    )
+
+
+def _apply_point_move(call: ast.Call, name: str, point_index: int,
+                      new_x: float, new_y: float,
+                      summary_lines: list[str]) -> None:
+    points_node = _arg_position_for(call, "points")
+    if points_node is None or not isinstance(points_node, (ast.List, ast.Tuple)):
+        ctor = getattr(call.func, "id", None) or getattr(call.func, "attr", "?")
+        raise NotImplementedError(
+            f"{name!r}: needs a literal `points=[(x, y), ...]` keyword. "
+            f"Rewrite as `{ctor}(name={name!r}, points=[(1.0, 1.0), ...])`."
+        )
+    if not (0 <= point_index < len(points_node.elts)):
+        raise NotImplementedError(
+            f"{name!r}: point index {point_index} out of range "
+            f"(have {len(points_node.elts)} points)."
+        )
+    elt = points_node.elts[point_index]
+    if not isinstance(elt, (ast.Tuple, ast.List)) or len(elt.elts) != 2:
+        raise NotImplementedError(
+            f"{name!r}: points[{point_index}] is not a literal (x, y) pair."
+        )
+    old_x = elt.elts[0].value if isinstance(elt.elts[0], ast.Constant) else None
+    old_y = elt.elts[1].value if isinstance(elt.elts[1], ast.Constant) else None
+    elt.elts[0] = ast.Constant(value=_clean_float(new_x))
+    elt.elts[1] = ast.Constant(value=_clean_float(new_y))
+    summary_lines.append(
+        f"{name}.points[{point_index}]: ({old_x!r}, {old_y!r})→({new_x:g}, {new_y:g})"
+    )
+
+
 def apply_proposal(proposal: MoveProposal) -> None:
     """Write the proposed new_text to disk. Caller is responsible for
     backup. The viewer should only call this after user confirmation."""

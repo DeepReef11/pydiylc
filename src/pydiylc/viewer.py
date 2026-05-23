@@ -904,7 +904,12 @@ def _tree_undo(state: _ViewerState) -> None:
 
 
 def _tree_commit(state: _ViewerState) -> None:
-    """Commit the focused component's current position to source via a dialog."""
+    """Commit the focused component's position + any pending in-memory adds.
+
+    Pending adds are components whose name isn't yet present in the source
+    file (typically added via `a`). They are bundled into the same write so
+    a subsequent watcher-triggered reload doesn't clobber them.
+    """
     nav = state.nav
     if nav is None or nav.current is None:
         return
@@ -918,36 +923,39 @@ def _tree_commit(state: _ViewerState) -> None:
             "components. The move is applied in-memory only.",
         )
         return
-    from .edit import propose_move, propose_point_move, propose_add, locate_component
+    from .edit import (
+        propose_changes, MoveOp, propose_add, locate_component,
+    )
     from . import graph as _g
 
-    try:
+    # Identify pending in-memory adds: components whose names aren't in source.
+    pending_adds = _pending_in_memory_components(state)
+    focused_is_pending = comp in pending_adds
+
+    # Build the move op for the focused component, unless it's itself pending
+    # (in which case it just becomes one of the adds).
+    move_ops: list = []
+    if not focused_is_pending:
         if cur.is_node and cur.movable and hasattr(comp, "points"):
-            anchor = (cur.x, cur.y)
-            proposal = propose_point_move(
-                state.watch_path, name, cur.point_index, anchor[0], anchor[1]
-            )
+            move_ops.append(MoveOp(name, cur.x, cur.y, point_index=cur.point_index))
         elif cur.is_node and cur.movable and hasattr(comp, "x2"):
             cps = _g.control_points_of(comp, cur.component_index)
             pt = next(p for p in cps if p.point_index == cur.point_index)
-            proposal = propose_move(
-                state.watch_path, name, pt.x, pt.y,
-                second_point=(cur.point_index == 1),
-            )
+            move_ops.append(MoveOp(name, pt.x, pt.y, second_point=(cur.point_index == 1)))
         else:
             anchor = _current_anchor(comp)
-            proposal = propose_move(state.watch_path, name, anchor[0], anchor[1])
-    except LookupError:
-        # Component isn't in the source — typically because it was just added
-        # in-memory via `a`. Offer to insert a new line.
-        try:
-            proposal = propose_add(state.watch_path, comp)
-        except NotImplementedError as exc:
-            _info_dialog(state.window, "Can't auto-insert", str(exc))
-            return
-        _apply_dialog(state, proposal)
+            move_ops.append(MoveOp(name, anchor[0], anchor[1]))
+
+    try:
+        proposal = propose_changes(
+            state.watch_path, moves=move_ops, adds=pending_adds,
+        )
+    except LookupError as exc:
+        _info_dialog(state.window, "Can't auto-apply", str(exc))
         return
     except NotImplementedError:
+        # A move op hit positional coords or similar — fall back to the
+        # read-only locate dialog for the focused component.
         try:
             loc = locate_component(state.watch_path, name)
         except LookupError as exc:
@@ -956,6 +964,35 @@ def _tree_commit(state: _ViewerState) -> None:
         _locate_dialog(state, loc, _current_anchor(comp))
         return
     _apply_dialog(state, proposal)
+
+
+def _pending_in_memory_components(state: _ViewerState) -> list:
+    """Return components present in the live project but absent from source.
+
+    A component is considered pending if its ``name`` doesn't match any
+    ``<Class>(name='X', ...)`` call in the source file. Used by
+    _tree_commit to bundle uncommitted adds with a regular move.
+    """
+    if state.watch_path is None or state.watch_path.suffix.lower() != ".py":
+        return []
+    import ast as _ast
+    from .edit import _find_name_arg
+
+    try:
+        text = state.watch_path.read_text(encoding="utf-8")
+        tree = _ast.parse(text)
+    except (OSError, SyntaxError):
+        return []
+    source_names: set[str] = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Call):
+            n = _find_name_arg(node)
+            if n:
+                source_names.add(n)
+    return [
+        c for c in state.project.components
+        if getattr(c, "name", None) and getattr(c, "name") not in source_names
+    ]
 
 
 def _format_diff(hunk: list[tuple[int, str, str]]) -> str:
