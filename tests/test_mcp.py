@@ -33,16 +33,19 @@ def test_server_lists_expected_tools():
     expected = {
         # Catalog & reference
         "list_component_types", "enum_values", "describe_component_type",
+        "list_categories", "list_components_in_category", "list_enums",
         # Project lifecycle
         "create_project", "create_project_from_dict", "list_projects",
         "delete_project", "set_project_metadata",
         # Inspection
         "list_components", "get_component", "find_components", "get_pins",
+        "stats",
         # Edits
         "add_component", "add_components", "remove_component",
         "move_component", "move_node", "move_node_to",
         "rotate_component", "duplicate_component",
-        "set_value", "set_field", "add_wire", "connect",
+        "set_value", "set_field", "set_fields", "add_wire", "connect",
+        "snap_to_grid", "align",
         # Validation + history
         "validate", "undo", "redo", "history",
         # I/O
@@ -607,3 +610,252 @@ def test_add_component_dry_run(mcp_fixture):
     assert res["dry_run"] is True
     listed = _call(mcp_fixture, "list_components", {"project_id": "dr"})
     assert len(listed) == 0
+
+
+# ---------------------------------------------------------------------------
+# Catalog browsing (categories, enums) — discovery without fetching the full
+# catalog.
+# ---------------------------------------------------------------------------
+
+
+def test_list_categories(mcp_fixture):
+    """list_categories returns category names + counts derived from the
+    DIYLC class path (diylc.passive.Resistor → 'passive')."""
+    res = _call(mcp_fixture, "list_categories", {})
+    by_cat = {e["category"]: e["count"] for e in res}
+    # 'passive' is huge (resistors, caps, transformers, etc.); 'boards' is
+    # smaller. Both must be present.
+    assert "passive" in by_cat
+    assert "boards" in by_cat
+    assert by_cat["passive"] > by_cat["boards"]
+
+
+def test_list_components_in_category(mcp_fixture):
+    """list_components_in_category filters the catalog by slug."""
+    res = _call(mcp_fixture, "list_components_in_category",
+                {"category": "boards"})
+    names = {e["python_class"] for e in res}
+    assert "PerfBoard" in names
+    assert "VeroBoard" in names
+    # Each entry has a short doc.
+    for entry in res:
+        assert "doc_first_line" in entry
+
+
+def test_list_components_in_category_unknown_suggests(mcp_fixture):
+    """Bad category name gets a 'did you mean' hint."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="boards|passive"):
+        asyncio.run(mcp_fixture.call_tool(
+            "list_components_in_category", {"category": "boarsd"}  # typo
+        ))
+
+
+def test_list_enums(mcp_fixture):
+    """list_enums returns every enum the catalog references."""
+    res = _call(mcp_fixture, "list_enums", {})
+    names = {e["name"] for e in res}
+    # A representative spread of known enums.
+    assert "POWER" in names
+    assert "VOLTAGE" in names
+    assert "ORIENTATION" in names
+    # Every entry has a positive count.
+    for e in res:
+        assert e["count"] > 0
+
+
+def test_describe_component_type_unknown_suggests(mcp_fixture):
+    """Unknown type gets a 'did you mean' hint (vs the old generic 'not found')."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    # 'Resitor' is one edit away from 'Resistor'.
+    with pytest.raises(ToolError, match="Resistor"):
+        asyncio.run(mcp_fixture.call_tool(
+            "describe_component_type", {"type_name": "Resitor"}
+        ))
+
+
+# ---------------------------------------------------------------------------
+# Multi-field setter + align + snap_to_grid + stats.
+# ---------------------------------------------------------------------------
+
+
+def test_set_fields_multi(mcp_fixture):
+    """set_fields applies multiple field updates atomically."""
+    _call(mcp_fixture, "create_project", {"project_id": "sf"})
+    _call(mcp_fixture, "add_component", {"project_id": "sf",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5}})
+    res = _call(mcp_fixture, "set_fields", {
+        "project_id": "sf", "name": "R1",
+        "fields": {"alpha": 64, "value": "47K", "color_code": "_4_BAND"},
+    })
+    assert res["type"] == "Resistor"
+    got = _call(mcp_fixture, "get_component",
+                {"project_id": "sf", "name": "R1"})
+    assert got["alpha"] == 64
+    assert got["value"] == "47K"
+    assert got["color_code"] == "_4_BAND"
+
+
+def test_set_fields_atomic_on_failure(mcp_fixture):
+    """A bad enum in the batch reverts every field — no partial commit."""
+    import asyncio
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "sfa"})
+    _call(mcp_fixture, "add_component", {"project_id": "sfa",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5}})
+    with pytest.raises(ToolError):
+        asyncio.run(mcp_fixture.call_tool("set_fields", {
+            "project_id": "sfa", "name": "R1",
+            "fields": {"alpha": 64, "color_code": "NOT_A_VALID_ENUM"},
+        }))
+    # alpha must NOT have changed since the whole batch was supposed to fail.
+    got = _call(mcp_fixture, "get_component",
+                {"project_id": "sfa", "name": "R1"})
+    assert got["alpha"] == 127  # default, not 64
+
+
+def test_set_fields_dry_run(mcp_fixture):
+    """dry_run reports the diff per-field without committing."""
+    _call(mcp_fixture, "create_project", {"project_id": "sfd"})
+    _call(mcp_fixture, "add_component", {"project_id": "sfd",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1, "y1": 1, "x2": 1, "y2": 1.5}})
+    res = _call(mcp_fixture, "set_fields", {
+        "project_id": "sfd", "name": "R1",
+        "fields": {"alpha": 64, "value": "47K"},
+        "dry_run": True,
+    })
+    assert res["dry_run"] is True
+    assert res["changes"]["alpha"]["to"] == 64
+    assert res["changes"]["value"]["to"] == "47K"
+    # Confirm nothing committed.
+    got = _call(mcp_fixture, "get_component",
+                {"project_id": "sfd", "name": "R1"})
+    assert got["alpha"] == 127
+
+
+def test_snap_to_grid_whole_project(mcp_fixture):
+    """snap_to_grid without a name snaps every off-grid coord."""
+    _call(mcp_fixture, "create_project", {"project_id": "sg"})
+    _call(mcp_fixture, "add_component", {"project_id": "sg",
+        "component": {"type": "SolderPad", "name": "P1",
+                      "x": 1.2345, "y": 1.7891}})
+    res = _call(mcp_fixture, "snap_to_grid", {"project_id": "sg"})
+    assert res["snapped"] >= 1
+    got = _call(mcp_fixture, "get_component", {"project_id": "sg", "name": "P1"})
+    assert got["x"] == pytest.approx(1.2, abs=1e-6)
+    assert got["y"] == pytest.approx(1.8, abs=1e-6)
+
+
+def test_snap_to_grid_single_component(mcp_fixture):
+    """snap_to_grid with a name only touches that component."""
+    _call(mcp_fixture, "create_project", {"project_id": "sg2"})
+    _call(mcp_fixture, "add_component", {"project_id": "sg2",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.234, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "sg2",
+        "component": {"type": "SolderPad", "name": "P2", "x": 2.567, "y": 2.0}})
+    _call(mcp_fixture, "snap_to_grid", {"project_id": "sg2", "name": "P1"})
+    p1 = _call(mcp_fixture, "get_component", {"project_id": "sg2", "name": "P1"})
+    p2 = _call(mcp_fixture, "get_component", {"project_id": "sg2", "name": "P2"})
+    assert p1["x"] == pytest.approx(1.2, abs=1e-6)
+    assert p2["x"] == 2.567  # untouched
+
+
+def test_snap_to_grid_dry_run(mcp_fixture):
+    """dry_run reports proposed snaps without committing."""
+    _call(mcp_fixture, "create_project", {"project_id": "sgd"})
+    _call(mcp_fixture, "add_component", {"project_id": "sgd",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.234, "y": 1.0}})
+    res = _call(mcp_fixture, "snap_to_grid",
+                {"project_id": "sgd", "dry_run": True})
+    assert res["dry_run"] is True
+    assert res["snaps"] >= 1
+    got = _call(mcp_fixture, "get_component", {"project_id": "sgd", "name": "P1"})
+    assert got["x"] == 1.234  # unchanged
+
+
+def test_align_x_first(mcp_fixture):
+    """align axis=x mode=first lines components up to the first's x."""
+    _call(mcp_fixture, "create_project", {"project_id": "al"})
+    _call(mcp_fixture, "add_component", {"project_id": "al",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "al",
+        "component": {"type": "SolderPad", "name": "P2", "x": 1.5, "y": 2.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "al",
+        "component": {"type": "SolderPad", "name": "P3", "x": 2.0, "y": 3.0}})
+    res = _call(mcp_fixture, "align", {
+        "project_id": "al",
+        "names": ["P1", "P2", "P3"],
+        "axis": "x", "mode": "first",
+    })
+    assert res["aligned"] == 2
+    p2 = _call(mcp_fixture, "get_component", {"project_id": "al", "name": "P2"})
+    p3 = _call(mcp_fixture, "get_component", {"project_id": "al", "name": "P3"})
+    assert p2["x"] == pytest.approx(1.0)
+    assert p3["x"] == pytest.approx(1.0)
+    # Y values preserved (we only aligned on x).
+    assert p2["y"] == pytest.approx(2.0)
+
+
+def test_align_y_mean(mcp_fixture):
+    """align axis=y mode=mean centers on the average y."""
+    _call(mcp_fixture, "create_project", {"project_id": "al2"})
+    _call(mcp_fixture, "add_component", {"project_id": "al2",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "al2",
+        "component": {"type": "SolderPad", "name": "P2", "x": 2.0, "y": 3.0}})
+    _call(mcp_fixture, "align", {
+        "project_id": "al2", "names": ["P1", "P2"],
+        "axis": "y", "mode": "mean",
+    })
+    p1 = _call(mcp_fixture, "get_component", {"project_id": "al2", "name": "P1"})
+    p2 = _call(mcp_fixture, "get_component", {"project_id": "al2", "name": "P2"})
+    assert p1["y"] == pytest.approx(2.0)
+    assert p2["y"] == pytest.approx(2.0)
+
+
+def test_align_dry_run(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "ald"})
+    _call(mcp_fixture, "add_component", {"project_id": "ald",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "ald",
+        "component": {"type": "SolderPad", "name": "P2", "x": 2.0, "y": 1.0}})
+    res = _call(mcp_fixture, "align", {
+        "project_id": "ald", "names": ["P1", "P2"],
+        "axis": "x", "mode": "first", "dry_run": True,
+    })
+    assert res["dry_run"] is True
+    assert res["anchor"] == 1.0
+    # No commit.
+    p2 = _call(mcp_fixture, "get_component", {"project_id": "ald", "name": "P2"})
+    assert p2["x"] == 2.0
+
+
+def test_stats(mcp_fixture):
+    """stats summarizes counts + bbox."""
+    _call(mcp_fixture, "create_project", {"project_id": "st",
+                                          "width_cm": 10, "height_cm": 8})
+    _call(mcp_fixture, "add_component", {"project_id": "st",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0}})
+    _call(mcp_fixture, "add_component", {"project_id": "st",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 2.0, "y1": 1.5, "x2": 2.0, "y2": 2.5}})
+    res = _call(mcp_fixture, "stats", {"project_id": "st"})
+    assert res["components"] == 2
+    by = {e["type"]: e["count"] for e in res["by_type"]}
+    assert by["SolderPad"] == 1
+    assert by["Resistor"] == 1
+    bb = res["bbox_in"]
+    assert bb["min_x"] == 1.0
+    assert bb["max_x"] == 2.0
+    assert bb["min_y"] == 1.0
+    assert bb["max_y"] == 2.5
+    assert bb["width"] == pytest.approx(1.0)
+    assert bb["height"] == pytest.approx(1.5)

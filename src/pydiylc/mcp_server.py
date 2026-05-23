@@ -209,10 +209,81 @@ def build_server():
         for entry in cat["components"]:
             if entry["python_class"] == type_name:
                 return entry
-        raise KeyError(
-            f"no component type {type_name!r}; "
-            "see list_component_types for the full list"
+        # 'did you mean' fallback so LLMs can self-correct guesses.
+        names = [e["python_class"] for e in cat["components"]]
+        sugg = _close_matches(type_name, names)
+        hint = (
+            f"; did you mean {', '.join(repr(s) for s in sugg)}?"
+            if sugg
+            else "; see list_component_types for the full list"
         )
+        raise KeyError(f"no component type {type_name!r}{hint}")
+
+    @server.tool()
+    def list_categories() -> list[dict]:
+        """List component categories (passive, semiconductors, boards, etc.).
+
+        Cheap discovery path that avoids fetching the full catalog when an
+        LLM just wants "show me the tube components". Each entry has a
+        ``category`` slug and the ``count`` of components in it. Categories
+        come from the DIYLC class path (``diylc.passive.Resistor`` →
+        passive)."""
+        from collections import Counter
+        cat = build_catalog()
+        counts: Counter[str] = Counter()
+        for e in cat["components"]:
+            parts = e["diylc_class"].split(".")
+            category = parts[1] if len(parts) >= 3 else "misc"
+            counts[category] += 1
+        return [
+            {"category": name, "count": n}
+            for name, n in sorted(counts.items())
+        ]
+
+    @server.tool()
+    def list_components_in_category(category: str) -> list[dict]:
+        """List every component in a given category (e.g. 'passive', 'tube').
+
+        Returns ``[{python_class, diylc_class, doc_first_line}, ...]``.
+        Pair with ``describe_component_type`` for full field info on a pick.
+        """
+        cat = build_catalog()
+        out: list[dict] = []
+        for e in cat["components"]:
+            parts = e["diylc_class"].split(".")
+            if len(parts) >= 3 and parts[1] == category:
+                out.append({
+                    "python_class": e["python_class"],
+                    "diylc_class": e["diylc_class"],
+                    "doc_first_line": (e["doc"] or "").split("\n", 1)[0],
+                })
+        if not out:
+            cats = sorted({e["diylc_class"].split(".")[1]
+                           for e in cat["components"]
+                           if len(e["diylc_class"].split(".")) >= 3})
+            sugg = _close_matches(category, cats)
+            hint = (
+                f"; did you mean {', '.join(repr(s) for s in sugg)}?"
+                if sugg
+                else f"; valid categories: {cats}"
+            )
+            raise KeyError(f"no category {category!r}{hint}")
+        return out
+
+    @server.tool()
+    def list_enums() -> list[dict]:
+        """List every enum the catalog references.
+
+        Companion to ``enum_values``: instead of needing to already know an
+        enum exists, an LLM can discover them. Each entry has ``name`` and
+        ``count`` (how many allowed values). Use ``enum_values`` to fetch
+        the values for one."""
+        cat = build_catalog()
+        pool = cat.get("enum_pool", {})
+        return [
+            {"name": name, "count": len(values)}
+            for name, values in sorted(pool.items())
+        ]
 
     # =====================================================================
     # Project lifecycle
@@ -741,6 +812,287 @@ def build_server():
         # Replace the component in place to preserve list ordering.
         p.components[i] = updated
         return _component_summary(updated, i)
+
+    @server.tool()
+    def set_fields(
+        name: str,
+        fields: dict,
+        project_id: str = "default",
+        dry_run: bool = False,
+    ) -> dict:
+        """Set multiple fields on one component in a single call.
+
+        Equivalent to N ``set_field`` calls but cheaper for LLM workflows
+        that often want to tweak ``alpha``, ``orientation``, and a color
+        together. Uses ``dataclasses.replace`` so enum validation runs
+        once on the final state — either all the changes commit or none
+        do.
+
+        ``fields`` is a dict ``{"field_name": new_value, ...}``.
+        Measure-typed fields take ``{"value": ..., "unit": ...}``.
+        """
+        import dataclasses
+        from .core import Measure
+
+        p = _get(project_id)
+        i, c = _find_component(p, name)
+        spec = {f.name: f for f in dataclasses.fields(type(c))}
+
+        coerced: dict = {}
+        for fname, val in fields.items():
+            if fname not in spec:
+                allowed = sorted(spec)
+                sugg = _close_matches(fname, allowed)
+                hint = (
+                    f"; did you mean {', '.join(repr(s) for s in sugg)}?"
+                    if sugg
+                    else f"; valid fields: {allowed}"
+                )
+                raise ValueError(
+                    f"{type(c).__name__} has no field {fname!r}{hint}"
+                )
+            ann = spec[fname].type
+            if isinstance(ann, type) and ann is Measure and isinstance(val, dict):
+                coerced[fname] = Measure(
+                    value=float(val.get("value", 0)),
+                    unit=str(val.get("unit", "in")),
+                )
+            elif isinstance(ann, type) and ann in (int, float, bool, str):
+                coerced[fname] = ann(val)
+            else:
+                coerced[fname] = val
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "changes": {
+                    k: {"from": getattr(c, k), "to": coerced[k]}
+                    for k in coerced
+                },
+            }
+
+        _record_history(project_id, f"set {name} ({len(coerced)} fields)")
+        try:
+            updated = dataclasses.replace(c, **coerced)
+        except Exception as exc:
+            raise ValueError(
+                f"set_fields: {type(exc).__name__}: {exc}"
+            ) from exc
+        p.components[i] = updated
+        return _component_summary(updated, i)
+
+    @server.tool()
+    def snap_to_grid(
+        name: str | None = None,
+        project_id: str = "default",
+        grid: float = 0.1,
+        dry_run: bool = False,
+    ) -> dict:
+        """Snap a component's control points (or every component's) to the
+        nearest grid intersection.
+
+        Default grid is 0.1 in (DIYLC's standard). Without ``name`` this
+        snaps every component in the project — useful for cleaning up a
+        layout where the LLM picked coordinates with too much precision
+        ('2.4455400540054004' shows up unfortunately often in v3 files).
+
+        Returns ``{"snapped": N, "components": [...]}`` with the modified
+        component summaries. ``dry_run=True`` reports what would change.
+        """
+        from .graph import control_points_of
+
+        p = _get(project_id)
+
+        # Pick target indices.
+        if name is None:
+            indices = list(range(len(p.components)))
+        else:
+            i, _c = _find_component(p, name)
+            indices = [i]
+
+        def _snap(v: float) -> float:
+            return round(v / grid) * grid
+
+        plan: list[tuple[int, int, float, float, float, float]] = []
+        for idx in indices:
+            c = p.components[idx]
+            for cp in control_points_of(c, idx):
+                nx, ny = _snap(cp.x), _snap(cp.y)
+                if abs(nx - cp.x) > 1e-9 or abs(ny - cp.y) > 1e-9:
+                    plan.append((idx, cp.point_index, cp.x, cp.y, nx, ny))
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "snaps": len(plan),
+                "preview": [
+                    {
+                        "name": getattr(p.components[idx], "name", None),
+                        "pin": pi,
+                        "from": [ox, oy],
+                        "to": [nx, ny],
+                    }
+                    for (idx, pi, ox, oy, nx, ny) in plan[:20]
+                ],
+                "truncated": len(plan) > 20,
+            }
+
+        if not plan:
+            return {"snapped": 0, "components": []}
+
+        _record_history(project_id, f"snap_to_grid ({grid} in)")
+        touched_indices: set[int] = set()
+        for (idx, pi, _ox, _oy, nx, ny) in plan:
+            from . import moves as _m
+            cur = control_points_of(p.components[idx], idx)
+            cp = next((x for x in cur if x.point_index == pi), None)
+            if cp is None:
+                continue
+            dx, dy = nx - cp.x, ny - cp.y
+            if abs(dx) > 1e-9 or abs(dy) > 1e-9:
+                _m.move_node(p, idx, pi, dx, dy)
+                touched_indices.add(idx)
+        return {
+            "snapped": len(plan),
+            "components": [
+                _component_summary(p.components[i], i)
+                for i in sorted(touched_indices)
+            ],
+        }
+
+    @server.tool()
+    def align(
+        names: list[str],
+        axis: str = "x",
+        mode: str = "first",
+        project_id: str = "default",
+        dry_run: bool = False,
+    ) -> dict:
+        """Align components on an axis (LLM-friendly cleanup).
+
+        ``axis`` is ``'x'`` (line them up vertically — share x coord) or
+        ``'y'`` (line them up horizontally — share y coord).
+        ``mode`` is ``'first'`` (use the first named component's coord),
+        ``'mean'`` (centroid), ``'min'``, or ``'max'``.
+
+        Operates on each component's *anchor* point (x/y for single-anchor
+        parts; the centroid of x1/y1/x2/y2 for two-point parts; the
+        centroid of points[] for polyline parts). Translates the whole
+        component by the required delta.
+        """
+        if axis not in ("x", "y"):
+            raise ValueError("axis must be 'x' or 'y'")
+        if mode not in ("first", "mean", "min", "max"):
+            raise ValueError("mode must be one of: first, mean, min, max")
+        if len(names) < 2:
+            raise ValueError("align needs at least 2 component names")
+        p = _get(project_id)
+
+        from .graph import control_points_of
+        targets: list[tuple[int, float, float]] = []
+        for nm in names:
+            i, c = _find_component(p, nm)
+            cps = list(control_points_of(c, i))
+            if not cps:
+                continue
+            cx = sum(cp.x for cp in cps) / len(cps)
+            cy = sum(cp.y for cp in cps) / len(cps)
+            targets.append((i, cx, cy))
+
+        if not targets:
+            return {"aligned": 0, "components": []}
+
+        coords = [t[1] if axis == "x" else t[2] for t in targets]
+        if mode == "first":
+            anchor = coords[0]
+        elif mode == "mean":
+            anchor = sum(coords) / len(coords)
+        elif mode == "min":
+            anchor = min(coords)
+        else:  # max
+            anchor = max(coords)
+
+        from . import moves as _m
+        plan = []
+        for (i, cx, cy) in targets:
+            cur = cx if axis == "x" else cy
+            d = anchor - cur
+            if abs(d) > 1e-9:
+                plan.append((i, d))
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "axis": axis,
+                "mode": mode,
+                "anchor": anchor,
+                "moves": [
+                    {
+                        "name": getattr(p.components[i], "name", None),
+                        "delta": d,
+                    }
+                    for (i, d) in plan
+                ],
+            }
+
+        if not plan:
+            return {"aligned": 0, "components": []}
+
+        _record_history(project_id, f"align {axis} ({mode})")
+        for (i, d) in plan:
+            dx, dy = (d, 0.0) if axis == "x" else (0.0, d)
+            _m.move_component(p, i, dx, dy)
+        return {
+            "aligned": len(plan),
+            "components": [
+                _component_summary(p.components[i], i) for (i, _d) in plan
+            ],
+        }
+
+    @server.tool()
+    def stats(project_id: str = "default") -> dict:
+        """Project-wide summary: counts by type + the bounding box.
+
+        Cheap "what's in here" answer for an LLM that's just opened a
+        layout it didn't build. Returns counts by component type and the
+        min/max coords across every control point (the actual layout
+        extent, distinct from the canvas size).
+        """
+        from collections import Counter
+        from .graph import control_points_of
+
+        p = _get(project_id)
+        counts: Counter[str] = Counter(type(c).__name__ for c in p.components)
+
+        xs: list[float] = []
+        ys: list[float] = []
+        for i, c in enumerate(p.components):
+            for cp in control_points_of(c, i):
+                xs.append(cp.x)
+                ys.append(cp.y)
+
+        if xs and ys:
+            bbox = {
+                "min_x": min(xs), "min_y": min(ys),
+                "max_x": max(xs), "max_y": max(ys),
+                "width": max(xs) - min(xs),
+                "height": max(ys) - min(ys),
+            }
+        else:
+            bbox = None
+
+        return {
+            "title": p.title,
+            "author": p.author,
+            "components": len(p.components),
+            "canvas_cm": [p.width_cm, p.height_cm],
+            "canvas_in": [p.width_cm / 2.54, p.height_cm / 2.54],
+            "by_type": [
+                {"type": t, "count": n}
+                for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            ],
+            "bbox_in": bbox,
+        }
 
     @server.tool()
     def validate(project_id: str = "default") -> dict:

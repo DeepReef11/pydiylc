@@ -152,17 +152,17 @@ pip install -e ".[mcp]"
 pydiylc-mcp                  # stdio transport
 ```
 
-**32 tools** spanning the full lifecycle:
+**39 tools** spanning the full lifecycle:
 
-- **Catalog**: `list_component_types`, `describe_component_type`, `enum_values`
+- **Catalog browsing**: `list_component_types`, `describe_component_type`, `enum_values`, `list_categories` (passive / boards / tube / …), `list_components_in_category`, `list_enums`
 - **Project lifecycle**: `create_project`, `create_project_from_dict`, `list_projects`, `delete_project`, `set_project_metadata`
-- **Inspection**: `list_components`, `get_component`, `find_components` (fuzzy), `get_pins` (control-point coordinates by name)
-- **Edits** (all undoable, all record history): `add_component`, `add_components` (batch), `remove_component`, `move_component`, `move_node`, `move_node_to`, `rotate_component`, `duplicate_component`, `set_value`, `set_field` (any attribute, with type coercion), `add_wire`, `connect` (wire two named components by pin index — picks nearest pair if pins omitted)
+- **Inspection**: `list_components`, `get_component`, `find_components` (fuzzy), `get_pins` (control-point coordinates by name), `stats` (counts + bounding box)
+- **Edits** (all undoable, all record history): `add_component`, `add_components` (batch), `remove_component`, `move_component`, `move_node`, `move_node_to`, `rotate_component`, `duplicate_component`, `set_value`, `set_field` (any attribute, with type coercion), `set_fields` (atomic multi-field update), `add_wire`, `connect` (wire two named components by pin index — picks nearest pair if pins omitted), `align` (line components up on x or y), `snap_to_grid` (clean up off-grid coords)
 - **Validation**: `validate` (duplicate names, off-canvas geometry, etc.) — run before save
 - **History**: `undo`, `redo`, `history` — full undo stack per project, mirrors the GUI's session history
 - **I/O**: `save`, `render_svg`, `render_png`, `to_json`, `read_diy` — all rendering tools accept `return_content=True` for inline content (no disk access needed)
 
-Errors include "did you mean X?" hints for component and project names, and writes support `dry_run=True` to preview a change without committing.
+Errors include "did you mean X?" hints for component types, component names, project ids, category slugs, and field names. Mutating tools support `dry_run=True` to preview without committing.
 
 **Resources** for the static reference data: `pydiylc://catalog` and `pydiylc://llms.txt`.
 
