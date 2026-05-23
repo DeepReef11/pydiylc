@@ -246,6 +246,10 @@ def show(project: Project, *, title: str = "pydiylc viewer",
             state.last_mtime = state.watch_path.stat().st_mtime
             GLib.timeout_add(500, _make_poller(state))
 
+        # Save-on-quit guard: if the buffer has unsaved changes, intercept
+        # the close and ask before discarding them.
+        win.connect("close-request", _make_close_request_handler(state))
+
         win.present()
 
     app.connect("activate", on_activate)
@@ -281,6 +285,10 @@ class _ViewerState:
         self.cursor_in: tuple[float, float] | None = None
         # Active right-click context popover (so callbacks can dismiss it).
         self.context_popover = None
+        # Set True once the user has confirmed a close past the unsaved-
+        # changes dialog; lets the close-request handler return without
+        # re-prompting.
+        self.quitting: bool = False
         # Working-buffer save flow.
         self.buffer = None  # buffer.Buffer (one per tree-mode session)
         self.prefs = None  # prefs.Prefs (loaded lazily)
@@ -310,6 +318,104 @@ def _status_text(state: _ViewerState) -> str:
     if state.cursor_in is not None:
         cur = f"  ·  ({state.cursor_in[0]:.2f}, {state.cursor_in[1]:.2f}) in"
     return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{cur}{sel}{undo}{dirty}{chord}{err}"
+
+
+def _make_close_request_handler(state: _ViewerState):
+    """Return True to cancel the close, False to allow it.
+
+    When the buffer has unsaved changes, pops a Save / Discard / Cancel
+    dialog. Save → flush then close; Discard → close without saving;
+    Cancel → stay open. ``state.quitting`` short-circuits the guard after
+    we've decided to close so the dialog doesn't loop.
+    """
+    def on_close(win):
+        buf = state.buffer
+        if state.quitting or buf is None or not buf.is_dirty:
+            return False  # allow close
+        _unsaved_changes_dialog(state, win)
+        return True  # block close; dialog will re-trigger when ready
+    return on_close
+
+
+def _unsaved_changes_dialog(state: _ViewerState, parent_win) -> None:
+    """Save / Discard / Cancel dialog for the quit guard."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+
+    buf = state.buffer
+    win = Gtk.Window()
+    win.set_title("Unsaved changes")
+    win.set_default_size(520, 220)
+    win.set_transient_for(parent_win)
+    win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    box.set_margin_top(14); box.set_margin_bottom(14)
+    box.set_margin_start(14); box.set_margin_end(14)
+
+    heading = Gtk.Label(label=f"{buf.path.name} has unsaved changes")
+    heading.set_xalign(0.0)
+    heading.add_css_class("heading")
+    box.append(heading)
+
+    detail = Gtk.Label(
+        label="Save the working buffer before closing?\n\n"
+              "Save:    write the buffer to disk, then close.\n"
+              "Discard: close without writing — your in-memory edits are lost.\n"
+              "Cancel:  keep the window open."
+    )
+    detail.set_xalign(0.0)
+    detail.set_wrap(True)
+    box.append(detail)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    discard_btn = Gtk.Button(label="Discard")
+    discard_btn.add_css_class("destructive-action")
+    cancel_btn = Gtk.Button(label="Cancel  (Esc)")
+    save_btn = Gtk.Button(label="Save  (Enter)")
+    save_btn.add_css_class("suggested-action")
+
+    def do_save_and_close():
+        try:
+            buf.flush()
+        except OSError as exc:
+            _info_dialog(state.window, "Save failed", str(exc))
+            return
+        state.quitting = True
+        win.close()
+        parent_win.close()
+
+    def do_discard_and_close():
+        state.quitting = True
+        win.close()
+        parent_win.close()
+
+    save_btn.connect("clicked", lambda _b: do_save_and_close())
+    discard_btn.connect("clicked", lambda _b: do_discard_and_close())
+    cancel_btn.connect("clicked", lambda _b: win.close())
+    btn_box.append(discard_btn)
+    btn_box.append(cancel_btn)
+    btn_box.append(save_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            do_save_and_close(); return True
+        if keyval == Gdk.KEY_Escape:
+            win.close(); return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.set_default_widget(save_btn)
+    win.present()
+    save_btn.grab_focus()
 
 
 def _install_viewer_actions(state: _ViewerState, win) -> None:
