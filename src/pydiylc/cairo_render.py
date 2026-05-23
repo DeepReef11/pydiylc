@@ -24,6 +24,7 @@ from .components import (
     BOM,
     CapacitorSymbol,
     CliffJack1_4,
+    ClosedJack1_4,
     Component,
     CopperTrace,
     CurvedTrace,
@@ -60,10 +61,15 @@ from .components import (
     RadialCeramicDiskCapacitor,
     RadialElectrolytic,
     RadialFilmCapacitor,
+    RCAJack,
     Resistor,
+    SingleCoilPickup,
     SolderPad,
     TraceCut,
+    TransformerCoil,
+    TransformerCore,
     TransistorTO92,
+    TriodeSymbol,
     Turret,
     VeroBoard,
     WrapLabel,
@@ -1214,6 +1220,87 @@ def _render_potentiometer_symbol(cr, c: PotentiometerSymbol, s: float) -> None:
         cr.stroke()
 
 
+def _render_closed_jack(cr, c: ClosedJack1_4, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    cr.rectangle(x - 4, y - 4, 0.3 * s, 0.8 * s)
+    cr.set_source_rgba(0.4, 0.4, 0.4, c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+
+
+def _render_rca_jack(cr, c: RCAJack, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    cr.arc(x, y, 0.12 * s, 0, 2 * math.pi)
+    cr.set_source_rgba(0.7, 0.6, 0.3, c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(0, 0, 0)
+    cr.set_line_width(1.0)
+    cr.stroke()
+    cr.arc(x, y, 0.04 * s, 0, 2 * math.pi)
+    cr.set_source_rgb(0, 0, 0)
+    cr.fill()
+
+
+def _render_transformer_coil(cr, c: TransformerCoil, s: float) -> None:
+    # A series of arcs from (x1,y1) to (x2,y2) to suggest the winding.
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    bumps = max(3, int(L / 8))
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    for i in range(bumps):
+        t1 = i / bumps
+        t2 = (i + 1) / bumps
+        ax, ay = x1 + dx * t1, y1 + dy * t1
+        bx, by = x1 + dx * t2, y1 + dy * t2
+        cx, cy = (ax + bx) / 2, (ay + by) / 2
+        cr.arc(cx, cy, L / (bumps * 2), 0, math.pi)
+    cr.stroke()
+
+
+def _render_transformer_core(cr, c: TransformerCore, s: float) -> None:
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(2.0)
+    cr.move_to(c.x1 * s, c.y1 * s)
+    cr.line_to(c.x2 * s, c.y2 * s)
+    cr.stroke()
+
+
+def _render_triode_symbol(cr, c: TriodeSymbol, s: float) -> None:
+    x, y = c.x * s, c.y * s
+    r = 0.3 * s
+    cr.set_source_rgb(*_hex_to_rgb(c.color))
+    cr.set_line_width(1.2)
+    cr.arc(x + r, y, r, 0, 2 * math.pi)
+    cr.stroke()
+    # Plate (top horizontal stub).
+    cr.move_to(x + r - 6, y - r)
+    cr.line_to(x + r + 6, y - r)
+    cr.stroke()
+
+
+def _render_single_coil_pickup(cr, c: SingleCoilPickup, s: float) -> None:
+    # Stratocaster-style pickup body: rounded rectangle ~0.7 × 1.0 in.
+    x, y = c.x * s, c.y * s
+    w, h = 0.7 * s, 1.0 * s
+    cr.rectangle(x - w / 2, y - h / 2, w, h)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.fill_preserve()
+    cr.set_source_rgb(*_hex_to_rgb(c.base_color))
+    cr.set_line_width(1.2)
+    cr.stroke()
+    # Pole pieces (6 dots along the y axis).
+    cr.set_source_rgb(0.5, 0.5, 0.5)
+    for i in range(6):
+        py = y - h / 2 + (i + 0.5) * (h / 6)
+        cr.arc(x, py, 2.5, 0, 2 * math.pi)
+        cr.fill()
+
+
 def _render_cliff_jack(cr, c: CliffJack1_4, s: float) -> None:
     # Body rectangle around the 5 control points.
     x = c.x * s
@@ -1278,4 +1365,10 @@ _RENDERERS: dict[type, callable] = {
     PCBText: _render_pcb_text,
     PotentiometerSymbol: _render_potentiometer_symbol,
     CliffJack1_4: _render_cliff_jack,
+    ClosedJack1_4: _render_closed_jack,
+    RCAJack: _render_rca_jack,
+    TransformerCoil: _render_transformer_coil,
+    TransformerCore: _render_transformer_core,
+    TriodeSymbol: _render_triode_symbol,
+    SingleCoilPickup: _render_single_coil_pickup,
 }

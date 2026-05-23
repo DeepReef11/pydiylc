@@ -37,6 +37,7 @@ from .components import (
     BOM,
     CapacitorSymbol,
     CliffJack1_4,
+    ClosedJack1_4,
     CurvedTrace,
     DiodeGlass,
     DiodeSymbol,
@@ -53,10 +54,15 @@ from .components import (
     PinHeader,
     Polygon,
     PotentiometerSymbol,
+    RCAJack,
     Rectangle,
     ResistorSymbol,
+    SingleCoilPickup,
     TerminalStrip,
+    TransformerCoil,
+    TransformerCore,
     TrimmerPotentiometer,
+    TriodeSymbol,
     TubeSocket,
     Turret,
     VeroBoard,
@@ -1213,6 +1219,87 @@ def _render_potentiometer_symbol(c: PotentiometerSymbol, s: float) -> str:
     return "<g>" + lines + body + "</g>"
 
 
+def _render_closed_jack(c: ClosedJack1_4, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    fa = c.alpha / 255
+    return (
+        f'<rect x="{x-4:.1f}" y="{y-4:.1f}" width="{0.3*s:.1f}" height="{0.8*s:.1f}" '
+        f'fill="#666" fill-opacity="{fa:.2f}" stroke="#000" stroke-width="1"/>'
+    )
+
+
+def _render_rca_jack(c: RCAJack, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    fa = c.alpha / 255
+    return (
+        f'<g>'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{0.12*s:.1f}" '
+        f'fill="#b39855" fill-opacity="{fa:.2f}" stroke="#000" stroke-width="1"/>'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{0.04*s:.1f}" fill="#000"/>'
+        f'</g>'
+    )
+
+
+def _render_transformer_coil(c: TransformerCoil, s: float) -> str:
+    import math
+    x1, y1 = c.x1 * s, c.y1 * s
+    x2, y2 = c.x2 * s, c.y2 * s
+    dx, dy = x2 - x1, y2 - y1
+    L = math.hypot(dx, dy) or 1
+    bumps = max(3, int(L / 8))
+    path_parts = [f"M {x1:.1f},{y1:.1f}"]
+    for i in range(bumps):
+        t = (i + 1) / bumps
+        bx = x1 + dx * t
+        by = y1 + dy * t
+        r = L / (bumps * 2)
+        # Sweep flag alternates so the bumps stay on the same side.
+        path_parts.append(f"A {r:.1f},{r:.1f} 0 0 1 {bx:.1f},{by:.1f}")
+    d = " ".join(path_parts)
+    return (
+        f'<path d="{d}" fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+    )
+
+
+def _render_transformer_core(c: TransformerCore, s: float) -> str:
+    return (
+        f'<line x1="{c.x1*s:.1f}" y1="{c.y1*s:.1f}" '
+        f'x2="{c.x2*s:.1f}" y2="{c.y2*s:.1f}" '
+        f'stroke="#{c.color}" stroke-width="2"/>'
+    )
+
+
+def _render_triode_symbol(c: TriodeSymbol, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    r = 0.3 * s
+    return (
+        f'<g>'
+        f'<circle cx="{x+r:.1f}" cy="{y:.1f}" r="{r:.1f}" '
+        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+        f'<line x1="{x+r-6:.1f}" y1="{y-r:.1f}" x2="{x+r+6:.1f}" y2="{y-r:.1f}" '
+        f'stroke="#{c.color}" stroke-width="1.2"/>'
+        f'</g>'
+    )
+
+
+def _render_single_coil_pickup(c: SingleCoilPickup, s: float) -> str:
+    x, y = c.x * s, c.y * s
+    w, h = 0.7 * s, 1.0 * s
+    fa = c.alpha / 255
+    poles = "".join(
+        f'<circle cx="{x:.1f}" cy="{y - h/2 + (i+0.5)*(h/6):.1f}" r="2.5" fill="#888"/>'
+        for i in range(6)
+    )
+    return (
+        f'<g>'
+        f'<rect x="{x-w/2:.1f}" y="{y-h/2:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'fill="#{c.color}" fill-opacity="{fa:.2f}" '
+        f'stroke="#{c.base_color}" stroke-width="1.2"/>'
+        f'{poles}'
+        f'</g>'
+    )
+
+
 def _render_cliff_jack(c: CliffJack1_4, s: float) -> str:
     x = c.x * s
     y = c.y * s
@@ -1276,4 +1363,10 @@ _RENDERERS: dict[type, callable] = {
     PCBText: _render_pcb_text,
     PotentiometerSymbol: _render_potentiometer_symbol,
     CliffJack1_4: _render_cliff_jack,
+    ClosedJack1_4: _render_closed_jack,
+    RCAJack: _render_rca_jack,
+    TransformerCoil: _render_transformer_coil,
+    TransformerCore: _render_transformer_core,
+    TriodeSymbol: _render_triode_symbol,
+    SingleCoilPickup: _render_single_coil_pickup,
 }

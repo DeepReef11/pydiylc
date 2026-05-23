@@ -1549,6 +1549,478 @@
       ]
     },
     {
+      "python_class": "ClosedJack1_4",
+      "diylc_class": "diylc.electromechanical.ClosedJack1_4",
+      "doc": "Closed-frame 1/4\" panel jack (e.g. Switchcraft 12A).\n\nXML: ``<diylc.electromechanical.ClosedJack1_4>``\n\nA fully-enclosed alternative to OpenJack1_4. Three control points: tip,\nsleeve, and optionally a switched-ring contact (when ``type='STEREO'``).",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "MONO",
+          "required": false,
+          "enum": [
+            "MONO",
+            "STEREO",
+            "SWITCHED"
+          ]
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "RCAJack",
+      "diylc_class": "diylc.electromechanical.RCAJack",
+      "doc": "RCA / phono panel-mount jack (mono signal + chassis ground).\n\nXML: ``<diylc.electromechanical.RCAJack>``\n\nTwo control points: tip and shield.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TransformerCoil",
+      "diylc_class": "diylc.passive.TransformerCoil",
+      "doc": "Schematic-symbol coil of a transformer (one winding).\n\nXML: ``<diylc.passive.TransformerCoil>``\n\nTwo control points define the coil's span; DIYLC re-derives the curly\nbody Path2D from voltage + tap-spacing at render time, so we don't\nneed to serialize it ourselves.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "voltage",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 120.0,
+            "unit": "V"
+          },
+          "required": false
+        },
+        {
+          "name": "tap_spacing",
+          "type": {
+            "kind": "measure",
+            "purpose": "length"
+          },
+          "default": {
+            "value": 1.0,
+            "unit": "in"
+          },
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "TransformerCore",
+      "diylc_class": "diylc.passive.TransformerCore",
+      "doc": "Iron-core bar separating coils in a transformer schematic.\n\nXML: ``<diylc.passive.TransformerCore>``\n\nA simple two-point line; pairs visually with one or more TransformerCoils.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y1",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y2",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "636363",
+          "required": false
+        }
+      ]
+    },
+    {
+      "python_class": "TriodeSymbol",
+      "diylc_class": "diylc.tube.TriodeSymbol",
+      "doc": "Schematic symbol for a triode vacuum-tube section.\n\nXML: ``<diylc.tube.TriodeSymbol>``\n\nFive control points (plate, grid, cathode + two helpers). DIYLC renders\nthe circular envelope and electrode strokes from these.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "0000ff",
+          "required": false
+        },
+        {
+          "name": "display",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NAME",
+          "required": false,
+          "enum": [
+            "NAME",
+            "VALUE",
+            "NONE",
+            "BOTH"
+          ]
+        },
+        {
+          "name": "show_heaters",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "directly_heated",
+          "type": {
+            "kind": "boolean"
+          },
+          "default": false,
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "flip",
+          "type": {
+            "kind": "string"
+          },
+          "default": "NONE",
+          "required": false,
+          "enum": [
+            "NONE",
+            "X",
+            "Y"
+          ]
+        }
+      ]
+    },
+    {
+      "python_class": "SingleCoilPickup",
+      "diylc_class": "diylc.guitar.SingleCoilPickup",
+      "doc": "Single-coil guitar pickup (Stratocaster-style, Telecaster-style, etc).\n\nXML: ``<diylc.guitar.SingleCoilPickup>``\n\nAnchor (`x`, `y`) is the body center. Type selects the visual style.",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "number"
+          },
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "orientation",
+          "type": {
+            "kind": "string"
+          },
+          "default": "DEFAULT",
+          "required": false,
+          "enum": [
+            "DEFAULT",
+            "_90",
+            "_180",
+            "_270"
+          ]
+        },
+        {
+          "name": "type",
+          "type": {
+            "kind": "string"
+          },
+          "default": "Stratocaster",
+          "required": false
+        },
+        {
+          "name": "alpha",
+          "type": {
+            "kind": "integer"
+          },
+          "default": 127,
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "ffffff",
+          "required": false
+        },
+        {
+          "name": "base_color",
+          "type": {
+            "kind": "string"
+          },
+          "default": "808080",
+          "required": false
+        }
+      ]
+    },
+    {
       "python_class": "Resistor",
       "diylc_class": "diylc.passive.Resistor",
       "doc": "Through-hole resistor between two points.\n\nXML: ``<diylc.passive.Resistor>``\n\n`value` accepts strings like ``\"4.7K\"``, ``\"1M\"``, ``\"470R\"``. Bare numbers\ndefault to ``\"K\"``.\n\nExample::\n\n    p.add(Resistor(\"R1\", x1=1.0, y1=1.0, x2=1.0, y2=1.5, value=\"10K\"))",

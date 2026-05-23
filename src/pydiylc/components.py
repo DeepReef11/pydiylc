@@ -2939,6 +2939,261 @@ class CliffJack1_4(Component):
         )
 
 
+@dataclass
+class ClosedJack1_4(Component):
+    """Closed-frame 1/4" panel jack (e.g. Switchcraft 12A).
+
+    XML: ``<diylc.electromechanical.ClosedJack1_4>``
+
+    A fully-enclosed alternative to OpenJack1_4. Three control points: tip,
+    sleeve, and optionally a switched-ring contact (when ``type='STEREO'``).
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    type: str = "MONO"
+    orientation: str = "DEFAULT"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.ClosedJack1_4"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "type": E.OPEN_JACK_TYPE,
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # MONO: 2 contacts (tip, sleeve). STEREO/SWITCHED: 3 (+ ring).
+        if self.type == "MONO":
+            pts: list[Point] = [(self.x, self.y), (self.x, self.y + 0.8)]
+        else:
+            pts = [(self.x, self.y), (self.x, self.y + 0.8),
+                   (self.x - 0.2, self.y)]
+        return (
+            f"{pad}<diylc.electromechanical.ClosedJack1_4>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <type>{self.type}</type>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{pad}</diylc.electromechanical.ClosedJack1_4>"
+        )
+
+
+@dataclass
+class RCAJack(Component):
+    """RCA / phono panel-mount jack (mono signal + chassis ground).
+
+    XML: ``<diylc.electromechanical.RCAJack>``
+
+    Two control points: tip and shield.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    alpha: int = 127
+
+    __diylc_class__: ClassVar[str] = "diylc.electromechanical.RCAJack"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x, self.y), (self.x, self.y + 0.5)]
+        return (
+            f"{pad}<diylc.electromechanical.RCAJack>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}</diylc.electromechanical.RCAJack>"
+        )
+
+
+@dataclass
+class TransformerCoil(Component):
+    """Schematic-symbol coil of a transformer (one winding).
+
+    XML: ``<diylc.passive.TransformerCoil>``
+
+    Two control points define the coil's span; DIYLC re-derives the curly
+    body Path2D from voltage + tap-spacing at render time, so we don't
+    need to serialize it ourselves.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    voltage: Measure = field(default_factory=lambda: Measure(120.0, "V"))
+    tap_spacing: Measure = field(default_factory=lambda: inches(1.0))
+    color: str = "636363"
+    orientation: str = "DEFAULT"
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.TransformerCoil"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {"orientation": E.ORIENTATION}
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.passive.TransformerCoil>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <voltage {self.voltage.attrs()}/>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <tapSpacing {self.tap_spacing.attrs()}/>\n"
+            f"{pad}</diylc.passive.TransformerCoil>"
+        )
+
+
+@dataclass
+class TransformerCore(Component):
+    """Iron-core bar separating coils in a transformer schematic.
+
+    XML: ``<diylc.passive.TransformerCore>``
+
+    A simple two-point line; pairs visually with one or more TransformerCoils.
+    """
+
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    color: str = "636363"
+
+    __diylc_class__: ClassVar[str] = "diylc.passive.TransformerCore"
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts: list[Point] = [(self.x1, self.y1), (self.x2, self.y2)]
+        return (
+            f"{pad}<diylc.passive.TransformerCore>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}</diylc.passive.TransformerCore>"
+        )
+
+
+@dataclass
+class TriodeSymbol(Component):
+    """Schematic symbol for a triode vacuum-tube section.
+
+    XML: ``<diylc.tube.TriodeSymbol>``
+
+    Five control points (plate, grid, cathode + two helpers). DIYLC renders
+    the circular envelope and electrode strokes from these.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    color: str = "0000ff"
+    display: str = "NAME"
+    show_heaters: bool = False
+    directly_heated: bool = False
+    orientation: str = "DEFAULT"
+    flip: str = "NONE"
+
+    __diylc_class__: ClassVar[str] = "diylc.tube.TriodeSymbol"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "display": E.DISPLAY,
+        "orientation": E.ORIENTATION,
+        "flip": E.SYMBOL_FLIPPING,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        # 5 control points around the triode envelope (DIYLC sets them
+        # precisely; we use a reasonable default cluster).
+        pts: list[Point] = [
+            (self.x, self.y),
+            (self.x + 0.3, self.y - 0.3),
+            (self.x + 0.2, self.y + 0.3),
+            (self.x + 0.3, self.y + 0.3),
+            (self.x + 0.4, self.y + 0.3),
+        ]
+        return (
+            f"{pad}<diylc.tube.TriodeSymbol>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f"{pad}  <display>{self.display}</display>\n"
+            f"{pad}  <showHeaters>{str(self.show_heaters).lower()}</showHeaters>\n"
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f"{pad}  <flip>{self.flip}</flip>\n"
+            f"{_points_block('controlPoints', pts, indent + 2)}\n"
+            f"{pad}  <directlyHeated>{str(self.directly_heated).lower()}</directlyHeated>\n"
+            f"{pad}</diylc.tube.TriodeSymbol>"
+        )
+
+
+@dataclass
+class SingleCoilPickup(Component):
+    """Single-coil guitar pickup (Stratocaster-style, Telecaster-style, etc).
+
+    XML: ``<diylc.guitar.SingleCoilPickup>``
+
+    Anchor (`x`, `y`) is the body center. Type selects the visual style.
+    """
+
+    name: str
+    x: float
+    y: float
+    value: str = ""
+    orientation: str = "DEFAULT"
+    type: str = "Stratocaster"
+    alpha: int = 127
+    color: str = "ffffff"
+    base_color: str = "808080"
+
+    __diylc_class__: ClassVar[str] = "diylc.guitar.SingleCoilPickup"
+    __enums__: ClassVar[dict[str, tuple[str, ...]]] = {
+        "orientation": E.ORIENTATION,
+    }
+
+    def __post_init__(self) -> None:
+        self._validate_enums()
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        return (
+            f"{pad}<diylc.guitar.SingleCoilPickup>\n"
+            f"{pad}  <name>{esc(self.name)}</name>\n"
+            f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
+            f'{pad}  <controlPoint x="{fmt(self.x)}" y="{fmt(self.y)}"/>\n'
+            f"{pad}  <orientation>{self.orientation}</orientation>\n"
+            f'{pad}  <color hex="{hex_color(self.color)}"/>\n'
+            f'{pad}  <baseColor hex="{hex_color(self.base_color)}"/>\n'
+            f"{pad}  <type>{esc(self.type)}</type>\n"
+            f"{pad}</diylc.guitar.SingleCoilPickup>"
+        )
+
+
 # Public registry of every Component subclass — used by `pydiylc.catalog`
 # to build the machine-readable schema.
 ALL_COMPONENTS: tuple[type[Component], ...] = (
@@ -2954,6 +3209,12 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     PCBText,
     PotentiometerSymbol,
     CliffJack1_4,
+    ClosedJack1_4,
+    RCAJack,
+    TransformerCoil,
+    TransformerCore,
+    TriodeSymbol,
+    SingleCoilPickup,
     Resistor,
     RadialFilmCapacitor,
     RadialCeramicDiskCapacitor,

@@ -35,7 +35,26 @@ from .components import ALL_COMPONENTS, Component
 # Modern (4.x+) files use the short prefix `diylc.<category>.<Name>`.
 # Older v3 / XStream-serialized files use the full Java package path
 # `org.diylc.components.<category>.<Name>`. We accept both.
+#
+# XStream class-name escaping: every literal underscore in a Java class name
+# becomes a double underscore in the XML tag (so `DIL_IC` ↔ `DIL__IC`,
+# `OpenJack1_4` ↔ `OpenJack1__4`, `CliffJack1_4` ↔ `CliffJack1__4`). We
+# register both the bare and the XStream-escaped form for every component
+# so old + new files read identically.
 _TAG_TO_CLASS: dict[str, type[Component]] = {}
+
+
+def _xstream_escape(tag: str) -> str:
+    """Convert a Java-style tag to its XStream XML form (_ → __)."""
+    # Only the class-name segment (last dotted component) is escaped — the
+    # package path itself uses dots, not underscores. Splitting at the last
+    # dot, escaping the class name, and rejoining matches XStream exactly.
+    if "." not in tag:
+        return tag.replace("_", "__")
+    pkg, name = tag.rsplit(".", 1)
+    return f"{pkg}.{name.replace('_', '__')}"
+
+
 for _cls in ALL_COMPONENTS:
     short = _cls.__diylc_class__
     _TAG_TO_CLASS[short] = _cls
@@ -44,20 +63,20 @@ for _cls in ALL_COMPONENTS:
     if len(parts) >= 3:
         full = ".".join(["org.diylc.components"] + parts[1:])
         _TAG_TO_CLASS[full] = _cls
+    # XStream-escaped variants — only useful when the class name has a "_".
+    if "_" in short.rsplit(".", 1)[-1]:
+        _TAG_TO_CLASS[_xstream_escape(short)] = _cls
+        if len(parts) >= 3:
+            _TAG_TO_CLASS[_xstream_escape(full)] = _cls
 
-# A few alternate spellings used by older DIYLC versions that resolve to the
-# same Python class as their modern equivalent.
-from .components import DIL_IC as _DIL_IC, HookupWire as _HookupWire, OpenJack1_4 as _OpenJack1_4  # noqa: E402
+# A few alternate spellings that resolve to the same Python class as their
+# modern equivalent (component-rename aliases, not just escape variants).
+from .components import HookupWire as _HookupWire  # noqa: E402
 
-_TAG_TO_CLASS["diylc.semiconductors.DIL__IC"] = _DIL_IC
-_TAG_TO_CLASS["org.diylc.components.semiconductors.DIL__IC"] = _DIL_IC
 # TwistedWire is a HookupWire variant; we render it as a hookup wire with no
 # fidelity loss for the polyline shape (the twist is purely cosmetic).
 _TAG_TO_CLASS["diylc.connectivity.TwistedWire"] = _HookupWire
 _TAG_TO_CLASS["org.diylc.components.connectivity.TwistedWire"] = _HookupWire
-# Older releases wrote OpenJack1_4 as OpenJack1__4 (double underscore).
-_TAG_TO_CLASS["diylc.electromechanical.OpenJack1__4"] = _OpenJack1_4
-_TAG_TO_CLASS["org.diylc.components.electromechanical.OpenJack1__4"] = _OpenJack1_4
 
 # Some upstream child tags don't match our field names cleanly. These are the
 # exceptions; everything else uses _camel_to_snake().
