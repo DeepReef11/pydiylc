@@ -313,6 +313,7 @@ class _ViewerState:
         self.tree_panel = None
         self.paned = None
         self.tree_listbox = None
+        self.panel_hint_label = None
         self.error_msg: str | None = None
 
 
@@ -439,6 +440,101 @@ def _unsaved_changes_dialog(state: _ViewerState, parent_win) -> None:
     save_btn.grab_focus()
 
 
+def _apply_prefs(state: _ViewerState) -> None:
+    """Apply preference values to live UI widgets (hint visibility etc.)."""
+    if state.prefs is None:
+        return
+    if state.panel_hint_label is not None:
+        state.panel_hint_label.set_visible(state.prefs.show_panel_hint)
+
+
+def _open_prefs_dialog(state: _ViewerState) -> None:
+    """Modal preferences window with checkboxes for the toggleable settings.
+
+    Loads prefs if they haven't been loaded yet (so Preferences works
+    outside edit mode too), persists on Save.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk, Gdk
+    from .prefs import Prefs
+
+    if state.prefs is None:
+        state.prefs = Prefs.load()
+
+    win = Gtk.Window()
+    win.set_title("Preferences")
+    win.set_default_size(420, 220)
+    if state.window is not None:
+        win.set_transient_for(state.window)
+        win.set_modal(True)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    box.set_margin_top(14); box.set_margin_bottom(14)
+    box.set_margin_start(14); box.set_margin_end(14)
+
+    heading = Gtk.Label(label="Preferences")
+    heading.set_xalign(0.0)
+    heading.add_css_class("heading")
+    box.append(heading)
+
+    save_dialog_chk = Gtk.CheckButton(
+        label="Show save-diff dialog on Ctrl+S"
+    )
+    save_dialog_chk.set_active(state.prefs.show_save_dialog)
+    box.append(save_dialog_chk)
+
+    panel_hint_chk = Gtk.CheckButton(
+        label="Show keyboard hint at the bottom of the edit panel"
+    )
+    panel_hint_chk.set_active(state.prefs.show_panel_hint)
+    box.append(panel_hint_chk)
+
+    path_label = Gtk.Label(
+        label=f"Saved to {state.prefs._path}" if state.prefs._path else ""
+    )
+    path_label.set_xalign(0.0)
+    path_label.add_css_class("dim-label")
+    path_label.set_wrap(True)
+    box.append(path_label)
+
+    btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    btn_box.set_halign(Gtk.Align.END)
+    cancel_btn = Gtk.Button(label="Cancel")
+    save_btn = Gtk.Button(label="Save  (Enter)")
+    save_btn.add_css_class("suggested-action")
+
+    def do_save():
+        state.prefs.show_save_dialog = save_dialog_chk.get_active()
+        state.prefs.show_panel_hint = panel_hint_chk.get_active()
+        state.prefs.save()
+        _apply_prefs(state)
+        win.close()
+
+    cancel_btn.connect("clicked", lambda _b: win.close())
+    save_btn.connect("clicked", lambda _b: do_save())
+    btn_box.append(cancel_btn)
+    btn_box.append(save_btn)
+    box.append(btn_box)
+
+    key = Gtk.EventControllerKey()
+    key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def on_key(_ctl, keyval, _code, _mods):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            do_save(); return True
+        if keyval == Gdk.KEY_Escape:
+            win.close(); return True
+        return False
+
+    key.connect("key-pressed", on_key)
+    win.add_controller(key)
+    win.set_child(box)
+    win.set_default_widget(save_btn)
+    win.present()
+    save_btn.grab_focus()
+
+
 def _install_viewer_actions(state: _ViewerState, win) -> None:
     """Bind the context-menu actions (rotate / delete / send / add / focus).
 
@@ -501,6 +597,9 @@ def _build_header_buttons(state: _ViewerState, header) -> None:
     add_btn = btn("list-add-symbolic", "Add component (a)",
                   lambda: _open_add_menu(state, autowire=False) if state.tree_mode else None)
     header.pack_start(add_btn)
+    prefs_btn = btn("preferences-system-symbolic", "Preferences",
+                    lambda: _open_prefs_dialog(state))
+    header.pack_start(prefs_btn)
 
     # Right side (before the status label): save / undo / zoom / fit.
     fit_btn = btn("zoom-fit-best-symbolic", "Fit page to viewport (0)",
@@ -1210,6 +1309,7 @@ def _build_tree_panel(state: _ViewerState):
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
     box.append(hint)
+    state.panel_hint_label = hint
     return box
 
 
@@ -1243,6 +1343,7 @@ def _enter_tree_mode(state: _ViewerState) -> None:
     state.tree_mode = True
     if state.tree_panel is not None:
         state.tree_panel.set_visible(True)
+    _apply_prefs(state)
     _refresh_tree_panel(state)
 
 
@@ -1282,6 +1383,13 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
             selected_row = lr
     if selected_row is not None:
         lb.select_row(selected_row)
+        # The capture-phase key controller is on the window, not on the row,
+        # so grab_focus here doesn't break our shortcut routing. Focusing
+        # the row asks the ScrolledWindow to scroll it into view via GTK's
+        # own scroll-on-focus behavior — much more reliable than poking the
+        # vadjustment directly across the re-allocation lag of a freshly
+        # rebuilt listbox.
+        selected_row.grab_focus()
         _scroll_into_view(lb, selected_row)
     # Sync the canvas highlight to the focused component.
     cur = nav.current
@@ -2060,8 +2168,11 @@ def _scroll_into_view(listbox, row) -> None:
     """Scroll the row's containing ScrolledWindow so ``row`` is visible.
 
     Walks up from the listbox to find the ScrolledWindow ancestor, then
-    adjusts its vertical adjustment to expose the row. Defers via
-    GLib.idle_add when the row hasn't been allocated yet.
+    adjusts its vertical adjustment to expose the row. Rows are often
+    not yet allocated on the first synchronous call (we just cleared and
+    repopulated the listbox); a short retry chain via GLib idle + a few
+    timeouts is reliable. Without focus-grabbing, so the SearchEntry in
+    fuzzy menus doesn't lose its caret.
     """
     import gi
     gi.require_version("Gtk", "4.0")
@@ -2077,26 +2188,41 @@ def _scroll_into_view(listbox, row) -> None:
     if sw is None:
         return
 
+    attempts = {"n": 0}
+
     def do_scroll():
         adj = sw.get_vadjustment()
         if adj is None:
-            return False  # don't keep retrying
+            return False  # nothing we can do
         row_alloc = row.get_allocation()
         if row_alloc.height == 0:
-            return True  # not yet allocated; ask GLib to retry
+            # Not allocated yet; retry up to ~10 frames (~160 ms).
+            attempts["n"] += 1
+            if attempts["n"] >= 10:
+                return False
+            return True
         row_top = row_alloc.y
         row_bottom = row_top + row_alloc.height
         page = adj.get_page_size()
         value = adj.get_value()
+        upper = adj.get_upper()
+        if page <= 0 or upper <= 0:
+            attempts["n"] += 1
+            if attempts["n"] >= 10:
+                return False
+            return True
         if row_top < value:
             adj.set_value(row_top)
         elif row_bottom > value + page:
-            adj.set_value(row_bottom - page)
+            adj.set_value(min(upper - page, row_bottom - page))
         return False  # done
 
-    # If the row already has an allocation, scroll now; otherwise defer.
+    # Try synchronously first; if the row isn't allocated yet, retry on
+    # idle, and as a belt-and-braces fallback on a short timeout chain.
     if do_scroll():
         GLib.idle_add(do_scroll)
+        GLib.timeout_add(16, do_scroll)
+        GLib.timeout_add(64, do_scroll)
 
 
 def _focused_pin_position(state: _ViewerState) -> tuple[float, float] | None:

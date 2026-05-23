@@ -255,6 +255,14 @@ Capture phase intercepts keys at the window level first.
   the matching `<x>.add(...)` line). All actions now flush through Enter /
   Ctrl+S without skipped edits.
 
+- **Preferences dialog (implemented):** gear icon in the header bar opens
+  a Preferences window with checkboxes for the toggleable settings,
+  persisted to `~/.config/pydiylc/prefs.json` (or `$XDG_CONFIG_HOME/...`):
+  - `show_save_dialog` — when on, **Ctrl+S** opens the diff-on-save
+    dialog; when off, Ctrl+S writes silently like Enter.
+  - `show_panel_hint` — show or hide the keyboard-shortcut hint label at
+    the bottom of the edit-mode side panel.
+
 - **Auto-wire on add (implemented):** with a node focused, lowercase `a`
   adds a new component and immediately creates a `HookupWire` from the
   focused node to one of the new component's pins. For multi-pin parts

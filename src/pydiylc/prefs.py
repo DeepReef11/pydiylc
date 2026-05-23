@@ -20,6 +20,7 @@ class Prefs:
     """User preferences. Read on viewer start, written when changed."""
 
     show_save_dialog: bool = True
+    show_panel_hint: bool = True
     _path: Path | None = None
 
     @classmethod
@@ -42,6 +43,7 @@ class Prefs:
             data = {}
         prefs = cls(
             show_save_dialog=bool(data.get("show_save_dialog", True)),
+            show_panel_hint=bool(data.get("show_panel_hint", True)),
             _path=p,
         )
         return prefs
@@ -53,7 +55,10 @@ class Prefs:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             self._path.write_text(
-                json.dumps({"show_save_dialog": self.show_save_dialog}, indent=2),
+                json.dumps({
+                    "show_save_dialog": self.show_save_dialog,
+                    "show_panel_hint": self.show_panel_hint,
+                }, indent=2),
                 encoding="utf-8",
             )
             return True

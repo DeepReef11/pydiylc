@@ -10,6 +10,22 @@ def test_default_show_save_dialog_true():
     assert p.show_save_dialog is True
 
 
+def test_default_show_panel_hint_true():
+    p = Prefs()
+    assert p.show_panel_hint is True
+
+
+def test_save_and_reload_both_prefs(tmp_path):
+    path = tmp_path / "prefs.json"
+    p = Prefs.load(path)
+    p.show_save_dialog = False
+    p.show_panel_hint = False
+    assert p.save()
+    p2 = Prefs.load(path)
+    assert p2.show_save_dialog is False
+    assert p2.show_panel_hint is False
+
+
 def test_load_missing_file_returns_defaults(tmp_path):
     p = Prefs.load(tmp_path / "nope.json")
     assert p.show_save_dialog is True
