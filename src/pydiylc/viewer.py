@@ -164,10 +164,12 @@ def show(project: Project, *, title: str = "pydiylc viewer",
 
         header = Gtk.HeaderBar()
         win.set_titlebar(header)
-        status_lbl = Gtk.Label(label=_status_text(state))
-        status_lbl.add_css_class("dim-label")
-        header.pack_end(status_lbl)
-        state.status_lbl = status_lbl
+        state.status_lbl = Gtk.Label(label=_status_text(state))
+        state.status_lbl.add_css_class("dim-label")
+        header.pack_end(state.status_lbl)
+
+        # Toolbar buttons in the header bar (modern GTK4 convention).
+        _build_header_buttons(state, header)
 
         # Main content: canvas in a scrolled window
         sw = Gtk.ScrolledWindow()
@@ -176,8 +178,7 @@ def show(project: Project, *, title: str = "pydiylc viewer",
 
         canvas = Gtk.DrawingArea()
         canvas.set_draw_func(_make_draw_func(state))
-        canvas.set_content_width(2200)
-        canvas.set_content_height(1600)
+        _size_canvas_to_project(state.project, canvas)
         state.canvas = canvas
 
         # Mouse handlers
@@ -210,6 +211,11 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         state.paned = paned
         panel.set_visible(False)  # hidden until T
         win.set_child(paned)
+
+        # Fit the project to the viewport once the canvas is realized so the
+        # user opens to a sensible view rather than a corner of a 2200×1600
+        # canvas.
+        GLib.idle_add(lambda: (_fit_to_page(state), False)[1])
 
         # Keyboard shortcuts. Use the CAPTURE phase so we see keys before
         # GTK's default focus traversal — otherwise Tab/Shift-Tab would be
@@ -281,6 +287,97 @@ def _status_text(state: _ViewerState) -> str:
     if state.tree_mode and state.buffer is not None and state.buffer.is_dirty:
         dirty = "  ·  ● unsaved"
     return f"{title}  ·  {n} components  ·  zoom {state.zoom:.2f}{sel}{undo}{dirty}{chord}{err}"
+
+
+def _build_header_buttons(state: _ViewerState, header) -> None:
+    """Populate the HeaderBar with toolbar buttons.
+
+    Modern GTK4 convention is to keep top-level actions on the title bar
+    rather than a separate toolbar widget. Each button mirrors a keyboard
+    shortcut so power users keep their muscle memory.
+    """
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    def btn(icon: str, tooltip: str, on_click):
+        b = Gtk.Button.new_from_icon_name(icon)
+        b.set_tooltip_text(tooltip)
+        b.connect("clicked", lambda _b: on_click())
+        return b
+
+    # Left side: tree toggle + add.
+    tree_btn = btn("view-list-symbolic", "Toggle tree editor (T)",
+                   lambda: _enter_tree_mode(state) if not state.tree_mode else _exit_tree_mode(state))
+    header.pack_start(tree_btn)
+    add_btn = btn("list-add-symbolic", "Add component (a)",
+                  lambda: _open_add_menu(state, autowire=False) if state.tree_mode else None)
+    header.pack_start(add_btn)
+
+    # Right side (before the status label): save / undo / zoom / fit.
+    fit_btn = btn("zoom-fit-best-symbolic", "Fit page to viewport (0)",
+                  lambda: _fit_to_page(state))
+    zoom_in = btn("zoom-in-symbolic", "Zoom in (+)",
+                  lambda: _zoom_by(state, 1.2))
+    zoom_out = btn("zoom-out-symbolic", "Zoom out (-)",
+                   lambda: _zoom_by(state, 1 / 1.2))
+    undo_btn = btn("edit-undo-symbolic", "Undo (u)",
+                   lambda: _tree_undo(state))
+    save_btn = btn("document-save-symbolic", "Save (Enter)",
+                   lambda: _flush_buffer_silent(state) if state.buffer else None)
+    save_as = btn("document-save-as-symbolic", "Save with diff dialog (Ctrl+S)",
+                  lambda: _save_buffer(state) if state.buffer else None)
+    for b in (undo_btn, save_btn, save_as, zoom_out, zoom_in, fit_btn):
+        header.pack_end(b)
+
+
+def _zoom_by(state: _ViewerState, factor: float) -> None:
+    state.zoom = max(0.1, min(10.0, state.zoom * factor))
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+    _refresh_status(state)
+
+
+def _size_canvas_to_project(project, canvas) -> None:
+    """Set the DrawingArea's content size to fit the project at 1:1 zoom
+    with a comfortable scrollable margin.
+
+    A fixed 2200×1600 canvas wastes space for small layouts and is too small
+    for large ones. Sizing to (project + margin) lets the ScrolledWindow's
+    scrollbars represent the actual editing surface.
+    """
+    w_in = project.width_cm / 2.54
+    h_in = project.height_cm / 2.54
+    margin = 200
+    canvas.set_content_width(int(w_in * cairo_render.PX_PER_INCH + 2 * margin))
+    canvas.set_content_height(int(h_in * cairo_render.PX_PER_INCH + 2 * margin))
+
+
+def _fit_to_page(state: _ViewerState) -> None:
+    """Set pan+zoom so the project bounds fill the canvas viewport."""
+    canvas = state.canvas
+    if canvas is None:
+        return
+    vw = canvas.get_width()
+    vh = canvas.get_height()
+    if vw <= 0 or vh <= 0:
+        return
+    project = state.project
+    w_in = project.width_cm / 2.54
+    h_in = project.height_cm / 2.54
+    page_w = w_in * cairo_render.PX_PER_INCH
+    page_h = h_in * cairo_render.PX_PER_INCH
+    if page_w <= 0 or page_h <= 0:
+        return
+    margin = 30
+    zoom_x = (vw - 2 * margin) / page_w
+    zoom_y = (vh - 2 * margin) / page_h
+    state.zoom = max(0.1, min(10.0, min(zoom_x, zoom_y)))
+    # Center the page in the viewport.
+    state.pan_x = (vw - page_w * state.zoom) / 2
+    state.pan_y = (vh - page_h * state.zoom) / 2
+    canvas.queue_draw()
+    _refresh_status(state)
 
 
 def _refresh_status(state: _ViewerState) -> None:
@@ -874,7 +971,7 @@ def _build_tree_panel(state: _ViewerState):
     hint = Gtk.Label(
         label="Tab component · Space drill · PgUp/PgDn page · arrows hole-move\n"
               "Ctrl+arrows nudge · R rotate · / focus · g send · a add+wire · A add\n"
-              "dd delete · u undo · Enter save"
+              "dd delete · u undo · Enter save · Ctrl+S save (diff dialog)"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)
@@ -991,6 +1088,29 @@ def _sync_buffer_add(state: _ViewerState, component) -> None:
         return
     if proposal is not None:
         state.buffer.apply(proposal)
+
+
+def _flush_buffer_silent(state: _ViewerState) -> None:
+    """Write the buffer to disk with no UI. Used by Enter — the dialog is
+    reserved for explicit Ctrl+S saves."""
+    buf = state.buffer
+    if buf is None or not buf.is_dirty:
+        return
+    try:
+        buf.flush()
+    except OSError as exc:
+        _info_dialog(state.window, "Save failed", str(exc))
+        return
+    if state.history is not None:
+        state.history.record("save")
+    if state.canvas is not None:
+        state.canvas.queue_draw()
+    if state.watch_path is not None:
+        try:
+            state.last_mtime = state.watch_path.stat().st_mtime
+        except OSError:
+            pass
+    _refresh_status(state)
 
 
 def _save_buffer(state: _ViewerState) -> None:
@@ -1272,21 +1392,13 @@ def _make_key_handler(state: _ViewerState, canvas, win):
             canvas.queue_draw()
             return True
         if keyval in (Gdk.KEY_0,):
-            state.zoom = 1.0
-            state.pan_x = 30.0
-            state.pan_y = 30.0
-            canvas.queue_draw()
-            _refresh_status(state)
+            _fit_to_page(state)
             return True
         if keyval in (Gdk.KEY_plus, Gdk.KEY_equal, Gdk.KEY_KP_Add):
-            state.zoom = min(10.0, state.zoom * 1.2)
-            canvas.queue_draw()
-            _refresh_status(state)
+            _zoom_by(state, 1.2)
             return True
         if keyval in (Gdk.KEY_minus, Gdk.KEY_KP_Subtract):
-            state.zoom = max(0.1, state.zoom / 1.2)
-            canvas.queue_draw()
-            _refresh_status(state)
+            _zoom_by(state, 1 / 1.2)
             return True
         return False
     return on_key
@@ -1398,12 +1510,19 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         _open_add_menu(state, autowire=autowire)
         return True
 
-    # Enter / Ctrl+S: save the working buffer to disk (diff dialog if the
-    # show_save_dialog preference is on). Falls back to the legacy per-action
-    # commit when there's no buffer (e.g. .json source).
-    if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) or (
-        ctrl and keyval in (Gdk.KEY_s, Gdk.KEY_S)
-    ):
+    # Enter: silent flush of the working buffer to disk. No dialog, no
+    # confirmation — Enter is "write what I've been editing" (matches the
+    # editor mental model where Enter just commits the current edit).
+    if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+        if state.buffer is not None:
+            _flush_buffer_silent(state)
+        else:
+            _tree_commit(state)
+        return True
+
+    # Ctrl+S: explicit save with the diff-on-save dialog (gated by the
+    # show_save_dialog preference).
+    if ctrl and keyval in (Gdk.KEY_s, Gdk.KEY_S):
         if state.buffer is not None:
             _save_buffer(state)
         else:
@@ -2020,6 +2139,9 @@ def _reload(state: _ViewerState) -> None:
         state.error_msg = None
     except Exception as exc:
         state.error_msg = f"{type(exc).__name__}: {exc}"
+    # Re-size the canvas content area if the project dimensions changed.
+    if state.canvas is not None:
+        _size_canvas_to_project(state.project, state.canvas)
     _refresh_status(state)
 
 

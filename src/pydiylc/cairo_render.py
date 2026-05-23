@@ -138,12 +138,25 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
     w = w_in * scale
     h = h_in * scale
 
+    # Drop shadow — subtle, gives the page some "lifted" feel against the
+    # gray off-canvas backdrop.
+    cr.set_source_rgba(0.0, 0.0, 0.0, 0.18)
+    cr.rectangle(4, 4, w, h)
+    cr.fill()
+
+    # Page background.
     cr.set_source_rgb(*background)
     cr.rectangle(0, 0, w, h)
     cr.fill()
 
     if show_grid:
         _draw_grid(cr, w_in, h_in, scale)
+
+    # Crisp page border so the project bounds are unmistakable.
+    cr.set_source_rgb(0.55, 0.55, 0.6)
+    cr.set_line_width(1.0)
+    cr.rectangle(0.5, 0.5, w - 1, h - 1)
+    cr.stroke()
 
     for component in project.components:
         try:
