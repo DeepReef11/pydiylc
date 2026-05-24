@@ -69,7 +69,7 @@ def test_server_exposes_resources():
 
 @pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
 def test_server_exposes_prompts():
-    """Two canned workflow prompts."""
+    """Four canned workflow prompts."""
     import asyncio
 
     server = mcp_server.build_server()
@@ -77,6 +77,8 @@ def test_server_exposes_prompts():
     names = {p.name for p in prompts}
     assert "build_pedal_layout" in names
     assert "modify_existing_layout" in names
+    assert "build_guitar_wiring" in names
+    assert "build_amp_psu" in names
 
 
 @pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")

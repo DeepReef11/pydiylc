@@ -1455,6 +1455,83 @@ def build_server():
             "component/project/field name lookup — use them to self-correct typos."
         )
 
+    @server.prompt()
+    def build_guitar_wiring(name: str = "MyStrat") -> str:
+        """Walkthrough for building a guitar wiring diagram from scratch."""
+        return (
+            f"Build a guitar wiring layout called {name!r}.\n\n"
+            "Guitar wiring has its own shape — pickups are single-anchor "
+            "components, so external wires terminate at nearby SolderPads "
+            "and run from there to the selector switch and pots.\n\n"
+            f"1. `create_project(project_id='guitar', title={name!r}, "
+            "width_cm=30, height_cm=20)`.\n\n"
+            "2. `add_components([...])` with one batch. A typical 3-pickup "
+            "Strat layout needs:\n"
+            "   - 3× `SingleCoilPickup` (type='Stratocaster') — 1 anchor each\n"
+            "   - 6× `SolderPad` (one hot + one ground pad per pickup)\n"
+            "   - `LeverSwitch` (type='DP3T_5pos') — 10 lugs, the 5-way selector\n"
+            "   - 3× `PotentiometerPanel` (1 master volume + 2 tone, "
+            "resistance='250K')\n"
+            "   - `RadialCeramicDiskCapacitor` (value='22nF') — tone cap\n"
+            "   - `OpenJack1_4` (type='MONO') — output\n"
+            "   - `GroundSymbol` (type='DEFAULT') — common ground bus\n\n"
+            "3. Wire it up with `connect(from_name, to_name)`. The path is:\n"
+            "   pickup → its hot pad → lever switch lug → volume pot → jack\n"
+            "   pickup → its ground pad → ground bus\n"
+            "   volume → tone pot → tone cap → ground bus\n\n"
+            "4. `get_pins('SW')` to verify the lever switch exposes all 10 "
+            "lugs (DP3T_5pos lays them out as 2 cols × 5 rows). 3PDT/DPDT "
+            "footswitches lay out as a 3×N grid — wires coming from "
+            "different physical directions naturally land on different lugs.\n\n"
+            "5. `validate()`, then `render_svg(return_content=True)` for an "
+            "inline preview, then `save('layout.diy')`.\n\n"
+            "**Discriminator trap**: pickups and pots have their own `type` "
+            "or `taper` enum fields. Use `_type` for the class name to "
+            "avoid the key collision: "
+            "`{'_type': 'SingleCoilPickup', 'name': 'PU1', 'type': 'Stratocaster'}`."
+        )
+
+    @server.prompt()
+    def build_amp_psu(name: str = "MyPSU") -> str:
+        """Walkthrough for building a tube-amp power supply from scratch."""
+        return (
+            f"Build a tube-amp power supply called {name!r}.\n\n"
+            "Power supplies chain AC inlet → fuse → transformer → "
+            "rectifier → multi-stage filter chain → DC output, with the "
+            "filter caps as the heart of the topology.\n\n"
+            f"1. `create_project(project_id='psu', title={name!r}, "
+            "width_cm=30, height_cm=18)`.\n\n"
+            "2. `add_components([...])` with one batch. Components needed:\n"
+            "   - `IECSocket` (3 pins: L/N/E) — AC inlet\n"
+            "   - `FuseHolderPanel` (2 pins, value='1A SB')\n"
+            "   - `AudioTransformer` (6 pins) used as the power transformer\n"
+            "   - `BridgeRectifier` (4 pins: +, ~, ~, -)\n"
+            "   - `ElectrolyticCanCapacitor` for the first filter — note "
+            "the field is `values` (PLURAL) because the can holds multiple "
+            "sections: `values=['40uF', '40uF', '40uF', '40uF']`. Common "
+            "LLM trap; the loader will suggest the right field name if "
+            "you typo 'value'.\n"
+            "   - 2× `RadialElectrolytic` (value='22uF') — downstream stages\n"
+            "   - 2× `Resistor` (value='10K') — dropping resistors between "
+            "stages\n"
+            "   - `Resistor` (value='220K') — bleeder across first cap\n"
+            "   - `PlasticDCJack` — DC output\n"
+            "   - `GroundSymbol` — common return\n\n"
+            "3. Wire the chain with `connect(from_name, to_name)`:\n"
+            "   AC_in → fuse → PT (primary)\n"
+            "   PT (secondary) → bridge AC pins; PT center tap → ground\n"
+            "   bridge + → first cap; bridge − → ground\n"
+            "   first cap → drop R → second cap → drop R → third cap → DC_out\n"
+            "   each cap negative side → ground\n"
+            "   bleeder R parallel to first cap\n\n"
+            "4. `validate()` — off-canvas info entries are normal for "
+            "panel-mount hardware like jacks. Then "
+            "`render_svg(return_content=True)` and `save('psu.diy')`.\n\n"
+            "Safety note: this is a schematic-level layout, not a wiring "
+            "diagram. Real tube-amp PSUs run at lethal voltages — anyone "
+            "building from this should know HV safety practices."
+        )
+
     return server
 
 

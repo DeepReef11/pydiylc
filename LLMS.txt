@@ -263,7 +263,9 @@ diylc -convert layout.diy layout.png
 
 - Resource `pydiylc://catalog` — the catalog JSON.
 - Resource `pydiylc://llms.txt` — this guide.
-- Prompt `build_pedal_layout(name)` — canned multi-step walkthrough.
+- Prompt `build_pedal_layout(name)` — guitar effects pedal walkthrough.
+- Prompt `build_guitar_wiring(name)` — Strat-style 3-pickup wiring walkthrough.
+- Prompt `build_amp_psu(name)` — tube-amp power-supply walkthrough.
 - Prompt `modify_existing_layout(diy_path)` — read + tweak workflow.
 
 ## LLM workflow patterns
