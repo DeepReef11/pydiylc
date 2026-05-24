@@ -585,6 +585,57 @@ def test_bulk_move_shifts_every_selected_component():
     assert s.project.components[2].x2 == 2.5
 
 
+def test_bulk_move_does_not_drag_unselected_wire_endpoint():
+    """Regression: when a wire connects a selected component to an
+    unselected one, the unselected endpoint must stay anchored
+    across many nudges. Previously the per-component move_component
+    loop used geometric coincidence and slowly dragged the outside
+    endpoint along too.
+    """
+    from pydiylc import HookupWire
+    s = _state_with("R1", "R2", "R3")
+    _place(s.project.components[0], 2.0, 2.0, 2.0, 3.0)   # R1 vertical
+    _place(s.project.components[1], 4.0, 2.0, 4.0, 3.0)   # R2 vertical
+    _place(s.project.components[2], 10.0, 2.0, 10.0, 3.0)  # R3 far away
+    s.project.add(HookupWire(name="W12", points=[(2.0, 2.0), (4.0, 2.0)]))
+    s.project.add(HookupWire(name="W23", points=[(4.0, 2.0), (10.0, 2.0)]))
+    _tree_mode(s)
+    s.selected_names = {"R1", "R2"}
+    s.selected_name = "R2"
+    for _ in range(10):
+        viewer._tree_move(s, dx=0.1, dy=0.0)
+    # R3 untouched, W23's far endpoint still on R3.
+    assert s.project.components[2].x1 == 10.0
+    w23 = next(c for c in s.project.components if c.name == "W23")
+    # R3-end should still be at (10.0, 2.0).
+    assert any(abs(p[0] - 10.0) < 1e-9 and abs(p[1] - 2.0) < 1e-9
+               for p in w23.points), (
+        f"W23's R3-end should still be at (10, 2); got {w23.points}"
+    )
+
+
+def test_bulk_move_no_double_move_with_board_selected():
+    """Regression: selecting a board AND a component on it used to
+    move the on-board component twice (once via the board cascade,
+    once via its own iteration). Now they move together by exactly
+    the requested delta.
+    """
+    from pydiylc.components import PerfBoard
+    p = Project()
+    p.add(PerfBoard(name="B1", x1=0.5, y1=0.5, x2=5.0, y2=5.0))
+    p.add(Resistor(name="R1", x1=1.0, y1=1.0, x2=1.0, y2=2.0))
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    _tree_mode(s)
+    s.selected_names = {"B1", "R1"}
+    s.selected_name = "R1"
+    viewer._tree_move(s, dx=0.5, dy=0.0)
+    # R1 moved exactly once (+0.5), not twice (+1.0).
+    assert s.project.components[1].x1 == 1.5
+    assert s.project.components[1].x2 == 1.5
+    # Board moved too.
+    assert s.project.components[0].x1 == 1.0
+
+
 def test_bulk_move_survives_repeated_nudges():
     """Regression: after a bulk move, the tree-panel refresh used to
     collapse selected_names to the tree cursor's single component, so

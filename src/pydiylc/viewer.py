@@ -2034,17 +2034,23 @@ def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     if nav is None or nav.current is None:
         return
 
-    # Bulk path: nudge every selected component as a group.
+    # Bulk path: nudge every selected component as a single rigid
+    # translation. moves.move_components resolves the topology once so
+    # consecutive nudges don't accumulate spurious wire-pulling.
     if len(state.selected_names) > 1:
         names = set(state.selected_names)
+        indices = [
+            i for i, c in enumerate(state.project.components)
+            if getattr(c, "name", None) in names
+        ]
         _record(state, f"move {len(names)} components")
-        for ci, comp in enumerate(state.project.components):
-            if getattr(comp, "name", None) in names:
-                moves.move_component(state.project, ci, dx, dy)
-                anchor = _current_anchor(comp)
-                cname = getattr(comp, "name", None)
-                if cname:
-                    _sync_buffer_move(state, MoveOp(cname, anchor[0], anchor[1]))
+        moves.move_components(state.project, indices, dx, dy)
+        for ci in indices:
+            comp = state.project.components[ci]
+            anchor = _current_anchor(comp)
+            cname = getattr(comp, "name", None)
+            if cname:
+                _sync_buffer_move(state, MoveOp(cname, anchor[0], anchor[1]))
         nav.rebuild(state.project)
         _refresh_tree_panel(state)
         return
