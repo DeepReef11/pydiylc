@@ -1,6 +1,6 @@
 # pydiylc
 
-![tests](https://img.shields.io/badge/tests-383%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-436%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
 ![corpus](https://img.shields.io/badge/corpus%20recognition-100%25-brightgreen)
@@ -9,7 +9,7 @@ A scriptable Python library — and a native Wayland GTK4 viewer — for
 [DIYLC](https://github.com/bancika/diy-layout-creator) circuit layouts.
 
 - **Write layouts in Python or JSON**, save them as `.diy` (opens in DIYLC).
-- **Read existing `.diy` files** back into Python (98.2% component recognition
+- **Read existing `.diy` files** back into Python (100% component recognition
   on the DIYLC community corpus).
 - **Preview natively** — SVG for browsers, PNG via cairo, or a Wayland-native
   GTK4 viewer with pan/zoom/click-select and drag-to-move-with-diff.
@@ -25,20 +25,25 @@ on top.
 
 ## Status
 
-Beta (v0.2.0). Current component set (40 types):
+Beta (v0.2.0). **99 component types** spanning boards, passives, semiconductors,
+connectivity, electromechanical hardware, tubes, chassis cutouts, guitar
+hardware, schematic symbols, shapes, SMD, and labels. The full taxonomy lives
+in [`LLMS.txt`](LLMS.txt#L50) and the machine-readable schema in
+[`catalog.json`](catalog.json).
 
-- **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard` (stripboard)
-- **Passives**: `Resistor`, `RadialFilmCapacitor`, `RadialCeramicDiskCapacitor`, `RadialElectrolytic`, `AxialFilmCapacitor`, `AxialElectrolyticCapacitor`, `PotentiometerPanel`, `TrimmerPotentiometer`
-- **Semiconductors**: `DiodePlastic`, `LED`, `TransistorTO92`, `DIL_IC`
-- **Connectivity**: `CopperTrace`, `Jumper`, `HookupWire`, `SolderPad`, `Dot`, `Eyelet`, `Turret`, `Line`, `TraceCut`
-- **Electromechanical**: `MiniToggleSwitch` (incl. 3PDT bypass), `PlasticDCJack`, `OpenJack1_4`
-- **Tubes**: `TubeSocket` (B7G / B9A / OCTAL / ...)
-- **Shapes**: `Rectangle`, `Ellipse`
-- **Boards**: `BlankBoard`, `PerfBoard`, `VeroBoard`, `TerminalStrip`
-- **Schematic symbols**: `ResistorSymbol`, `CapacitorSymbol`, `DiodeSymbol`, `BJTSymbol`
-- **Misc**: `Label`, `GroundSymbol`, `Image`, `BOM`
+**Corpus coverage:** **100% component recognition** on the DIYLC regression
+corpus — all 106,599 components across 709 of 711 real community layouts
+(including legacy v1 `<Layout>` files) parse cleanly. **All 709 readable files
+round-trip with identical component count + type signature** through read →
+save → re-read; zero drift, zero errors. The 2 unreadable files are physically
+truncated XML in the upstream corpus, not a parser limitation.
 
-**Corpus coverage:** **100% component recognition** on the DIYLC regression corpus — all 106,599 components across 709 of 711 real community layouts (including legacy v1 `<Layout>` files) parse cleanly. **All 709 readable files round-trip with identical component count + type signature** through read → save → re-read; zero drift, zero errors. The 2 unreadable files are physically truncated XML in the upstream corpus, not a parser limitation.
+**LLM stress matrix:** 8 end-to-end stress tests build real layouts through
+the MCP tool surface — LPB-1 booster, Champ amp schematic, Big Muff fuzz,
+two-stage tube preamp with negative feedback, two-channel switching amp,
+Stratocaster-style guitar wiring, tube-amp power supply, and a stompbox
+enclosure. Each test surfaced and locked in 1–21 real bugs ranging from
+single-component pin counts to systematic LLM-correction error messages.
 
 ## CLI
 
