@@ -784,11 +784,11 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("arrows", "move focused node by one board hole (grid step off-board)"),
         ("Ctrl+arrows", "nudge by one grid step"),
         ("Ctrl+Shift+arrows", "fine nudge (1/10 grid)"),
-        ("R / Shift+R", "rotate 90° CW / CCW"),
-        ("v", "edit the focused component's value / text / resistance"),
+        ("R / Shift+R", "rotate 90° CW / CCW (each selected if multi-sel)"),
+        ("v", "edit value/text/resistance (applies to every multi-selected component with that field)"),
         ("a", "add a component (auto-wires to focused pin)"),
         ("A", "add a component without auto-wiring"),
-        ("D", "duplicate the focused component"),
+        ("D", "duplicate the focused component (or all multi-selected; clones become the new selection)"),
         ("dd", "delete the focused component (or all multi-selected, press d twice)"),
         ("arrows (multi-sel)", "nudge every multi-selected component together"),
     ]),
@@ -2068,11 +2068,27 @@ def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
 
 
 def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
+    """Rotate the focused component 90°. If a multi-selection (N>1) is
+    active, every selected component spins about its own anchor.
+    """
     from . import moves
 
     nav = state.nav
     if nav is None or nav.current is None:
         return
+
+    # Bulk path: rotate each selected component independently.
+    if len(state.selected_names) > 1:
+        names = set(state.selected_names)
+        _record(state, f"rotate {len(names)} components")
+        for ci, comp in enumerate(state.project.components):
+            if getattr(comp, "name", None) in names:
+                moves.rotate_component(state.project, ci, clockwise=clockwise)
+                _sync_buffer_rotate(state, state.project.components[ci])
+        nav.rebuild(state.project)
+        _refresh_tree_panel(state)
+        return
+
     ci = nav.current.component_index
     _record(state, "rotate")
     moves.rotate_component(state.project, ci, clockwise=clockwise)
@@ -2088,12 +2104,46 @@ def _tree_duplicate(state: _ViewerState) -> None:
 
     Uses the same value/orientation/color fields as the original; just
     shifts coords by 0.3 in to the right. Mirrors to the working buffer.
+
+    If a multi-selection (N>1) is active, every selected component is
+    cloned in one snapshot. The new selection becomes the set of clones
+    so the user can immediately reposition them as a group.
     """
     from . import tree_editor
 
     nav = state.nav
     if nav is None or nav.current is None:
         return
+
+    # Bulk path: duplicate every selected component.
+    if len(state.selected_names) > 1:
+        names = set(state.selected_names)
+        originals = [c for c in state.project.components
+                     if getattr(c, "name", None) in names]
+        _record(state, f"duplicate {len(originals)} components")
+        existing = {getattr(c, "name", None) for c in state.project.components}
+        existing.discard(None)
+        clone_names: set[str] = set()
+        for original in originals:
+            new_name = tree_editor.increment_name(
+                existing, getattr(original, "name", "X")
+            )
+            existing.add(new_name)
+            clone = tree_editor.duplicate_component(
+                original, new_name, dx=0.3, dy=0.0
+            )
+            state.project.add(clone)
+            _sync_buffer_add(state, clone)
+            clone_names.add(new_name)
+        # Hand the user the clones as the new active selection.
+        state.selected_names = clone_names
+        state.selected_name = next(iter(clone_names), None)
+        nav.rebuild(state.project)
+        _refresh_tree_panel(state)
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        return
+
     ci = nav.current.component_index
     if not (0 <= ci < len(state.project.components)):
         return
@@ -2146,8 +2196,20 @@ def _open_edit_value_dialog(state: _ViewerState) -> None:
                      "can't locate it for an edit.")
         return
 
+    # Bulk: when >1 selected, find every selected component that has
+    # the same field and prep the dialog to apply to all of them.
+    bulk_targets: list = []
+    if len(state.selected_names) > 1:
+        for c in state.project.components:
+            cname = getattr(c, "name", None)
+            if cname in state.selected_names and hasattr(c, field):
+                bulk_targets.append(c)
+
     win = Gtk.Window()
-    win.set_title(f"Edit {name}.{field}")
+    if bulk_targets and len(bulk_targets) > 1:
+        win.set_title(f"Edit .{field} on {len(bulk_targets)} components")
+    else:
+        win.set_title(f"Edit {name}.{field}")
     win.set_default_size(360, 130)
     if state.window is not None:
         win.set_transient_for(state.window)
@@ -2157,7 +2219,10 @@ def _open_edit_value_dialog(state: _ViewerState) -> None:
     box.set_margin_top(14); box.set_margin_bottom(14)
     box.set_margin_start(14); box.set_margin_end(14)
 
-    label = Gtk.Label(label=f"{name}.{field} =")
+    if bulk_targets and len(bulk_targets) > 1:
+        label = Gtk.Label(label=f"set .{field} on {len(bulk_targets)} components =")
+    else:
+        label = Gtk.Label(label=f"{name}.{field} =")
     label.set_xalign(0.0)
     box.append(label)
 
@@ -2173,6 +2238,37 @@ def _open_edit_value_dialog(state: _ViewerState) -> None:
 
     def do_apply():
         new_value = entry.get_text()
+        # Bulk path: apply to every selected component that has `field`.
+        if bulk_targets and len(bulk_targets) > 1:
+            _record(state, f"edit .{field} on {len(bulk_targets)} components")
+            failed: list[str] = []
+            for target in bulk_targets:
+                tname = getattr(target, "name", None)
+                if not tname:
+                    continue
+                try:
+                    setattr(target, field, new_value)
+                except (ValueError, TypeError) as exc:
+                    failed.append(f"{tname}: {exc}")
+                    continue
+                if state.buffer is not None:
+                    try:
+                        proposal = state.buffer.propose(
+                            keyword_ops=[KeywordOp(tname, field, new_value)]
+                        )
+                        if proposal is not None:
+                            state.buffer.apply(proposal)
+                    except (LookupError, NotImplementedError) as exc:
+                        state.error_msg = f"buffer sync ({tname}): {exc}"
+            if failed:
+                _info_dialog(state.window, "Some values rejected",
+                             "\n".join(failed))
+            if state.canvas is not None:
+                state.canvas.queue_draw()
+            _refresh_tree_panel(state)
+            win.close()
+            return
+
         old_value = getattr(comp, field, None)
         if new_value == str(old_value):
             win.close()

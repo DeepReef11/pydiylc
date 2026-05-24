@@ -450,6 +450,51 @@ def test_rubber_band_empty_rectangle_keeps_base_in_add_mode():
     assert s.selected_names == {"R1"}
 
 
+def test_bulk_rotate_spins_every_selected_component():
+    """`R` with N>1 selected rotates each in place. Each component's
+    own orientation field cycles (or its coords spin about its anchor).
+    """
+    s = _state_with("R1", "R2", "R3")
+    # R1 + R3 are two-point parts at distinct positions; their angle is
+    # encoded in (x2-x1, y2-y1). After a 90° CW rotation a horizontal
+    # part becomes vertical: (x2-x1, y2-y1) goes from (Δ, 0) to (0, Δ).
+    _place(s.project.components[0], 1.0, 1.0, 2.0, 1.0)  # horizontal
+    _place(s.project.components[1], 3.0, 1.0, 4.0, 1.0)  # horizontal
+    _place(s.project.components[2], 5.0, 1.0, 6.0, 1.0)  # horizontal
+    _tree_mode(s)
+    s.selected_names = {"R1", "R3"}
+    s.selected_name = "R3"
+    viewer._tree_rotate(s, clockwise=True)
+    # R1 + R3 rotated; R2 untouched (still horizontal).
+    def is_horizontal(c):
+        return abs(c.y2 - c.y1) < 1e-9 and abs(c.x2 - c.x1) > 1e-9
+    assert not is_horizontal(s.project.components[0]), "R1 should have rotated"
+    assert is_horizontal(s.project.components[1]), "R2 must stay horizontal"
+    assert not is_horizontal(s.project.components[2]), "R3 should have rotated"
+
+
+def test_bulk_duplicate_clones_each_and_promotes_clones():
+    """`D` with N>1 selected duplicates every selected component and
+    promotes the clones to be the new active selection.
+    """
+    s = _state_with("R1", "R2", "R3")
+    _place(s.project.components[0], 1.0, 1.0, 2.0, 1.0)
+    _place(s.project.components[1], 3.0, 1.0, 4.0, 1.0)
+    _place(s.project.components[2], 5.0, 1.0, 6.0, 1.0)
+    _tree_mode(s)
+    s.selected_names = {"R1", "R3"}
+    s.selected_name = "R3"
+    viewer._tree_duplicate(s)
+    names = [c.name for c in s.project.components]
+    # Originals still present.
+    assert "R1" in names and "R2" in names and "R3" in names
+    # 2 new components added (clones).
+    assert len(names) == 5
+    # The new selection is the clones, not the originals.
+    assert s.selected_names.isdisjoint({"R1", "R2", "R3"})
+    assert len(s.selected_names) == 2
+
+
 def test_bulk_move_shifts_every_selected_component():
     """Arrow-style nudge with multi-select moves all selected anchors
     uniformly.
