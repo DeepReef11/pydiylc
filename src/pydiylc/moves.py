@@ -368,7 +368,7 @@ class RotateResult:
 def rotate_component(
     project: Project, component_index: int, *, clockwise: bool = True
 ) -> RotateResult:
-    """Rotate a component 90°.
+    """Rotate a component 90°, pulling attached wire endpoints along.
 
     Strategy depends on the component:
 
@@ -378,28 +378,42 @@ def rotate_component(
     - Has a 2-way ``orientation`` (HORIZONTAL/VERTICAL): toggle it.
     - Otherwise (two-pin, points-list): rotate the raw coordinates 90° about
       the component's centroid.
+
+    After the rotation, any wire endpoint that was sitting on one of
+    this component's pins (pre-rotate) is moved to that pin's new
+    position. The wire's other endpoint stays.
     """
     comp = project.components[component_index]
     orientation = getattr(comp, "orientation", None)
+
+    # Snapshot the pre-rotate pin positions BEFORE we change orientation
+    # or coords, so we can match wire endpoints by their old locations.
+    pre_pins = list(control_points_of(comp, component_index))
+    components = project.components
 
     if orientation in _ORIENT_4:
         idx = _ORIENT_4.index(orientation)
         new = _ORIENT_4[(idx + (1 if clockwise else -1)) % 4]
         comp.orientation = new
+        _follow_wires_after_geometry_change(
+            components, component_index, pre_pins
+        )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
     if orientation in _ORIENT_HV:
         new = _ORIENT_HV[(_ORIENT_HV.index(orientation) + 1) % 2]
         comp.orientation = new
+        _follow_wires_after_geometry_change(
+            components, component_index, pre_pins
+        )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
     # Coordinate rotation about the centroid of the component's points.
-    pts = control_points_of(comp, component_index)
-    if not pts:
+    if not pre_pins:
         return RotateResult(component_index, "coords")
-    cx = sum(p.x for p in pts) / len(pts)
-    cy = sum(p.y for p in pts) / len(pts)
-    for cp in pts:
+    cx = sum(p.x for p in pre_pins) / len(pre_pins)
+    cy = sum(p.y for p in pre_pins) / len(pre_pins)
+    for cp in pre_pins:
         # 90° CW about (cx, cy): (x, y) -> (cx + (y - cy), cy - (x - cx))
         # 90° CCW: (x, y) -> (cx - (y - cy), cy + (x - cx))
         if clockwise:
@@ -409,4 +423,58 @@ def rotate_component(
             nx = cx - (cp.y - cy)
             ny = cy + (cp.x - cx)
         _set_point(comp, cp.point_index, _clean(nx), _clean(ny))
+    _follow_wires_after_geometry_change(components, component_index, pre_pins)
     return RotateResult(component_index, "coords")
+
+
+def _follow_wires_after_geometry_change(
+    components: list,
+    component_index: int,
+    pre_pins: list,
+) -> None:
+    """Move wire endpoints to track a component's per-pin movement.
+
+    Used by rotate_component (and any future geometry-changing
+    operation). Matches by pre-change position, so two wires sharing
+    a junction at the same old pin both follow that pin's new
+    location. Wire endpoints on other components are left alone.
+    """
+    post_pins = control_points_of(components[component_index], component_index)
+    if len(post_pins) != len(pre_pins):
+        return  # shape change; can't pair-up pins safely
+    # Map pre-position → post-position (one entry per pin).
+    pin_moves: dict[tuple[float, float], tuple[float, float]] = {}
+    tol = 1e-6
+    for pre, post in zip(pre_pins, post_pins):
+        # If a pin didn't move, no follow needed.
+        if abs(pre.x - post.x) < tol and abs(pre.y - post.y) < tol:
+            continue
+        pin_moves[(pre.x, pre.y)] = (post.x, post.y)
+    if not pin_moves:
+        return
+
+    def _close(a: float, b: float) -> bool:
+        return abs(a - b) < tol
+
+    for i, wire in enumerate(components):
+        if i == component_index:
+            continue
+        if not isinstance(wire, (HookupWire, CopperTrace, CurvedTrace, Jumper)):
+            continue
+        pts = list(getattr(wire, "points", []))
+        if not pts:
+            continue
+        changed = False
+        new_pts: list[tuple[float, float]] = []
+        for (px, py) in pts:
+            moved = False
+            for (old_x, old_y), (new_x, new_y) in pin_moves.items():
+                if _close(px, old_x) and _close(py, old_y):
+                    new_pts.append((_clean(new_x), _clean(new_y)))
+                    moved = True
+                    changed = True
+                    break
+            if not moved:
+                new_pts.append((px, py))
+        if changed:
+            wire.points = new_pts

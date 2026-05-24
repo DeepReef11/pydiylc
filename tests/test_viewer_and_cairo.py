@@ -450,6 +450,68 @@ def test_rubber_band_empty_rectangle_keeps_base_in_add_mode():
     assert s.selected_names == {"R1"}
 
 
+def test_rotate_drags_attached_wires():
+    """Wires attached to a rotating component should follow each
+    pin to its new position; the wire's far endpoint stays.
+    """
+    from pydiylc import HookupWire
+    p = Project()
+    p.add(Resistor(name="R1", x1=2.0, y1=2.0, x2=3.0, y2=2.0))
+    # Wire attached to R1.pin0 (at 2,2).
+    p.add(HookupWire(name="W0", points=[(2.0, 2.0), (1.0, 2.0)]))
+    # Wire attached to R1.pin1 (at 3,2).
+    p.add(HookupWire(name="W1", points=[(3.0, 2.0), (4.0, 2.0)]))
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    _tree_mode(s)
+    s.nav.focus_node(0, None)
+    viewer._tree_rotate(s, clockwise=True)
+    # R1's centroid was (2.5, 2.0); 90° CW → R1 is now vertical at x=2.5.
+    w0 = next(c for c in p.components if c.name == "W0")
+    w1 = next(c for c in p.components if c.name == "W1")
+    # Each wire's R1-end should now sit on R1's new pin (2.5, 2.5) or
+    # (2.5, 1.5). The far end stays where it was.
+    new_pin_positions = {(p.components[0].x1, p.components[0].y1),
+                         (p.components[0].x2, p.components[0].y2)}
+    # W0's near-end is now on a pin; far-end still at (1.0, 2.0).
+    assert tuple(w0.points[0]) in new_pin_positions
+    assert tuple(w0.points[1]) == (1.0, 2.0)
+    # Same for W1.
+    assert tuple(w1.points[0]) in new_pin_positions
+    assert tuple(w1.points[1]) == (4.0, 2.0)
+
+
+def test_enum_rotate_drags_attached_wires_per_pin():
+    """Multi-pin components with an `orientation` enum rotate in
+    place (no centroid math). Wires on each pin should still
+    follow that pin's new derived position.
+    """
+    from pydiylc import HookupWire
+    from pydiylc.components import TransistorTO92
+    from pydiylc.graph import control_points_of
+
+    p = Project()
+    p.add(TransistorTO92(name="Q1", x=5.0, y=5.0))
+    pins = control_points_of(p.components[0], 0)
+    for i, pin in enumerate(pins):
+        p.add(HookupWire(
+            name=f"W{i}",
+            points=[(pin.x, pin.y), (pin.x + 1.0, pin.y + 1.0)],
+        ))
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    _tree_mode(s)
+    s.nav.focus_node(0, None)
+    viewer._tree_rotate(s, clockwise=True)
+    # After rotation, each W's first endpoint should be on the
+    # transistor's new pin position; the far endpoint unchanged.
+    pins_after = control_points_of(p.components[0], 0)
+    new_pin_set = {(pp.x, pp.y) for pp in pins_after}
+    for i in range(3):
+        wire = next(c for c in p.components if c.name == f"W{i}")
+        assert tuple(wire.points[0]) in new_pin_set, (
+            f"W{i} should be on a pin; got {wire.points[0]}"
+        )
+
+
 def test_bulk_rotate_spins_every_selected_component():
     """`R` with N>1 selected rotates each in place. Each component's
     own orientation field cycles (or its coords spin about its anchor).
