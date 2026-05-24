@@ -2374,23 +2374,38 @@ class MiniToggleSwitch(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        # Switches are wired in 2- or 3-row grids. Convert spacing to inches.
+        # Real toggle switches lay out lugs in a grid: SPST is 1×2 (in
+        # line), every multi-pole type is 3 throws × N poles. Wiring
+        # by nearest pin depends on this layout — a single-column
+        # collapse would force every external wire to land on lug 0.
         s = self.spacing.value
         if self.spacing.unit == "mm":
             s = s / 25.4
         elif self.spacing.unit == "cm":
             s = s / 2.54
         n = self._LUG_COUNT_BY_TYPE[self.switch_type]
-        # Pole count = ceil(n/positions_per_pole); for our purposes lay out
-        # n lugs in a single column at `spacing` apart along orientation.
-        # DIYLC's editor splits poles across rows visually, but the saved
-        # control points are a flat list — one per lug.
+        if self.switch_type == "SPST":
+            # Linear pair, varying along orientation axis (preserved
+            # from earlier behavior so existing layouts don't shift).
+            return [
+                (self.x + (i if self.orientation == "HORIZONTAL" else 0) * s,
+                 self.y + (i if self.orientation == "VERTICAL"   else 0) * s)
+                for i in range(n)
+            ]
+        # 3 throws × N poles grid. The flat lug list is column-major
+        # (lug 0 = pole 1 throw 1, lug 1 = pole 1 throw 2, ..., lug 3 =
+        # pole 2 throw 1, ...) matching DIYLC's saved order.
+        rows = 3
+        poles = n // rows
         pts: list[Point] = []
-        for i in range(n):
-            if self.orientation == "VERTICAL":
-                pts.append((self.x, self.y + i * s))
-            else:
-                pts.append((self.x + i * s, self.y))
+        for col in range(poles):
+            for row in range(rows):
+                if self.orientation == "VERTICAL":
+                    # Poles span x, throws span y.
+                    pts.append((self.x + col * s, self.y + row * s))
+                else:
+                    # Poles span y, throws span x.
+                    pts.append((self.x + row * s, self.y + col * s))
         return pts
 
     def to_xml(self, indent: int = 4) -> str:

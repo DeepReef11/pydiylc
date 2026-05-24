@@ -1698,6 +1698,148 @@ def test_end_to_end_tube_amp_psu(mcp_fixture, tmp_path):
     assert rr["components"] == 12 + len(wires)
 
 
+def test_end_to_end_stompbox_enclosure(mcp_fixture, tmp_path):
+    """Eighth real-world stress test: top-down stompbox enclosure
+    (chassis panel + cutouts + footswitch + LED indicator + jacks +
+    pots + labels). Sibling to the prior 7 stress tests.
+
+    Probes the chassis/enclosure domain:
+    - ChassisPanel + EllipticalCutout + RectangularCutout — no prior
+      end-to-end test exercised cutouts through save/load.
+    - 3PDT MiniToggleSwitch wired as a true-bypass network — the
+      footswitch's 9 lugs must lay out as a 3×3 grid (3 throws × 3
+      poles), not a single column, so wires from different angles
+      can actually land on different lugs.
+    - Mixed top-panel hardware density (jacks, pots, LED, DC inlet).
+    """
+    pid = "box"
+    _call(mcp_fixture, "create_project", {
+        "project_id": pid, "title": "Stompbox enclosure",
+        "width_cm": 12, "height_cm": 12,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": pid,
+        "components": [
+            {"type": "ChassisPanel", "name": "Box",
+             "x1": 0.5, "y1": 0.5, "x2": 5.0, "y2": 4.1,
+             "value": "1590B"},
+            {"type": "EllipticalCutout", "name": "Hole_FSW",
+             "x1": 2.5, "y1": 3.3, "x2": 3.0, "y2": 3.8,
+             "value": "3PDT"},
+            {"type": "EllipticalCutout", "name": "Hole_in",
+             "x1": 0.4, "y1": 1.5, "x2": 0.7, "y2": 1.8,
+             "value": "input"},
+            {"type": "EllipticalCutout", "name": "Hole_out",
+             "x1": 4.8, "y1": 1.5, "x2": 5.1, "y2": 1.8,
+             "value": "output"},
+            {"type": "EllipticalCutout", "name": "Hole_dc",
+             "x1": 2.6, "y1": 0.2, "x2": 2.9, "y2": 0.5,
+             "value": "9V"},
+            {"type": "RectangularCutout", "name": "Hole_LED",
+             "x1": 2.6, "y1": 2.4, "x2": 2.9, "y2": 2.7,
+             "value": "LED bezel"},
+            {"_type": "MiniToggleSwitch", "name": "FSW",
+             "x": 2.7, "y": 3.5, "switch_type": "_3PDT"},
+            {"_type": "OpenJack1_4", "name": "J_in",
+             "x": 0.5, "y": 1.6, "type": "MONO"},
+            {"_type": "OpenJack1_4", "name": "J_out",
+             "x": 4.9, "y": 1.6, "type": "MONO"},
+            {"_type": "PlasticDCJack", "name": "DC",
+             "x": 2.7, "y": 0.3},
+            {"type": "LED", "name": "LED1",
+             "x1": 2.7, "y1": 2.4, "x2": 2.7, "y2": 2.7,
+             "value": "red"},
+            {"type": "Resistor", "name": "R_LED",
+             "x1": 2.5, "y1": 2.4, "x2": 2.5, "y2": 2.1,
+             "value": "4K7"},
+            {"type": "PotentiometerPanel", "name": "VOL",
+             "x": 1.2, "y": 1.0, "resistance": "100K"},
+            {"type": "PotentiometerPanel", "name": "TONE",
+             "x": 2.7, "y": 1.0, "resistance": "20K"},
+            {"type": "PotentiometerPanel", "name": "GAIN",
+             "x": 4.2, "y": 1.0, "resistance": "100K"},
+            {"type": "Label", "name": "L_vol",
+             "x": 1.2, "y": 0.7, "text": "VOLUME"},
+            {"type": "Label", "name": "L_tone",
+             "x": 2.7, "y": 0.7, "text": "TONE"},
+            {"type": "Label", "name": "L_gain",
+             "x": 4.2, "y": 0.7, "text": "GAIN"},
+            {"_type": "GroundSymbol", "name": "GND",
+             "x": 2.7, "y": 4.0, "type": "DEFAULT"},
+        ],
+    })
+    assert res["errors"] == [], f"batch errors: {res['errors']}"
+    assert res["added"] == 19
+
+    # Lock in pin counts on the multi-pin hardware.
+    for name, want in [("FSW", 9), ("J_in", 3), ("DC", 3), ("LED1", 2)]:
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": pid, "name": name})
+        assert len(pins) == want, f"{name}: want {want}, got {len(pins)}"
+
+    wires = [
+        ("J_in", "FSW"), ("FSW", "J_out"),
+        ("FSW", "LED1"), ("LED1", "R_LED"), ("R_LED", "GND"),
+        ("DC", "FSW"),
+        ("J_in", "GND"), ("J_out", "GND"), ("DC", "GND"),
+        ("VOL", "GND"), ("TONE", "GND"), ("GAIN", "GND"),
+    ]
+    fsw_lugs: set[int] = set()
+    for src, dst in wires:
+        r = _call(mcp_fixture, "connect", {
+            "project_id": pid, "from_name": src, "to_name": dst,
+        })
+        if r["from"]["name"] == "FSW":
+            fsw_lugs.add(r["from"]["pin"])
+        if r["to"]["name"] == "FSW":
+            fsw_lugs.add(r["to"]["pin"])
+
+    # 3PDT must lay out as a 3×3 grid, not a single column. Wires
+    # coming from physically different positions (J_in west, J_out
+    # east, DC north, LED north) MUST land on at least 2 distinct
+    # lugs — a single-column layout would force all of them to lug 0.
+    assert len(fsw_lugs) >= 2, (
+        f"3PDT lugs collapsed to a single column: {fsw_lugs}"
+    )
+
+    rep = _call(mcp_fixture, "validate", {"project_id": pid})
+    assert rep["ok"], f"validate errors: {rep['errors']}"
+
+    out = tmp_path / "box.diy"
+    _call(mcp_fixture, "save", {"project_id": pid, "path": str(out)})
+    rr = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{pid}_rt", "path": str(out),
+    })
+    assert rr["warnings"] == []
+    assert rr["components"] == 19 + len(wires)
+
+    # Cutouts must render alongside hardware.
+    svg = _call(mcp_fixture, "render_svg",
+                {"project_id": pid, "return_content": True})
+    assert "<svg" in svg["svg"]
+
+
+def test_3pdt_lug_layout_is_a_grid_not_a_column(mcp_fixture):
+    """A 3PDT footswitch lays out 9 lugs as a 3×3 grid (3 throws × 3
+    poles), so wires coming from different physical positions land
+    on different lugs. Regression: a single-column layout would
+    force everything to lug 0 via the nearest-pin heuristic.
+    """
+    _call(mcp_fixture, "create_project",
+          {"project_id": "p", "width_cm": 10, "height_cm": 10})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "p",
+        "component": {"_type": "MiniToggleSwitch", "name": "SW",
+                      "x": 5.0, "y": 5.0, "switch_type": "_3PDT"},
+    })
+    pins = _call(mcp_fixture, "get_pins", {"project_id": "p", "name": "SW"})
+    # 3 distinct x AND 3 distinct y across the 9 pins.
+    xs = {round(p["x"], 3) for p in pins}
+    ys = {round(p["y"], 3) for p in pins}
+    assert len(xs) == 3, f"3PDT x-spread is {xs}, expected 3 distinct cols"
+    assert len(ys) == 3, f"3PDT y-spread is {ys}, expected 3 distinct rows"
+
+
 def test_misspelled_field_suggests_correct_name(mcp_fixture):
     """If an LLM passes 'value' to a component whose field is 'values',
     the error must say 'Did you mean values?' — not just the raw
