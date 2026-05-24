@@ -1216,6 +1216,144 @@ def test_end_to_end_big_muff_high_density(mcp_fixture, tmp_path):
     assert reread["warnings"] == []
 
 
+def test_end_to_end_two_stage_amp_with_feedback(mcp_fixture, tmp_path):
+    """Fourth real-world stress test: two-stage triode preamp with
+    overall negative feedback from V2 plate back into the V1 cathode
+    network. Sibling to the LPB-1, Champ, and Big Muff tests.
+
+    Specifically catches:
+    - Typo'd class names ('RadialCeramicCapacitor' for
+      RadialCeramicDiskCapacitor) must surface a 'Did you mean?'
+      suggestion, not a misleading key-collision hint.
+    - Shape mismatch ('x'/'y' on a two-point class, or vice versa)
+      must say which fields the class actually accepts.
+    - connect()'s nearest-pin heuristic stays non-trivial when the
+      same node is hit from multiple sides (feedback): pin pairs must
+      vary, not collapse to (0, 0).
+    """
+    pid = "fbamp"
+    _call(mcp_fixture, "create_project", {
+        "project_id": pid, "title": "Two-stage with feedback",
+        "width_cm": 30, "height_cm": 20,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": pid,
+        "components": [
+            {"_type": "TriodeSymbol", "name": "V1",
+             "x": 4.0, "y": 6.0, "value": "12AX7-A"},
+            {"_type": "TriodeSymbol", "name": "V2",
+             "x": 10.0, "y": 6.0, "value": "12AX7-B"},
+            {"type": "AudioTransformer", "name": "OT",
+             "x": 16.0, "y": 5.0, "value": "OT-mini"},
+            {"type": "ResistorSymbol", "name": "Rp1",
+             "x1": 4.3, "y1": 5.7, "x2": 4.3, "y2": 4.0, "value": "100K"},
+            {"type": "ResistorSymbol", "name": "Rp2",
+             "x1": 10.3, "y1": 5.7, "x2": 10.3, "y2": 4.0, "value": "100K"},
+            {"type": "ResistorSymbol", "name": "Rk1",
+             "x1": 4.2, "y1": 6.3, "x2": 4.2, "y2": 8.0, "value": "1K5"},
+            {"type": "ResistorSymbol", "name": "Rk2",
+             "x1": 10.2, "y1": 6.3, "x2": 10.2, "y2": 8.0, "value": "1K5"},
+            {"type": "ResistorSymbol", "name": "Rg1",
+             "x1": 4.0, "y1": 6.0, "x2": 2.0, "y2": 6.0, "value": "1M"},
+            {"type": "ResistorSymbol", "name": "Rg2",
+             "x1": 10.0, "y1": 6.0, "x2": 8.0, "y2": 6.0, "value": "470K"},
+            {"type": "RadialCeramicDiskCapacitor", "name": "C1",
+             "x1": 6.5, "y1": 5.7, "x2": 7.5, "y2": 5.7, "value": "22nF"},
+            {"type": "RadialCeramicDiskCapacitor", "name": "C2",
+             "x1": 12.5, "y1": 5.7, "x2": 13.5, "y2": 5.7, "value": "22nF"},
+            {"type": "ResistorSymbol", "name": "Rfb",
+             "x1": 10.3, "y1": 4.0, "x2": 4.2, "y2": 8.5, "value": "47K"},
+            {"_type": "GroundSymbol", "name": "G_in",
+             "x": 4.2, "y": 9.0, "type": "DEFAULT"},
+            {"_type": "GroundSymbol", "name": "G_out",
+             "x": 10.2, "y": 9.0, "type": "TRIANGLE"},
+            {"_type": "OpenJack1_4", "name": "J_in",
+             "x": 0.5, "y": 6.0, "type": "MONO"},
+            {"_type": "OpenJack1_4", "name": "J_out",
+             "x": 22.0, "y": 5.0, "type": "MONO"},
+        ],
+    })
+    assert res["errors"] == [], f"batch errors: {res['errors']}"
+    assert res["added"] == 16
+
+    # Wire chain that revisits V1 from below via the feedback resistor.
+    wires = [
+        ("J_in", "Rg1"), ("Rg1", "V1"),
+        ("V1", "Rp1"), ("V1", "Rk1"), ("Rk1", "G_in"),
+        ("V1", "C1"), ("C1", "Rg2"), ("Rg2", "V2"),
+        ("V2", "Rp2"), ("V2", "Rk2"), ("Rk2", "G_out"),
+        ("V2", "C2"), ("C2", "OT"), ("OT", "J_out"),
+        # The feedback path — overall NFB from V2 plate to V1 cathode.
+        ("Rp2", "Rfb"), ("Rfb", "Rk1"),
+    ]
+    used = []
+    for src, dst in wires:
+        r = _call(mcp_fixture, "connect", {
+            "project_id": pid, "from_name": src, "to_name": dst,
+        })
+        used.append((r["from"]["pin"], r["to"]["pin"]))
+
+    # The nearest-pin heuristic must produce non-trivial choices.
+    # If everything collapsed to (0, 0), the bug from the Champ stress
+    # test has regressed.
+    non_zero = [p for p in used if p != (0, 0)]
+    assert len(non_zero) >= len(wires) // 2, (
+        f"connect() collapsed to pin (0,0) on most wires: {used}"
+    )
+
+    rep = _call(mcp_fixture, "validate", {"project_id": pid})
+    assert rep["ok"], f"validate errors: {rep['errors']}"
+
+    out = tmp_path / "fbamp.diy"
+    _call(mcp_fixture, "save", {"project_id": pid, "path": str(out)})
+    rr = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{pid}_rt", "path": str(out),
+    })
+    assert rr["warnings"] == []
+    assert rr["components"] == 16 + len(wires)
+
+
+def test_typo_in_class_name_suggests_correct_name(mcp_fixture):
+    """Typo'd class names should get a 'Did you mean?' hint, not a
+    misleading 'key collision' message. Regression test for an LLM
+    typing 'RadialCeramicCapacitor' when the real class is named
+    RadialCeramicDiskCapacitor.
+    """
+    _call(mcp_fixture, "create_project",
+          {"project_id": "t", "width_cm": 10, "height_cm": 8})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "t",
+        "components": [{"type": "RadialCeramicCapacitor", "name": "C1",
+                        "x1": 1.0, "y1": 1.0, "x2": 2.0, "y2": 1.0}],
+    })
+    assert res["added"] == 0
+    assert len(res["errors"]) == 1
+    err = res["errors"][0]["error"]
+    assert "Did you mean" in err
+    assert "RadialCeramicDiskCapacitor" in err
+
+
+def test_wrong_coord_shape_lists_accepted_fields(mcp_fixture):
+    """If an LLM passes x/y on a two-point component (or vice versa),
+    the error must say which fields the class actually accepts. Plain
+    'unexpected keyword argument x' is not actionable.
+    """
+    _call(mcp_fixture, "create_project",
+          {"project_id": "t", "width_cm": 10, "height_cm": 8})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "t",
+        "components": [{"type": "RadialCeramicDiskCapacitor", "name": "C1",
+                        "x": 1.0, "y": 1.0}],
+    })
+    assert res["added"] == 0
+    err = res["errors"][0]["error"]
+    assert "two-point component" in err
+    assert "x1/y1/x2/y2" in err
+    # And the full field list must be present for cases where shape
+    # isn't the issue (e.g. a misspelled field name).
+    assert "Accepted fields" in err
+
+
 def test_stats(mcp_fixture):
     """stats summarizes counts + bbox."""
     _call(mcp_fixture, "create_project", {"project_id": "st",

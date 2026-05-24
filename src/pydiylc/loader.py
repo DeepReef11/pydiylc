@@ -79,18 +79,28 @@ def component_from_dict(d: dict[str, Any]) -> Component:
             type_name = d["type"]
             kwargs = {k: v for k, v in d.items() if k != "type"}
         else:
-            # Try to give the LLM enough context to self-correct. If a 'name'
-            # is present, mention it so the failing component is identifiable
-            # in a batch error report.
+            # Two failure modes look identical from here:
+            #   1) typo: 'RadialCeramicCapacitor' → meant RadialCeramicDiskCapacitor
+            #   2) key collision: caller wrote {'type': 'Cls', 'type': 'FieldVal'}
+            #      and Python kept only the second, dropping the class name.
+            # Suggest close matches (covers #1), and mention the collision
+            # pattern (covers #2). The LLM picks whichever applies.
+            import difflib
             name_hint = f" (name={d['name']!r})" if d.get("name") else ""
-            # Suggest the right pattern with a concrete fix.
+            suggestions = difflib.get_close_matches(
+                d["type"], list(_BY_NAME), n=3, cutoff=0.5
+            )
+            sugg_str = (
+                f" Did you mean: {', '.join(suggestions)}?"
+                if suggestions else ""
+            )
             raise ValueError(
                 f"component dict{name_hint} has type={d['type']!r}, which "
-                "isn't a pydiylc class name. This usually means the dict "
-                "had a key collision: e.g. "
+                f"isn't a pydiylc class name.{sugg_str} If the name looks "
+                "right, you may have a key collision: "
                 "{'type': 'OpenJack1_4', 'name': 'J1', 'type': 'MONO'} drops "
                 "the class name (Python/JSON keep the last 'type'). "
-                "Fix: use '_type' for the class and leave 'type' for the "
+                "Use '_type' for the class and leave 'type' for the "
                 "component's own field — "
                 "{'_type': 'OpenJack1_4', 'name': 'J1', 'type': 'MONO'}."
             )
@@ -110,7 +120,33 @@ def component_from_dict(d: dict[str, Any]) -> Component:
         if k in measure_fields:
             kwargs[k] = _coerce_measure(kwargs[k])
 
-    return cls(**kwargs)
+    try:
+        return cls(**kwargs)
+    except TypeError as e:
+        # Likely shape mismatch (single-anchor vs two-point). Tell the LLM
+        # which fields the class actually accepts so it can self-correct.
+        import dataclasses
+        accepted = sorted(f.name for f in dataclasses.fields(cls))
+        passed = sorted(kwargs)
+        # Hint about the most common confusion: x/y vs x1/y1/x2/y2.
+        wants_xy = {"x", "y"}.issubset(accepted)
+        wants_x1y1 = {"x1", "y1", "x2", "y2"}.issubset(accepted)
+        shape_hint = ""
+        if wants_xy and {"x1", "y1"}.intersection(passed):
+            shape_hint = (
+                f" {type_name} is a single-anchor component — use x/y, "
+                "not x1/y1/x2/y2."
+            )
+        elif wants_x1y1 and {"x", "y"}.intersection(passed):
+            shape_hint = (
+                f" {type_name} is a two-point component — use "
+                "x1/y1/x2/y2, not x/y."
+            )
+        name_hint = f" (name={kwargs.get('name')!r})" if kwargs.get("name") else ""
+        raise ValueError(
+            f"can't build {type_name}{name_hint}: {e}.{shape_hint} "
+            f"Accepted fields: {accepted}."
+        ) from None
 
 
 def project_from_dict(d: dict[str, Any]) -> Project:
