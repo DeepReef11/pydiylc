@@ -185,6 +185,7 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
                  background: tuple[float, float, float] = (1, 1, 1),
                  show_grid: bool = True,
                  selected_name: str | None = None,
+                 selected_names: "set[str] | list[str] | None" = None,
                  focus_pin: tuple[float, float] | None = None) -> None:
     """Paint a Project onto an existing Cairo context.
 
@@ -192,7 +193,16 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
     transforms before calling. ``scale`` is pixels per inch *at the current
     Cairo transform*; pass 96 for 1:1, or use Cairo's own ``cr.scale(zoom,
     zoom)`` to magnify.
+
+    Pass ``selected_name`` to highlight one component, or
+    ``selected_names`` (a set or list) to highlight several at once. If
+    both are given, the set is used and ``selected_name`` is ignored.
     """
+    selection_set: set[str] = set()
+    if selected_names is not None:
+        selection_set = set(selected_names)
+    elif selected_name is not None:
+        selection_set = {selected_name}
     w_in = project.width_cm / 2.54
     h_in = project.height_cm / 2.54
     w = w_in * scale
@@ -234,7 +244,7 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
                 _draw_fallback(cr, component, scale)
             else:
                 handler(cr, component, scale)
-                if selected_name is not None and getattr(component, "name", None) == selected_name:
+                if selection_set and getattr(component, "name", None) in selection_set:
                     _draw_selection_box(cr, component, scale)
         except Exception:
             # Don't let a bad component blank the canvas

@@ -216,3 +216,182 @@ def test_cli_main_help_returns_2():
     """No args → help is printed and exit code is 2."""
     rc = viewer.main([])
     assert rc == 2
+
+
+# ---------------------------------------------------------------------------
+# Multi-selection
+# ---------------------------------------------------------------------------
+
+
+class _FakeHit:
+    """Minimal stand-in for a component, just needs a 'name' attribute."""
+
+    def __init__(self, name):
+        self.name = name
+
+
+def _state_with(*names):
+    """Build a _ViewerState with components named ``names``."""
+    p = Project()
+    for n in names:
+        p.add(Resistor(name=n, x1=0, y1=0, x2=1, y2=0))
+    return viewer._ViewerState(p, builder=None, watch_path=None)
+
+
+def test_state_starts_with_empty_multi_selection():
+    s = _state_with("R1")
+    assert s.selected_names == set()
+    assert s.selected_name is None
+
+
+def test_plain_click_replaces_selection():
+    s = _state_with("R1", "R2", "R3")
+    s.selected_names = {"R1", "R2"}
+    s.selected_name = "R2"
+    viewer._apply_click_selection(s, _FakeHit("R3"), ctrl=False, shift=False)
+    assert s.selected_names == {"R3"}
+    assert s.selected_name == "R3"
+
+
+def test_ctrl_click_toggles_membership():
+    s = _state_with("R1", "R2")
+    viewer._apply_click_selection(s, _FakeHit("R1"), ctrl=True, shift=False)
+    assert s.selected_names == {"R1"}
+    viewer._apply_click_selection(s, _FakeHit("R2"), ctrl=True, shift=False)
+    assert s.selected_names == {"R1", "R2"}
+    # Toggle off
+    viewer._apply_click_selection(s, _FakeHit("R1"), ctrl=True, shift=False)
+    assert s.selected_names == {"R2"}
+    assert s.selected_name == "R2"
+
+
+def test_shift_click_adds_without_toggling():
+    s = _state_with("R1", "R2")
+    s.selected_names = {"R1"}
+    s.selected_name = "R1"
+    viewer._apply_click_selection(s, _FakeHit("R2"), ctrl=False, shift=True)
+    assert s.selected_names == {"R1", "R2"}
+    # Shift-clicking an already-selected component leaves it selected.
+    viewer._apply_click_selection(s, _FakeHit("R1"), ctrl=False, shift=True)
+    assert s.selected_names == {"R1", "R2"}
+
+
+def test_empty_canvas_click_clears_selection():
+    s = _state_with("R1")
+    s.selected_names = {"R1"}
+    s.selected_name = "R1"
+    viewer._apply_click_selection(s, None, ctrl=False, shift=False)
+    assert s.selected_names == set()
+    assert s.selected_name is None
+
+
+def test_empty_canvas_modifier_click_keeps_selection():
+    """Ctrl/Shift on empty space shouldn't deselect — that would surprise
+    users mid-extend.
+    """
+    s = _state_with("R1", "R2")
+    s.selected_names = {"R1", "R2"}
+    s.selected_name = "R2"
+    viewer._apply_click_selection(s, None, ctrl=True, shift=False)
+    assert s.selected_names == {"R1", "R2"}
+    viewer._apply_click_selection(s, None, ctrl=False, shift=True)
+    assert s.selected_names == {"R1", "R2"}
+
+
+def test_cairo_renderer_accepts_selected_names_set():
+    """draw_project should accept either selected_name (scalar, legacy)
+    or selected_names (set/list) and use the set when both are given.
+    """
+    import inspect
+
+    sig = inspect.signature(cairo_render.draw_project)
+    assert "selected_names" in sig.parameters
+    # Backwards compat with the scalar parameter.
+    assert "selected_name" in sig.parameters
+
+
+def test_status_text_shows_multi_count():
+    """When >1 are selected the status line summarizes the count."""
+    s = _state_with("R1", "R2", "R3")
+    s.selected_names = {"R1", "R2", "R3"}
+    s.selected_name = "R2"
+    text = viewer._status_text(s)
+    assert "3 components" in text
+
+
+def test_status_text_shows_single_name():
+    """When exactly 1 is selected the status line shows the name."""
+    s = _state_with("R1")
+    s.selected_names = {"R1"}
+    s.selected_name = "R1"
+    text = viewer._status_text(s)
+    assert "R1" in text
+
+
+def _tree_mode(state):
+    """Set up the minimal nav+history a _tree_* helper needs.
+
+    Bypasses _enter_tree_mode (which loads Prefs + GTK chrome) so this
+    works without GTK installed. Mirrors the wiring _enter_tree_mode
+    does itself.
+    """
+    from pydiylc.tree_editor import build_tree, NavState
+    from pydiylc.history import History
+
+    state.nav = NavState(build_tree(state.project))
+    state.history = History(state.project)
+    state.tree_mode = True
+
+
+def test_bulk_delete_removes_every_selected_component():
+    """`dd` with N>1 selected drops all selected components in one
+    snapshot.
+    """
+    s = _state_with("R1", "R2", "R3", "R4")
+    _tree_mode(s)
+    s.selected_names = {"R1", "R3"}
+    s.selected_name = "R3"
+    viewer._tree_delete(s)
+    remaining = [c.name for c in s.project.components]
+    assert sorted(remaining) == ["R2", "R4"]
+    # Selection must be cleared once the targets are gone.
+    assert s.selected_names == set()
+    assert s.selected_name is None
+
+
+def test_bulk_delete_single_selection_uses_tree_cursor():
+    """With ≤1 selected, the existing single-target delete path runs —
+    the tree cursor decides which component goes.
+    """
+    s = _state_with("R1", "R2", "R3")
+    _tree_mode(s)
+    # Tree cursor starts at the first component.
+    s.selected_names = set()
+    s.selected_name = None
+    viewer._tree_delete(s)
+    remaining = [c.name for c in s.project.components]
+    assert remaining == ["R2", "R3"]
+
+
+def test_bulk_move_shifts_every_selected_component():
+    """Arrow-style nudge with multi-select moves all selected anchors
+    uniformly.
+    """
+    s = _state_with("R1", "R2", "R3")
+    # Place each at a distinct origin so the deltas are observable.
+    s.project.components[0].x1 = 1.0; s.project.components[0].y1 = 1.0
+    s.project.components[0].x2 = 2.0; s.project.components[0].y2 = 1.0
+    s.project.components[1].x1 = 1.0; s.project.components[1].y1 = 2.0
+    s.project.components[1].x2 = 2.0; s.project.components[1].y2 = 2.0
+    s.project.components[2].x1 = 1.0; s.project.components[2].y1 = 3.0
+    s.project.components[2].x2 = 2.0; s.project.components[2].y2 = 3.0
+    _tree_mode(s)
+    s.selected_names = {"R1", "R3"}
+    s.selected_name = "R3"
+    viewer._tree_move(s, dx=0.5, dy=0.0)
+    # R1 and R3 should have shifted by 0.5; R2 unchanged.
+    assert s.project.components[0].x1 == 1.5
+    assert s.project.components[0].x2 == 2.5
+    assert s.project.components[1].x1 == 1.0   # untouched
+    assert s.project.components[2].x1 == 1.5
+    assert s.project.components[2].x2 == 2.5

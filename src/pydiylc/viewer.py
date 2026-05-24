@@ -290,6 +290,12 @@ class _ViewerState:
         self.zoom: float = 1.0
         self.pan_x: float = 30.0
         self.pan_y: float = 30.0
+        # Multi-selection. `selected_names` is the primary set; everything
+        # the user sees as selected lives here. `selected_name` mirrors the
+        # most-recently-clicked entry so single-target operations (popovers,
+        # status line, tree cursor sync) keep their familiar single-name
+        # interface — bulk operations read `selected_names` directly.
+        self.selected_names: set[str] = set()
         self.selected_name: str | None = None
         self.last_drag_pan: tuple[float, float] | None = None
         # Component-move state. When the user Ctrl+drags, this holds the
@@ -336,7 +342,12 @@ def _status_text(state: _ViewerState) -> str:
     n = len(state.project.components)
     title = state.project.title or "untitled"
     mode = "✎ EDIT  ·  " if state.tree_mode else ""
-    sel = f"  ·  sel: {state.selected_name}" if state.selected_name else ""
+    if len(state.selected_names) > 1:
+        sel = f"  ·  sel: {len(state.selected_names)} components"
+    elif state.selected_name:
+        sel = f"  ·  sel: {state.selected_name}"
+    else:
+        sel = ""
     err = f"  ·  ⚠ {state.error_msg}" if state.error_msg else ""
     chord = "  ·  d… (press d again to delete)" if state.pending_d else ""
     undo = ""
@@ -742,6 +753,8 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("0", "fit page to viewport"),
         ("+/-", "zoom in/out"),
         ("click", "select component"),
+        ("Ctrl+click", "toggle component in/out of multi-selection"),
+        ("Shift+click", "add component to multi-selection"),
         ("right-click", "context menu (Add here, Edit value, …)"),
         ("Ctrl+drag", "drag a component (proposes a source edit on release)"),
     ]),
@@ -767,7 +780,8 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("a", "add a component (auto-wires to focused pin)"),
         ("A", "add a component without auto-wiring"),
         ("D", "duplicate the focused component"),
-        ("dd", "delete the focused component (press d twice)"),
+        ("dd", "delete the focused component (or all multi-selected, press d twice)"),
+        ("arrows (multi-sel)", "nudge every multi-selected component together"),
     ]),
     ("History", [
         ("u / Ctrl+Z", "undo"),
@@ -983,7 +997,7 @@ def _make_draw_func(state: _ViewerState):
             scale=cairo_render.PX_PER_INCH,
             background=state.page_color,
             show_grid=True,
-            selected_name=state.selected_name,
+            selected_names=state.selected_names,
             focus_pin=_focused_pin_position(state) if state.tree_mode else None,
         )
         cr.restore()
@@ -998,21 +1012,60 @@ def _project_xy_from_screen(state: _ViewerState, sx: float, sy: float) -> tuple[
 
 
 def _make_click_handler(state: _ViewerState, canvas):
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gdk
+
     def on_click(gesture, n_press, x, y):
         cx, cy = _project_xy_from_screen(state, x, y)
         hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
-        if hit is not None:
-            state.selected_name = getattr(hit, "name", None)
-            # Sync the tree cursor if tree mode is on.
-            if state.tree_mode and state.nav is not None:
-                idx = state.project.components.index(hit)
-                state.nav.focus_node(idx, None)
-                _refresh_tree_panel(state)
-        else:
-            state.selected_name = None
+        mods = gesture.get_current_event_state()
+        ctrl = bool(mods & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(mods & Gdk.ModifierType.SHIFT_MASK)
+        _apply_click_selection(state, hit, ctrl=ctrl, shift=shift)
+        if hit is not None and state.tree_mode and state.nav is not None:
+            idx = state.project.components.index(hit)
+            state.nav.focus_node(idx, None)
+            _refresh_tree_panel(state)
         canvas.queue_draw()
         _refresh_status(state)
     return on_click
+
+
+def _apply_click_selection(state: _ViewerState, hit, *,
+                           ctrl: bool, shift: bool) -> None:
+    """Update selection state for one click. Pure function over the state
+    so unit tests can exercise the selection logic without GTK.
+
+    - Plain click on a component: replace selection.
+    - Ctrl-click on a component: toggle membership.
+    - Shift-click on a component: add to selection.
+    - Click on empty canvas (no modifier): clear selection.
+    - Click on empty canvas (Ctrl/Shift): leave selection alone.
+    """
+    if hit is None:
+        if not (ctrl or shift):
+            state.selected_names.clear()
+            state.selected_name = None
+        return
+    name = getattr(hit, "name", None)
+    if name is None:
+        return
+    if ctrl:
+        if name in state.selected_names:
+            state.selected_names.discard(name)
+            # If we just removed the focused one, fall back to any remaining.
+            if state.selected_name == name:
+                state.selected_name = next(iter(state.selected_names), None)
+        else:
+            state.selected_names.add(name)
+            state.selected_name = name
+    elif shift:
+        state.selected_names.add(name)
+        state.selected_name = name
+    else:
+        state.selected_names = {name}
+        state.selected_name = name
 
 
 def _make_right_click_handler(state: _ViewerState, canvas):
@@ -1024,9 +1077,14 @@ def _make_right_click_handler(state: _ViewerState, canvas):
     def on_rclick(gesture, n_press, x, y):
         cx, cy = _project_xy_from_screen(state, x, y)
         hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
-        # Select the right-clicked component (and sync tree).
+        # Select the right-clicked component (and sync tree). Right-click
+        # always replaces the selection so the popover targets one part —
+        # bulk operations live on left-click + modifiers.
         if hit is not None:
-            state.selected_name = getattr(hit, "name", None)
+            name = getattr(hit, "name", None)
+            if name is not None:
+                state.selected_names = {name}
+                state.selected_name = name
             if state.tree_mode and state.nav is not None:
                 state.nav.focus_node(state.project.components.index(hit), None)
                 _refresh_tree_panel(state)
@@ -1087,7 +1145,10 @@ def _make_drag_begin(state: _ViewerState):
                 state.moving_component = hit
                 state.moving_orig_anchor = _current_anchor(hit)
                 state.last_drag_delta = (0.0, 0.0)
-                state.selected_name = getattr(hit, "name", None)
+                name = getattr(hit, "name", None)
+                state.selected_name = name
+                if name is not None:
+                    state.selected_names = {name}
                 _refresh_status(state)
                 return
         state.last_drag_pan = (state.pan_x, state.pan_y)
@@ -1662,14 +1723,18 @@ def _exit_tree_mode(state: _ViewerState) -> None:
 
 def _refresh_tree_panel(state: _ViewerState) -> None:
     """Rebuild the listbox rows from nav state and sync canvas selection."""
-    import gi
-    gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk
-
     lb = state.tree_listbox
     nav = state.nav
     if lb is None or nav is None:
+        # Headless callers (tests, scripts) hit this path — bail before
+        # importing gi so the function is usable without GTK.
+        _refresh_status(state)
+        if state.canvas is not None:
+            state.canvas.queue_draw()
         return
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
     # Clear existing rows.
     child = lb.get_first_child()
     while child is not None:
@@ -1709,7 +1774,12 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
     cur = nav.current
     if cur is not None:
         comp = state.project.components[cur.component_index]
-        state.selected_name = getattr(comp, "name", None)
+        name = getattr(comp, "name", None)
+        state.selected_name = name
+        # Tree-mode navigation is a single-cursor model — keep the bulk
+        # set in sync so the canvas highlight matches the tree focus.
+        if name is not None:
+            state.selected_names = {name}
         if state.canvas is not None:
             state.canvas.queue_draw()
     _refresh_status(state)
@@ -1855,7 +1925,10 @@ def _save_buffer(state: _ViewerState) -> None:
 
 
 def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
-    """Apply a literal nudge to the focused component or node."""
+    """Apply a literal nudge to the focused component or node. If a
+    multi-selection (N>1) is active, every selected component's body
+    shifts by (dx, dy) in a single snapshot.
+    """
     from . import moves
     from .edit import MoveOp
     from .graph import control_points_of
@@ -1863,6 +1936,22 @@ def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     nav = state.nav
     if nav is None or nav.current is None:
         return
+
+    # Bulk path: nudge every selected component as a group.
+    if len(state.selected_names) > 1:
+        names = set(state.selected_names)
+        _record(state, f"move {len(names)} components")
+        for ci, comp in enumerate(state.project.components):
+            if getattr(comp, "name", None) in names:
+                moves.move_component(state.project, ci, dx, dy)
+                anchor = _current_anchor(comp)
+                cname = getattr(comp, "name", None)
+                if cname:
+                    _sync_buffer_move(state, MoveOp(cname, anchor[0], anchor[1]))
+        nav.rebuild(state.project)
+        _refresh_tree_panel(state)
+        return
+
     cur = nav.current
     comp = state.project.components[cur.component_index]
     name = getattr(comp, "name", None)
@@ -2046,10 +2135,34 @@ def _open_edit_value_dialog(state: _ViewerState) -> None:
 
 
 def _tree_delete(state: _ViewerState) -> None:
-    """Remove the focused component (dd)."""
+    """Remove the focused component (dd). If a multi-selection is
+    active (N>1), removes every selected component in one snapshot.
+    """
     nav = state.nav
     if nav is None or nav.current is None:
         return
+
+    # Bulk path: multi-select takes precedence over the tree cursor so
+    # the user's visible selection is what gets deleted.
+    if len(state.selected_names) > 1:
+        names = set(state.selected_names)
+        _record(state, f"delete {len(names)} components")
+        # Walk indices in reverse so deletions don't shift remaining ones.
+        for ci in reversed(range(len(state.project.components))):
+            comp = state.project.components[ci]
+            cname = getattr(comp, "name", None)
+            if cname in names:
+                del state.project.components[ci]
+                _sync_buffer_delete(state, cname)
+        state.selected_names.clear()
+        state.selected_name = None
+        nav.rebuild(state.project)
+        nav.clamp_cursor()
+        _refresh_tree_panel(state)
+        if state.canvas is not None:
+            state.canvas.queue_draw()
+        return
+
     ci = nav.current.component_index
     if not (0 <= ci < len(state.project.components)):
         return
@@ -2059,6 +2172,10 @@ def _tree_delete(state: _ViewerState) -> None:
     del state.project.components[ci]
     # Mirror the delete in the working buffer (removes the `p.add(...)` line).
     _sync_buffer_delete(state, name)
+    if name is not None:
+        state.selected_names.discard(name)
+        if state.selected_name == name:
+            state.selected_name = None
     nav.rebuild(state.project)
     nav.clamp_cursor()
     _refresh_tree_panel(state)
