@@ -304,6 +304,13 @@ class _ViewerState:
         self.moving_component = None
         self.moving_orig_anchor: tuple[float, float] | None = None
         self.last_drag_delta: tuple[float, float] = (0.0, 0.0)
+        # Rubber-band select state. When the user left-drags from empty
+        # canvas (no Ctrl), we track the rectangle's start point in pixel
+        # space and the selection that was in place when the drag began,
+        # so Shift/Ctrl modifier rules combine cleanly with the marquee.
+        self.rubber_band: tuple[float, float, float, float] | None = None
+        self.rubber_band_base: set[str] = set()
+        self.rubber_band_mode: str = "replace"  # "replace" | "add" | "toggle"
         # Tree-editor mode.
         self.tree_mode: bool = False
         self.nav = None  # tree_editor.NavState, lazily built
@@ -755,6 +762,8 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("click", "select component"),
         ("Ctrl+click", "toggle component in/out of multi-selection"),
         ("Shift+click", "add component to multi-selection"),
+        ("drag (empty)", "rubber-band rectangle select"),
+        ("Shift+drag (empty)", "rubber-band, add to existing selection"),
         ("right-click", "context menu (Add here, Edit value, …)"),
         ("Ctrl+drag", "drag a component (proposes a source edit on release)"),
     ]),
@@ -1000,6 +1009,22 @@ def _make_draw_func(state: _ViewerState):
             selected_names=state.selected_names,
             focus_pin=_focused_pin_position(state) if state.tree_mode else None,
         )
+        # Rubber-band marquee, drawn in project pixel coords so it sits
+        # inside the same pan/zoom transform as the components.
+        if state.rubber_band is not None:
+            rx1, ry1, rx2, ry2 = state.rubber_band
+            x = min(rx1, rx2); y = min(ry1, ry2)
+            w = abs(rx2 - rx1); h = abs(ry2 - ry1)
+            # Translucent fill.
+            cr.set_source_rgba(0.30, 0.55, 0.95, 0.18)
+            cr.rectangle(x, y, w, h)
+            cr.fill_preserve()
+            # Dashed border.
+            cr.set_source_rgba(0.20, 0.45, 0.90, 0.9)
+            cr.set_line_width(1.0 / state.zoom)
+            cr.set_dash([4.0 / state.zoom, 3.0 / state.zoom])
+            cr.stroke()
+            cr.set_dash([])
         cr.restore()
     return draw
 
@@ -1127,17 +1152,20 @@ def _make_drag_begin(state: _ViewerState):
     from gi.repository import Gdk
 
     def on_begin(gesture, x, y):
-        # Determine the mode based on whether Ctrl is held.
+        # Determine the modifier state.
         device = gesture.get_device()
         seat = device.get_seat() if device else None
         ctrl_held = False
+        shift_held = False
         if seat is not None:
             kbd = seat.get_keyboard()
             if kbd is not None:
-                ctrl_held = bool(kbd.get_modifier_state() & Gdk.ModifierType.CONTROL_MASK)
+                mods = kbd.get_modifier_state()
+                ctrl_held = bool(mods & Gdk.ModifierType.CONTROL_MASK)
+                shift_held = bool(mods & Gdk.ModifierType.SHIFT_MASK)
 
         # If Ctrl is held and a hit is under the cursor, enter move-component
-        # mode. Otherwise plain pan.
+        # mode. Otherwise plain pan or rubber-band.
         if ctrl_held:
             cx, cy = _project_xy_from_screen(state, x, y)
             hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
@@ -1151,6 +1179,24 @@ def _make_drag_begin(state: _ViewerState):
                     state.selected_names = {name}
                 _refresh_status(state)
                 return
+
+        # Rubber-band when the drag starts on empty canvas (no component hit).
+        # If a component IS under the cursor and no modifier is held, fall
+        # through to pan so the user can drag the canvas without first having
+        # to find an empty spot.
+        cx, cy = _project_xy_from_screen(state, x, y)
+        hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
+        if hit is None and not ctrl_held:
+            # Empty canvas + left-drag → rubber-band select. Shift adds
+            # to the existing selection; plain replaces. (Ctrl is taken
+            # by the component-drag flow above.)
+            state.rubber_band = (cx, cy, cx, cy)
+            state.rubber_band_base = set(state.selected_names)
+            state.rubber_band_mode = "add" if shift_held else "replace"
+            state.last_drag_pan = None
+            state.moving_component = None
+            return
+
         state.last_drag_pan = (state.pan_x, state.pan_y)
         state.moving_component = None
     return on_begin
@@ -1175,6 +1221,16 @@ def _make_drag_update(state: _ViewerState, canvas):
                 pass
             canvas.queue_draw()
             return
+        if state.rubber_band is not None:
+            # Update marquee rectangle and recompute selection live.
+            start_x, start_y, _cur_x_prev, _cur_y_prev = state.rubber_band
+            cur_x = start_x + dx / state.zoom
+            cur_y = start_y + dy / state.zoom
+            state.rubber_band = (start_x, start_y, cur_x, cur_y)
+            _apply_rubber_band_selection(state)
+            canvas.queue_draw()
+            _refresh_status(state)
+            return
         if state.last_drag_pan is None:
             return
         state.pan_x = state.last_drag_pan[0] + dx
@@ -1183,8 +1239,41 @@ def _make_drag_update(state: _ViewerState, canvas):
     return on_update
 
 
+def _apply_rubber_band_selection(state: _ViewerState) -> None:
+    """Recompute selected_names from the current rubber-band rectangle.
+
+    Pure-state helper so a unit test can drive it without GTK.
+    """
+    if state.rubber_band is None:
+        return
+    rx1, ry1, rx2, ry2 = state.rubber_band
+    inside = {
+        getattr(c, "name", None)
+        for c in cairo_render.components_in_rect(
+            state.project, rx1, ry1, rx2, ry2, cairo_render.PX_PER_INCH
+        )
+    }
+    inside.discard(None)
+    if state.rubber_band_mode == "add":
+        state.selected_names = state.rubber_band_base | inside
+    else:
+        # "replace" — start from empty + everything inside.
+        state.selected_names = set(inside)
+    # Keep selected_name pointing at something sensible.
+    if state.selected_name not in state.selected_names:
+        state.selected_name = next(iter(state.selected_names), None)
+
+
 def _make_drag_end(state: _ViewerState, canvas):
     def on_end(gesture, dx, dy):
+        # Rubber-band wraps up by clearing the marquee — selection was
+        # already kept in sync during drag-update.
+        if state.rubber_band is not None:
+            state.rubber_band = None
+            state.rubber_band_base = set()
+            canvas.queue_draw()
+            _refresh_status(state)
+            return
         if state.moving_component is None:
             return
         comp = state.moving_component

@@ -398,6 +398,32 @@ def hit_test(project: Project, px: float, py: float, scale: float) -> Component 
     return None
 
 
+def components_in_rect(
+    project: Project,
+    rx1: float, ry1: float, rx2: float, ry2: float,
+    scale: float,
+) -> list[Component]:
+    """Return every component whose bbox overlaps the given pixel rectangle.
+
+    Coordinates are in pixel space at the given ``scale`` (matches
+    ``hit_test``). The rectangle is normalized so callers can pass any
+    two corners in any order. Used by the viewer's rubber-band select.
+    """
+    nx1, nx2 = sorted((rx1, rx2))
+    ny1, ny2 = sorted((ry1, ry2))
+    hits: list[Component] = []
+    for c in project.components:
+        bbox = _component_bbox(c, scale)
+        if bbox is None:
+            continue
+        x1, y1, x2, y2 = bbox
+        # Standard AABB overlap test.
+        if x2 < nx1 or x1 > nx2 or y2 < ny1 or y1 > ny2:
+            continue
+        hits.append(c)
+    return hits
+
+
 # ---------------------------------------------------------------------------
 # Per-component renderers (mirror svg.py shapes)
 # ---------------------------------------------------------------------------

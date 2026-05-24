@@ -373,6 +373,83 @@ def test_bulk_delete_single_selection_uses_tree_cursor():
     assert remaining == ["R2", "R3"]
 
 
+def test_components_in_rect_returns_overlapping_only():
+    """cairo_render.components_in_rect should AABB-overlap all components
+    in the project against the given pixel rectangle.
+    """
+    p = Project()
+    # R1 sits at x in [1.0, 1.5]; R2 at [3.0, 3.5]; R3 at [5.0, 5.5].
+    # All on y=1.0..1.0 (two-point with same y).
+    p.add(Resistor(name="R1", x1=1.0, y1=1.0, x2=1.5, y2=1.0))
+    p.add(Resistor(name="R2", x1=3.0, y1=1.0, x2=3.5, y2=1.0))
+    p.add(Resistor(name="R3", x1=5.0, y1=1.0, x2=5.5, y2=1.0))
+    s = cairo_render.PX_PER_INCH
+    # Rect that covers R1 + R2 only (in pixel space).
+    hits = cairo_render.components_in_rect(
+        p, 0.5 * s, 0.5 * s, 4.0 * s, 1.5 * s, s
+    )
+    names = {c.name for c in hits}
+    assert names == {"R1", "R2"}
+
+
+def test_components_in_rect_normalizes_corner_order():
+    """Passing (x2, y2, x1, y1) should work the same as (x1, y1, x2, y2)."""
+    p = Project()
+    p.add(Resistor(name="R1", x1=1.0, y1=1.0, x2=1.5, y2=1.0))
+    s = cairo_render.PX_PER_INCH
+    a = cairo_render.components_in_rect(p, 0.5 * s, 0.5 * s, 2.0 * s, 1.5 * s, s)
+    b = cairo_render.components_in_rect(p, 2.0 * s, 1.5 * s, 0.5 * s, 0.5 * s, s)
+    assert [c.name for c in a] == [c.name for c in b] == ["R1"]
+
+
+def _place(c, x1, y1, x2, y2):
+    c.x1 = x1; c.y1 = y1; c.x2 = x2; c.y2 = y2
+
+
+def test_rubber_band_replace_mode_overwrites_selection():
+    """A plain (no Shift) marquee replaces any prior selection."""
+    s = _state_with("R1", "R2", "R3")
+    _place(s.project.components[0], 1.0, 1.0, 1.5, 1.0)
+    _place(s.project.components[1], 3.0, 1.0, 3.5, 1.0)
+    _place(s.project.components[2], 5.0, 1.0, 5.5, 1.0)
+    s.selected_names = {"R3"}
+    s.selected_name = "R3"
+    # Set a marquee covering R1 + R2 (in pixel space).
+    px = cairo_render.PX_PER_INCH
+    s.rubber_band = (0.5 * px, 0.5 * px, 4.0 * px, 1.5 * px)
+    s.rubber_band_base = {"R3"}
+    s.rubber_band_mode = "replace"
+    viewer._apply_rubber_band_selection(s)
+    assert s.selected_names == {"R1", "R2"}
+    # selected_name should now point at a member of the new set.
+    assert s.selected_name in s.selected_names
+
+
+def test_rubber_band_add_mode_extends_selection():
+    """A Shift+drag marquee should UNION with the prior selection."""
+    s = _state_with("R1", "R2", "R3")
+    _place(s.project.components[0], 1.0, 1.0, 1.5, 1.0)
+    _place(s.project.components[1], 3.0, 1.0, 3.5, 1.0)
+    _place(s.project.components[2], 5.0, 1.0, 5.5, 1.0)
+    px = cairo_render.PX_PER_INCH
+    s.rubber_band = (0.5 * px, 0.5 * px, 4.0 * px, 1.5 * px)
+    s.rubber_band_base = {"R3"}
+    s.rubber_band_mode = "add"
+    viewer._apply_rubber_band_selection(s)
+    assert s.selected_names == {"R1", "R2", "R3"}
+
+
+def test_rubber_band_empty_rectangle_keeps_base_in_add_mode():
+    """In add-mode a zero-area marquee shouldn't drop the existing selection."""
+    s = _state_with("R1")
+    px = cairo_render.PX_PER_INCH
+    s.rubber_band = (8.0 * px, 8.0 * px, 8.0 * px, 8.0 * px)
+    s.rubber_band_base = {"R1"}
+    s.rubber_band_mode = "add"
+    viewer._apply_rubber_band_selection(s)
+    assert s.selected_names == {"R1"}
+
+
 def test_bulk_move_shifts_every_selected_component():
     """Arrow-style nudge with multi-select moves all selected anchors
     uniformly.
