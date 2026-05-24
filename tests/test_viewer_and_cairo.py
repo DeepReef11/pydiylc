@@ -495,6 +495,72 @@ def test_bulk_duplicate_clones_each_and_promotes_clones():
     assert len(s.selected_names) == 2
 
 
+def test_align_snap_module_snap_to_grid():
+    """align_snap.snap_to_grid rounds each control point to the grid."""
+    from pydiylc import align_snap
+    p = Project()
+    # Off-grid coords.
+    p.add(Resistor(name="R1", x1=1.034, y1=1.0, x2=1.987, y2=1.0))
+    rep = align_snap.snap_to_grid(p, grid=0.1)
+    assert rep["snapped"] >= 1
+    assert p.components[0].x1 == 1.0
+    assert p.components[0].x2 == 2.0
+
+
+def test_align_snap_module_align_y_mean():
+    """align_snap.align('y', 'mean') levels all named components on the
+    mean y of their centroids.
+    """
+    from pydiylc import align_snap
+    p = Project()
+    p.add(Resistor(name="R1", x1=1.0, y1=1.0, x2=2.0, y2=1.0))
+    p.add(Resistor(name="R2", x1=3.0, y1=2.0, x2=4.0, y2=2.0))
+    p.add(Resistor(name="R3", x1=5.0, y1=3.0, x2=6.0, y2=3.0))
+    align_snap.align(p, ["R1", "R2", "R3"], axis="y", mode="mean")
+    # All three should now share y ≈ 2.0 (the centroid).
+    assert abs(p.components[0].y1 - 2.0) < 1e-9
+    assert abs(p.components[1].y1 - 2.0) < 1e-9
+    assert abs(p.components[2].y1 - 2.0) < 1e-9
+
+
+def test_viewer_do_snap_snaps_selection_only():
+    """_do_snap_to_grid with a selection limits the snap to those names."""
+    s = _state_with("R1", "R2")
+    s.project.components[0].x1 = 1.034; s.project.components[0].y1 = 1.0
+    s.project.components[0].x2 = 1.987; s.project.components[0].y2 = 1.0
+    s.project.components[1].x1 = 3.034; s.project.components[1].y1 = 1.0
+    s.project.components[1].x2 = 3.987; s.project.components[1].y2 = 1.0
+    _tree_mode(s)
+    s.selected_names = {"R1"}
+    s.selected_name = "R1"
+    viewer._do_snap_to_grid(s, canvas=None)
+    # R1 was snapped; R2 left alone.
+    assert s.project.components[0].x1 == 1.0
+    assert s.project.components[1].x1 == 3.034
+
+
+def test_viewer_do_snap_with_no_selection_snaps_whole_project():
+    """No selection → snap_to_grid touches every component."""
+    s = _state_with("R1", "R2")
+    s.project.components[0].x1 = 1.034
+    s.project.components[1].x1 = 3.034
+    _tree_mode(s)
+    s.selected_names = set()
+    viewer._do_snap_to_grid(s, canvas=None)
+    assert s.project.components[0].x1 == 1.0
+    assert s.project.components[1].x1 == 3.0
+
+
+def test_viewer_do_align_needs_two_selected():
+    """_do_align reports a friendly error when <2 are selected."""
+    s = _state_with("R1", "R2")
+    _tree_mode(s)
+    s.selected_names = {"R1"}
+    viewer._do_align(s, canvas=None, axis="y", mode="mean")
+    assert s.error_msg is not None
+    assert "2+ selected" in s.error_msg
+
+
 def test_bulk_move_shifts_every_selected_component():
     """Arrow-style nudge with multi-select moves all selected anchors
     uniformly.

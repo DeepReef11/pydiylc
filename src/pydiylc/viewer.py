@@ -773,6 +773,10 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("?", "this help dialog"),
         ("r", "reload from disk"),
     ]),
+    ("Selection cleanup (anywhere)", [
+        ("Ctrl+G", "snap selection to 0.1-in grid (whole project if none selected)"),
+        ("Ctrl+L", "align multi-selection horizontally (y mean)"),
+    ]),
     ("Edit mode — navigation", [
         ("Tab / Shift-Tab", "next / previous component (or nodes once drilled)"),
         ("Space", "drill into / out of the focused component's nodes"),
@@ -2584,8 +2588,65 @@ def _make_key_handler(state: _ViewerState, canvas, win):
         if keyval in (Gdk.KEY_minus, Gdk.KEY_KP_Subtract):
             _zoom_by(state, 1 / 1.2)
             return True
+        # Ctrl+G — snap the current selection (or the whole project if
+        # nothing's selected) to the 0.1 in grid. Available everywhere
+        # so users can clean off-grid coords without entering tree mode.
+        if ctrl and keyval in (Gdk.KEY_g, Gdk.KEY_G):
+            _do_snap_to_grid(state, canvas)
+            return True
+        # Ctrl+L — align the current multi-selection. Defaults to "y +
+        # mean" since the most common LLM/visual cleanup is to level a
+        # row. The user can still call MCP align() for axis/mode control.
+        if ctrl and keyval in (Gdk.KEY_l, Gdk.KEY_L):
+            _do_align(state, canvas, axis="y", mode="mean")
+            return True
         return False
     return on_key
+
+
+def _do_snap_to_grid(state: _ViewerState, canvas) -> None:
+    """Snap selected components (or whole project) to the 0.1 in grid."""
+    from . import align_snap
+
+    names = list(state.selected_names) if state.selected_names else None
+    if state.tree_mode:
+        _record(state, "snap_to_grid")
+    grid = state.project.grid_inches or 0.1
+    rep = align_snap.snap_to_grid(state.project, names=names, grid=grid)
+    state.error_msg = f"snapped {rep['snapped']} pin(s)" if rep["snapped"] else "nothing to snap"
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+    _refresh_tree_panel(state)
+    if canvas is not None:
+        canvas.queue_draw()
+    _refresh_status(state)
+
+
+def _do_align(state: _ViewerState, canvas, axis: str, mode: str) -> None:
+    """Align multi-selection on an axis (default y/mean)."""
+    from . import align_snap
+
+    if len(state.selected_names) < 2:
+        state.error_msg = "align needs 2+ selected (Ctrl/Shift-click to pick more)"
+        _refresh_status(state)
+        return
+    if state.tree_mode:
+        _record(state, f"align {axis}/{mode}")
+    try:
+        rep = align_snap.align(
+            state.project, list(state.selected_names), axis=axis, mode=mode
+        )
+    except ValueError as exc:
+        state.error_msg = f"align: {exc}"
+        _refresh_status(state)
+        return
+    state.error_msg = f"aligned {rep['aligned']} component(s) on {axis}"
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+    _refresh_tree_panel(state)
+    if canvas is not None:
+        canvas.queue_draw()
+    _refresh_status(state)
 
 
 def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: bool) -> bool:

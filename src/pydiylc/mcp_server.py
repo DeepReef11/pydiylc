@@ -941,22 +941,22 @@ def build_server():
             return {"snapped": 0, "components": []}
 
         _record_history(project_id, f"snap_to_grid ({grid} in)")
-        touched_indices: set[int] = set()
-        for (idx, pi, _ox, _oy, nx, ny) in plan:
-            from . import moves as _m
-            cur = control_points_of(p.components[idx], idx)
-            cp = next((x for x in cur if x.point_index == pi), None)
-            if cp is None:
-                continue
-            dx, dy = nx - cp.x, ny - cp.y
-            if abs(dx) > 1e-9 or abs(dy) > 1e-9:
-                _m.move_node(p, idx, pi, dx, dy)
-                touched_indices.add(idx)
+        # Delegate to the shared helper. The viewer uses it too.
+        from . import align_snap
+        target_names = (
+            None if name is None
+            else [getattr(p.components[i], "name", None) for i in indices]
+        )
+        rep = align_snap.snap_to_grid(p, names=target_names, grid=grid)
+        touched_indices = [
+            i for i, c in enumerate(p.components)
+            if getattr(c, "name", None) in (rep.get("components") or [])
+        ]
         return {
-            "snapped": len(plan),
+            "snapped": rep["snapped"],
             "components": [
                 _component_summary(p.components[i], i)
-                for i in sorted(touched_indices)
+                for i in touched_indices
             ],
         }
 
@@ -1039,13 +1039,16 @@ def build_server():
             return {"aligned": 0, "components": []}
 
         _record_history(project_id, f"align {axis} ({mode})")
-        for (i, d) in plan:
-            dx, dy = (d, 0.0) if axis == "x" else (0.0, d)
-            _m.move_component(p, i, dx, dy)
+        from . import align_snap
+        rep = align_snap.align(p, list(names), axis=axis, mode=mode)
+        touched = [
+            i for i, c in enumerate(p.components)
+            if getattr(c, "name", None) in (rep.get("components") or [])
+        ]
         return {
-            "aligned": len(plan),
+            "aligned": rep["aligned"],
             "components": [
-                _component_summary(p.components[i], i) for (i, _d) in plan
+                _component_summary(p.components[i], i) for i in touched
             ],
         }
 
