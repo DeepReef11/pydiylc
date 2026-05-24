@@ -123,12 +123,29 @@ def component_from_dict(d: dict[str, Any]) -> Component:
     try:
         return cls(**kwargs)
     except TypeError as e:
-        # Likely shape mismatch (single-anchor vs two-point). Tell the LLM
-        # which fields the class actually accepts so it can self-correct.
+        # Likely shape mismatch (single-anchor vs two-point) or a single
+        # misnamed field. Tell the LLM what's accepted and suggest the
+        # closest match for the offending field.
         import dataclasses
+        import difflib
+        import re
         accepted = sorted(f.name for f in dataclasses.fields(cls))
         passed = sorted(kwargs)
-        # Hint about the most common confusion: x/y vs x1/y1/x2/y2.
+        # Pick out the unexpected argument from the TypeError message.
+        bad_field_match = re.search(
+            r"unexpected keyword argument '([^']+)'", str(e)
+        )
+        field_hint = ""
+        if bad_field_match:
+            bad = bad_field_match.group(1)
+            suggestions = difflib.get_close_matches(
+                bad, accepted, n=3, cutoff=0.5
+            )
+            if suggestions:
+                field_hint = (
+                    f" Did you mean {', '.join(repr(s) for s in suggestions)}?"
+                )
+        # Hint about the most common shape confusion: x/y vs x1/y1/x2/y2.
         wants_xy = {"x", "y"}.issubset(accepted)
         wants_x1y1 = {"x1", "y1", "x2", "y2"}.issubset(accepted)
         shape_hint = ""
@@ -144,8 +161,8 @@ def component_from_dict(d: dict[str, Any]) -> Component:
             )
         name_hint = f" (name={kwargs.get('name')!r})" if kwargs.get("name") else ""
         raise ValueError(
-            f"can't build {type_name}{name_hint}: {e}.{shape_hint} "
-            f"Accepted fields: {accepted}."
+            f"can't build {type_name}{name_hint}: {e}.{field_hint}"
+            f"{shape_hint} Accepted fields: {accepted}."
         ) from None
 
 

@@ -1584,6 +1584,138 @@ def test_end_to_end_strat_guitar_wiring(mcp_fixture, tmp_path):
     assert svg_res["content"] == svg_res["svg"]
 
 
+def test_end_to_end_tube_amp_psu(mcp_fixture, tmp_path):
+    """Seventh real-world stress test: tube-amp power supply.
+    Sibling to the LPB-1, Champ, Big Muff, feedback-amp,
+    two-channel-amp, and Strat tests.
+
+    Probes the power-supply domain (AC inlet -> rectifier ->
+    multi-stage filter chain -> DC out), exercising components no
+    prior test wired end-to-end:
+    - ElectrolyticCanCapacitor (3 pins, multi-section)
+    - PlasticDCJack (3 pins, refactored last round)
+    - BridgeRectifier (4 pins: +, ~, ~, -)
+    - IECSocket (3 pins: L/N/E)
+    - FuseHolderPanel (2 pins)
+    - AudioTransformer used as a power transformer
+
+    Specifically catches:
+    - 'value' (singular) on ElectrolyticCanCapacitor must surface a
+      'Did you mean values?' hint — the field is plural because the
+      cap holds multiple sections.
+    """
+    pid = "psu"
+    _call(mcp_fixture, "create_project", {
+        "project_id": pid, "title": "Tube amp PSU",
+        "width_cm": 30, "height_cm": 18,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": pid,
+        "components": [
+            {"_type": "IECSocket", "name": "AC_in",
+             "x": 1.0, "y": 2.0},
+            {"_type": "FuseHolderPanel", "name": "F1",
+             "x": 3.5, "y": 2.0, "value": "1A SB"},
+            {"type": "AudioTransformer", "name": "PT",
+             "x": 6.0, "y": 2.0, "value": "Hammond 269BX"},
+            {"type": "BridgeRectifier", "name": "BR1",
+             "x": 11.0, "y": 4.0, "value": "GBPC2502"},
+            {"_type": "ElectrolyticCanCapacitor", "name": "C_can",
+             "x": 13.0, "y": 6.0,
+             "values": ["40uF", "40uF", "40uF", "40uF"]},
+            {"type": "RadialElectrolytic", "name": "C2",
+             "x1": 18.0, "y1": 6.0, "x2": 18.0, "y2": 8.0,
+             "value": "22uF"},
+            {"type": "RadialElectrolytic", "name": "C3",
+             "x1": 22.0, "y1": 6.0, "x2": 22.0, "y2": 8.0,
+             "value": "22uF"},
+            {"type": "Resistor", "name": "R_drop1",
+             "x1": 16.0, "y1": 6.0, "x2": 17.0, "y2": 6.0,
+             "value": "10K"},
+            {"type": "Resistor", "name": "R_drop2",
+             "x1": 20.0, "y1": 6.0, "x2": 21.0, "y2": 6.0,
+             "value": "10K"},
+            {"type": "Resistor", "name": "R_bleed",
+             "x1": 13.0, "y1": 8.0, "x2": 13.0, "y2": 10.0,
+             "value": "220K"},
+            {"_type": "PlasticDCJack", "name": "DC_out",
+             "x": 26.0, "y": 6.0, "value": "B+ tap"},
+            {"_type": "GroundSymbol", "name": "GND",
+             "x": 13.0, "y": 12.0, "type": "DEFAULT"},
+        ],
+    })
+    assert res["errors"] == [], f"batch errors: {res['errors']}"
+    assert res["added"] == 12
+
+    # Lock in pin counts for the PSU-specific components.
+    expected_pins = {
+        "AC_in":   3,  # IECSocket: L / N / Earth
+        "F1":      2,  # FuseHolderPanel
+        "PT":      6,  # AudioTransformer
+        "BR1":     4,  # +, ~, ~, -
+        "C_can":   3,  # multi-section can cap
+        "DC_out":  3,  # PlasticDCJack
+    }
+    for name, want in expected_pins.items():
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": pid, "name": name})
+        assert len(pins) == want, (
+            f"{name}: expected {want} pins, got {len(pins)}"
+        )
+
+    wires = [
+        ("AC_in", "F1"), ("F1", "PT"), ("PT", "BR1"), ("PT", "GND"),
+        ("BR1", "C_can"), ("BR1", "GND"),
+        ("C_can", "R_drop1"), ("R_drop1", "C2"),
+        ("C2", "R_drop2"), ("R_drop2", "C3"),
+        ("C3", "DC_out"),
+        ("C_can", "R_bleed"), ("R_bleed", "GND"),
+        ("C2", "GND"), ("C3", "GND"), ("DC_out", "GND"),
+    ]
+    can_pins: set[int] = set()
+    for src, dst in wires:
+        r = _call(mcp_fixture, "connect", {
+            "project_id": pid, "from_name": src, "to_name": dst,
+        })
+        if r["from"]["name"] == "C_can":
+            can_pins.add(r["from"]["pin"])
+        if r["to"]["name"] == "C_can":
+            can_pins.add(r["to"]["pin"])
+
+    # The can cap is multi-section; with this many wires touching it,
+    # at least 2 of its 3 pins should see action.
+    assert len(can_pins) >= 2, f"C_can wires collapsed: {can_pins}"
+
+    rep = _call(mcp_fixture, "validate", {"project_id": pid})
+    assert rep["ok"], f"validate errors: {rep['errors']}"
+
+    out = tmp_path / "psu.diy"
+    _call(mcp_fixture, "save", {"project_id": pid, "path": str(out)})
+    rr = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{pid}_rt", "path": str(out),
+    })
+    assert rr["warnings"] == []
+    assert rr["components"] == 12 + len(wires)
+
+
+def test_misspelled_field_suggests_correct_name(mcp_fixture):
+    """If an LLM passes 'value' to a component whose field is 'values',
+    the error must say 'Did you mean values?' — not just the raw
+    'unexpected keyword argument' message.
+    """
+    _call(mcp_fixture, "create_project",
+          {"project_id": "p", "width_cm": 10, "height_cm": 8})
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": "p",
+        "components": [{"_type": "ElectrolyticCanCapacitor", "name": "C",
+                        "x": 1.0, "y": 1.0, "value": "20uF"}],
+    })
+    assert res["added"] == 0
+    err = res["errors"][0]["error"]
+    assert "Did you mean" in err
+    assert "values" in err
+
+
 def test_save_returns_xml_under_both_keys(mcp_fixture):
     """save(return_content=True) populates both 'content' (generic) and
     'xml' (descriptive). Regression for an LLM guessing the descriptive
