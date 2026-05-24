@@ -1354,6 +1354,149 @@ def test_wrong_coord_shape_lists_accepted_fields(mcp_fixture):
     assert "Accepted fields" in err
 
 
+def test_end_to_end_two_channel_amp_with_switching(mcp_fixture, tmp_path):
+    """Fifth real-world stress test: two-channel amp with bypass and
+    channel switching. Sibling to the LPB-1, Champ, Big Muff, and
+    feedback-amp tests.
+
+    Specifically catches a class of regressions where single-anchor
+    components with multi-pin layouts report only 1 pin via get_pins
+    because their pts list is inline in to_xml() instead of in
+    _control_points(). 21 components were affected before this round —
+    every jack class, several transistor packages, multi-section
+    capacitors, pickups, etc. The assertions below pin the pin count
+    of one representative from each family.
+    """
+    pid = "two_ch"
+    _call(mcp_fixture, "create_project", {
+        "project_id": pid, "title": "Two-channel amp",
+        "width_cm": 40, "height_cm": 25,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": pid,
+        "components": [
+            # STEREO jack has the auto-grounding switched contact.
+            {"_type": "ClosedJack1_4", "name": "J_in",
+             "x": 0.5, "y": 5.0, "type": "STEREO"},
+            {"_type": "CliffJack1_4", "name": "J_out",
+             "x": 30.0, "y": 5.0, "type": "MONO"},
+            {"_type": "TriodeSymbol", "name": "V1_clean",
+             "x": 5.0, "y": 5.0, "value": "12AX7"},
+            {"_type": "TriodeSymbol", "name": "V1_lead",
+             "x": 5.0, "y": 12.0, "value": "12AX7"},
+            {"_type": "PentodeSymbol", "name": "V2",
+             "x": 20.0, "y": 8.0, "value": "EL84"},
+            {"_type": "MiniToggleSwitch", "name": "SW_bypass",
+             "x": 35.0, "y": 1.0, "switch_type": "_3PDT"},
+            {"_type": "LeverSwitch", "name": "SW_chan",
+             "x": 35.0, "y": 10.0, "type": "DP3T"},
+            {"_type": "MiniRelay", "name": "K1",
+             "x": 15.0, "y": 15.0, "value": "12V"},
+            {"_type": "GroundSymbol", "name": "G1",
+             "x": 5.0, "y": 22.0, "type": "DEFAULT"},
+            {"_type": "GroundSymbol", "name": "G2",
+             "x": 20.0, "y": 22.0, "type": "TRIANGLE"},
+        ],
+    })
+    assert res["errors"] == []
+    assert res["added"] == 10
+
+    # Lock in the pin counts that were silently broken before the
+    # _control_points refactor.
+    expected_pins = {
+        "J_in":      3,   # ClosedJack1_4 STEREO: tip, sleeve, ring
+        "J_out":     5,   # CliffJack1_4
+        "V1_clean":  5,   # TriodeSymbol
+        "V2":        7,   # PentodeSymbol
+        "SW_bypass": 9,   # 3PDT toggle
+        "SW_chan":   8,   # DP3T lever switch
+        "K1":        8,   # MiniRelay
+    }
+    for name, want in expected_pins.items():
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": pid, "name": name})
+        assert len(pins) == want, (
+            f"{name}: expected {want} pins, got {len(pins)}"
+        )
+
+    # Wire a representative subset — exercises connect across multi-pin
+    # components that the bug would have broken.
+    for src, dst in [
+        ("J_in", "V1_clean"),
+        ("V1_clean", "SW_chan"),
+        ("V1_lead", "SW_chan"),
+        ("SW_chan", "V2"),
+        ("V2", "J_out"),
+        ("J_in", "G1"),     # auto-ground via the switched ring
+        ("V2", "G2"),
+    ]:
+        _call(mcp_fixture, "connect", {
+            "project_id": pid, "from_name": src, "to_name": dst,
+        })
+
+    rep = _call(mcp_fixture, "validate", {"project_id": pid})
+    assert rep["ok"], f"validate errors: {rep['errors']}"
+
+    out = tmp_path / "twoch.diy"
+    _call(mcp_fixture, "save", {"project_id": pid, "path": str(out)})
+    rr = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{pid}_rt", "path": str(out),
+    })
+    assert rr["warnings"] == []
+    assert rr["components"] == 10 + 7  # components + wires
+
+
+def test_single_anchor_components_expose_all_pins(mcp_fixture):
+    """Pin every affected class so any future inline-pts regression
+    surfaces immediately. Each entry is (component_dict, expected_count).
+    """
+    cases = [
+        # 5 pins
+        ({"_type": "CliffJack1_4", "name": "J1",
+          "x": 1.0, "y": 1.0, "type": "MONO"}, 5),
+        # 3 pins (STEREO has the switched ring)
+        ({"_type": "ClosedJack1_4", "name": "J2",
+          "x": 1.0, "y": 2.0, "type": "STEREO"}, 3),
+        # 2 pins (MONO)
+        ({"_type": "ClosedJack1_4", "name": "J3",
+          "x": 1.0, "y": 3.0, "type": "MONO"}, 2),
+        # OpenJack1_4 — 3 pins (tip / sleeve / switched ring).
+        ({"_type": "OpenJack1_4", "name": "J4",
+          "x": 1.0, "y": 4.0, "type": "STEREO"}, 3),
+        # NeutrikJack1_4 — 4 contacts (tip / ring / sleeve / mounting).
+        ({"_type": "NeutrikJack1_4", "name": "J5",
+          "x": 1.0, "y": 5.0}, 4),
+        # PlasticDCJack — 3-contact barrel jack
+        ({"_type": "PlasticDCJack", "name": "J6",
+          "x": 1.0, "y": 6.0}, 3),
+        # RCAJack — 2 pins.
+        ({"_type": "RCAJack", "name": "J7",
+          "x": 1.0, "y": 7.0}, 2),
+        # 3-pin transistor packages
+        ({"_type": "TransistorTO220", "name": "Q1",
+          "x": 1.0, "y": 8.0}, 3),
+        ({"_type": "TransistorTO126", "name": "Q2",
+          "x": 1.0, "y": 9.0}, 3),
+        ({"_type": "TransistorTO1", "name": "Q3",
+          "x": 1.0, "y": 10.0}, 3),
+        ({"_type": "SMDResistor", "name": "RS",
+          "x": 1.0, "y": 11.0}, 2),
+        ({"_type": "SMDCapacitor", "name": "CS",
+          "x": 1.0, "y": 12.0}, 2),
+    ]
+    _call(mcp_fixture, "create_project",
+          {"project_id": "p", "width_cm": 20, "height_cm": 20})
+    for cdict, _ in cases:
+        _call(mcp_fixture, "add_component",
+              {"project_id": "p", "component": cdict})
+    for cdict, want in cases:
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": "p", "name": cdict["name"]})
+        assert len(pins) == want, (
+            f"{cdict['_type']}: expected {want} pins, got {len(pins)}"
+        )
+
+
 def test_stats(mcp_fixture):
     """stats summarizes counts + bbox."""
     _call(mcp_fixture, "create_project", {"project_id": "st",

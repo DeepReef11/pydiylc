@@ -2434,15 +2434,18 @@ class PlasticDCJack(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # DIYLC stores 3 control points (tip, sleeve, switch) relative to anchor.
         # 0.1 in offsets approximate a typical Boss-style jack footprint.
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x + 0.1, self.y + 0.1),
             (self.x - 0.1, self.y + 0.2),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.PlasticDCJack>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -2484,14 +2487,17 @@ class OpenJack1_4(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # 3 control points: tip, sleeve, (ring/switch). Use 0.1 in offsets.
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x, self.y + 0.1),
             (self.x, self.y + 0.2),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.OpenJack1_4>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -2911,17 +2917,20 @@ class CliffJack1_4(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # Five control points: tip / ring / sleeve / nut / mounting (rough
         # 0.1-in offsets; DIYLC's editor places them precisely).
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x, self.y + 0.1),
             (self.x, self.y + 0.2),
             (self.x + 0.3, self.y + 0.1),
             (self.x + 0.3, self.y + 0.2),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.CliffJack1_4>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -2966,14 +2975,16 @@ class ClosedJack1_4(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # MONO: 2 contacts (tip, sleeve). STEREO/SWITCHED: 3 (+ ring).
         if self.type == "MONO":
-            pts: list[Point] = [(self.x, self.y), (self.x, self.y + 0.8)]
-        else:
-            pts = [(self.x, self.y), (self.x, self.y + 0.8),
-                   (self.x - 0.2, self.y)]
+            return [(self.x, self.y), (self.x, self.y + 0.8)]
+        return [(self.x, self.y), (self.x, self.y + 0.8),
+                (self.x - 0.2, self.y)]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.ClosedJack1_4>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3008,9 +3019,12 @@ class RCAJack(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        return [(self.x, self.y), (self.x, self.y + 0.5)]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [(self.x, self.y), (self.x, self.y + 0.5)]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.RCAJack>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3230,13 +3244,16 @@ class TagStrip(Component):
         if self.terminal_count < 1:
             raise ValueError("TagStrip needs at least 1 terminal")
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # Layout the terminals along the +Y direction at the configured spacing.
         spacing_in = self.terminal_spacing.to_inches()
-        pts: list[Point] = [
+        return [
             (self.x, self.y + i * spacing_in) for i in range(self.terminal_count)
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.boards.TagStrip>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3275,16 +3292,19 @@ class PilotLampHolder(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # 4 control points: lamp center + base + 2 wire-attachment offsets.
         s = 0.1
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x + 0.32, self.y + 0.16),
             (self.x, self.y + s),
             (self.x + 0.24, self.y + 0.22),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.PilotLampHolder>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3328,10 +3348,13 @@ class MultiSectionCapacitor(Component):
         if not self.values:
             raise ValueError("MultiSectionCapacitor needs at least 1 section")
 
+    def _control_points(self) -> list[Point]:
+        # One control point per section along +Y; first point is anchor.
+        return [(self.x, self.y + i * 0.2) for i in range(len(self.values))]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        # One control point per section along +Y; first point is anchor.
-        pts: list[Point] = [(self.x, self.y + i * 0.2) for i in range(len(self.values))]
+        pts = self._control_points()
         # Emit each section as a Capacitance measure. DIYLC wraps them in a
         # <value> block; we follow the same structure.
         sections = []
@@ -3433,9 +3456,12 @@ class FuseHolderPanel(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        return [(self.x, self.y), (self.x, self.y + 0.2)]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [(self.x, self.y), (self.x, self.y + 0.2)]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.FuseHolderPanel>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3591,11 +3617,14 @@ class SIL_IC(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         n = int(self.pin_count.lstrip("_"))
         ps = self.pin_spacing.to_inches()
-        pts: list[Point] = [(self.x + i * ps, self.y) for i in range(n)]
+        return [(self.x + i * ps, self.y) for i in range(n)]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.SIL_IC>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3682,14 +3711,17 @@ class TransistorTO1(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        pts: list[Point] = [
+        return [
             (self.x,      self.y),
             (self.x - ps, self.y + ps),
             (self.x,      self.y + 2 * ps),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.TransistorTO1>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3743,14 +3775,17 @@ class TransistorTO220(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x, self.y + ps),
             (self.x, self.y + 2 * ps),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.TransistorTO220>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -3794,13 +3829,16 @@ class IECSocket(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
-        pts: list[Point] = [
+    def _control_points(self) -> list[Point]:
+        return [
             (self.x,        self.y),
             (self.x - 0.3,  self.y + 0.2),
             (self.x + 0.3,  self.y + 0.2),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.IECSocket>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4327,10 +4365,13 @@ class JazzBassPickup(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        # 4 pole pieces along +Y.
+        return [(self.x, self.y + i * 0.1) for i in range(4)]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        # 4 pole pieces along +Y.
-        pts: list[Point] = [(self.x, self.y + i * 0.1) for i in range(4)]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.guitar.JazzBassPickup>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4374,9 +4415,12 @@ class PBassPickup(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
+    def _control_points(self) -> list[Point]:
+        return [(self.x, self.y + i * 0.1) for i in range(4)]
+
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts: list[Point] = [(self.x, self.y + i * 0.1) for i in range(4)]
+        pts = self._control_points()
         return (
             f"{pad}<diylc.guitar.PBassPickup>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4466,15 +4510,18 @@ class LPSwitch(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # 4 control points: tip + 3 lugs.
-        pts: list[Point] = [
+        return [
             (self.x,       self.y),
             (self.x - 0.2, self.y + 1.3),
             (self.x,       self.y + 1.3),
             (self.x + 0.2, self.y + 1.3),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.guitar.LPSwitch>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -4703,14 +4750,17 @@ class ElectrolyticCanCapacitor(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # 3 control points (top, side, bottom).
-        pts: list[Point] = [
+        return [
             (self.x,       self.y),
             (self.x - 1.0, self.y + 1.0),
             (self.x,       self.y + 2.0),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.passive.ElectrolyticCanCapacitor>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -5014,14 +5064,17 @@ class NeutrikJack1_4(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
-        pts: list[Point] = [
+    def _control_points(self) -> list[Point]:
+        return [
             (self.x,            self.y),
             (self.x + 0.635,    self.y),
             (self.x,            self.y - 0.5),
             (self.x + 0.635,    self.y - 0.5),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.electromechanical.NeutrikJack1_4>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -5068,14 +5121,17 @@ class TransistorTO126(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        pts: list[Point] = [
+        return [
             (self.x, self.y),
             (self.x, self.y + ps),
             (self.x, self.y + 2 * ps),
         ]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.semiconductors.TransistorTO126>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -5164,12 +5220,15 @@ class SMDResistor(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         # 1206 ≈ 0.12 × 0.06 in. Two pad endpoints along +X.
         sz = float(self.size.lstrip("_"))
         len_in = sz / 1000
-        pts: list[Point] = [(self.x, self.y), (self.x + len_in, self.y)]
+        return [(self.x, self.y), (self.x + len_in, self.y)]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.smd.SMDResistor>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -5215,11 +5274,14 @@ class SMDCapacitor(Component):
     def __post_init__(self) -> None:
         self._validate_enums()
 
-    def to_xml(self, indent: int = 4) -> str:
-        pad = _indent(indent)
+    def _control_points(self) -> list[Point]:
         sz = float(self.size.lstrip("_"))
         len_in = sz / 1000
-        pts: list[Point] = [(self.x, self.y), (self.x + len_in, self.y)]
+        return [(self.x, self.y), (self.x + len_in, self.y)]
+
+    def to_xml(self, indent: int = 4) -> str:
+        pad = _indent(indent)
+        pts = self._control_points()
         return (
             f"{pad}<diylc.smd.SMDCapacitor>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
