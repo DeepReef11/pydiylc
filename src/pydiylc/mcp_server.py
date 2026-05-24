@@ -1243,12 +1243,17 @@ def build_server():
 
         ``path`` writes to disk and returns the resolved path. Omit
         ``path`` and set ``return_content=True`` to skip disk I/O entirely
-        and get the XML as a string — useful for sandboxed chat UIs.
+        and get the XML inline. The XML appears under both ``content``
+        (generic) and ``xml`` (descriptive) keys.
         """
         p = _get(project_id)
         if return_content or path is None:
+            xml = p.to_xml()
+            # Both keys present so callers expecting either still work:
+            # 'content' (the documented generic key) and 'xml' (descriptive).
             return {
-                "content": p.to_xml(),
+                "content": xml,
+                "xml": xml,
                 "components": len(p.components),
             }
         out = p.save(path)
@@ -1265,15 +1270,16 @@ def build_server():
 
         Default behavior writes the SVG to ``path`` and returns the
         resolved path. With ``return_content=True`` (or no ``path``) the
-        SVG markup is returned inline as ``content`` — chat-friendly,
-        no filesystem access needed.
+        SVG markup is returned inline under both ``content`` (generic)
+        and ``svg`` (descriptive) keys — chat-friendly, no filesystem
+        access needed.
         """
         from .svg import render_svg as _render_svg, RenderOptions
 
         p = _get(project_id)
         svg_text = _render_svg(p, RenderOptions(px_per_inch=dpi))
         if return_content or path is None:
-            return {"content": svg_text}
+            return {"content": svg_text, "svg": svg_text}
         out = Path(path)
         out.write_text(svg_text, encoding="utf-8")
         return {"path": str(out.resolve())}

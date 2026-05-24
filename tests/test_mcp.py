@@ -1446,6 +1446,162 @@ def test_end_to_end_two_channel_amp_with_switching(mcp_fixture, tmp_path):
     assert rr["components"] == 10 + 7  # components + wires
 
 
+def test_end_to_end_strat_guitar_wiring(mcp_fixture, tmp_path):
+    """Sixth real-world stress test: Stratocaster-style guitar wiring.
+    Sibling to the LPB-1, Champ, Big Muff, feedback-amp, and
+    two-channel-amp tests.
+
+    Probes a domain (guitar wiring) the prior tests never reached:
+    - Single-anchor pickups (SingleCoilPickup has just 1 control point)
+      connecting outward through nearby SolderPads.
+    - LeverSwitch in its DP3T_5pos form (10 lugs — the original
+      Strat 5-way selector).
+    - Three pots in a row with a tone cap.
+    - render_svg(return_content=True) returns SVG markup under both
+      'content' (generic) and 'svg' (descriptive) keys so a caller
+      guessing either gets the payload.
+    """
+    pid = "strat"
+    _call(mcp_fixture, "create_project", {
+        "project_id": pid, "title": "Strat-style wiring",
+        "width_cm": 30, "height_cm": 20,
+    })
+    res = _call(mcp_fixture, "add_components", {
+        "project_id": pid,
+        "components": [
+            {"_type": "SingleCoilPickup", "name": "PU_neck",
+             "x": 2.0, "y": 4.0, "type": "Stratocaster"},
+            {"_type": "SingleCoilPickup", "name": "PU_mid",
+             "x": 2.0, "y": 8.0, "type": "Stratocaster"},
+            {"_type": "SingleCoilPickup", "name": "PU_bridge",
+             "x": 2.0, "y": 12.0, "type": "Stratocaster"},
+
+            # Pickup terminations
+            {"type": "SolderPad", "name": "Pad_neck_hot",
+             "x": 3.0, "y": 3.5},
+            {"type": "SolderPad", "name": "Pad_neck_gnd",
+             "x": 3.0, "y": 4.5},
+            {"type": "SolderPad", "name": "Pad_mid_hot",
+             "x": 3.0, "y": 7.5},
+            {"type": "SolderPad", "name": "Pad_mid_gnd",
+             "x": 3.0, "y": 8.5},
+            {"type": "SolderPad", "name": "Pad_bridge_hot",
+             "x": 3.0, "y": 11.5},
+            {"type": "SolderPad", "name": "Pad_bridge_gnd",
+             "x": 3.0, "y": 12.5},
+
+            {"_type": "LeverSwitch", "name": "SW",
+             "x": 8.0, "y": 8.0, "type": "DP3T_5pos"},
+
+            {"type": "PotentiometerPanel", "name": "VOL",
+             "x": 14.0, "y": 4.0, "resistance": "250K",
+             "taper": "LOG"},
+            {"type": "PotentiometerPanel", "name": "TONE_neck",
+             "x": 14.0, "y": 8.0, "resistance": "250K",
+             "taper": "LIN"},
+            {"type": "PotentiometerPanel", "name": "TONE_bridge",
+             "x": 14.0, "y": 12.0, "resistance": "250K",
+             "taper": "LIN"},
+
+            {"type": "RadialCeramicDiskCapacitor", "name": "C_tone",
+             "x1": 16.0, "y1": 8.5, "x2": 17.0, "y2": 8.5,
+             "value": "22nF"},
+            {"_type": "OpenJack1_4", "name": "J_out",
+             "x": 25.0, "y": 8.0, "type": "MONO"},
+            {"_type": "GroundSymbol", "name": "GND",
+             "x": 20.0, "y": 18.0, "type": "DEFAULT"},
+        ],
+    })
+    assert res["errors"] == [], f"batch errors: {res['errors']}"
+    assert res["added"] == 16
+
+    # Lock in pin counts on the guitar-specific multi-pin components.
+    expected_pins = {
+        "PU_neck":     1,   # SingleCoilPickup is single-anchor by design
+        "SW":         10,   # DP3T_5pos lever switch
+        "VOL":         3,   # 3-lug pot
+        "J_out":       3,   # OpenJack1_4 (refactored last round)
+    }
+    for name, want in expected_pins.items():
+        pins = _call(mcp_fixture, "get_pins",
+                     {"project_id": pid, "name": name})
+        assert len(pins) == want, (
+            f"{name}: expected {want} pins, got {len(pins)}"
+        )
+
+    wires = [
+        ("PU_neck",   "Pad_neck_hot"),
+        ("PU_neck",   "Pad_neck_gnd"),
+        ("PU_mid",    "Pad_mid_hot"),
+        ("PU_mid",    "Pad_mid_gnd"),
+        ("PU_bridge", "Pad_bridge_hot"),
+        ("PU_bridge", "Pad_bridge_gnd"),
+        ("Pad_neck_hot",   "SW"),
+        ("Pad_mid_hot",    "SW"),
+        ("Pad_bridge_hot", "SW"),
+        ("SW", "VOL"),
+        ("VOL", "J_out"),
+        ("VOL", "TONE_neck"),
+        ("TONE_neck", "C_tone"),
+        ("C_tone", "GND"),
+        ("Pad_neck_gnd",   "GND"),
+        ("Pad_mid_gnd",    "GND"),
+        ("Pad_bridge_gnd", "GND"),
+        ("J_out",          "GND"),
+    ]
+    sw_lugs: set[int] = set()
+    for src, dst in wires:
+        r = _call(mcp_fixture, "connect", {
+            "project_id": pid, "from_name": src, "to_name": dst,
+        })
+        if r["from"]["name"] == "SW":
+            sw_lugs.add(r["from"]["pin"])
+        if r["to"]["name"] == "SW":
+            sw_lugs.add(r["to"]["pin"])
+
+    # The selector should land on >1 distinct lug — otherwise nearest-pin
+    # heuristic is collapsing across 10 control points.
+    assert len(sw_lugs) >= 2, f"SW lugs collapsed: {sw_lugs}"
+
+    rep = _call(mcp_fixture, "validate", {"project_id": pid})
+    assert rep["ok"], f"validate errors: {rep['errors']}"
+
+    out = tmp_path / "strat.diy"
+    _call(mcp_fixture, "save", {"project_id": pid, "path": str(out)})
+    rr = _call(mcp_fixture, "read_diy", {
+        "project_id": f"{pid}_rt", "path": str(out),
+    })
+    assert rr["warnings"] == []
+    assert rr["components"] == 16 + len(wires)
+
+    # render_svg(return_content) must populate both 'content' and 'svg'
+    # so callers expecting either key get the payload (the dual-key fix
+    # this stress test surfaced).
+    svg_res = _call(mcp_fixture, "render_svg",
+                    {"project_id": pid, "return_content": True})
+    assert "<svg" in svg_res["content"]
+    assert "<svg" in svg_res["svg"]
+    assert svg_res["content"] == svg_res["svg"]
+
+
+def test_save_returns_xml_under_both_keys(mcp_fixture):
+    """save(return_content=True) populates both 'content' (generic) and
+    'xml' (descriptive). Regression for an LLM guessing the descriptive
+    name based on the tool's purpose.
+    """
+    _call(mcp_fixture, "create_project",
+          {"project_id": "p", "width_cm": 10, "height_cm": 8})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "p",
+        "component": {"type": "SolderPad", "name": "P", "x": 1.0, "y": 1.0},
+    })
+    res = _call(mcp_fixture, "save",
+                {"project_id": "p", "return_content": True})
+    assert "<project" in res["content"]
+    assert "<project" in res["xml"]
+    assert res["content"] == res["xml"]
+
+
 def test_single_anchor_components_expose_all_pins(mcp_fixture):
     """Pin every affected class so any future inline-pts regression
     surfaces immediately. Each entry is (component_dict, expected_count).
