@@ -1869,9 +1869,13 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
         comp = state.project.components[cur.component_index]
         name = getattr(comp, "name", None)
         state.selected_name = name
-        # Tree-mode navigation is a single-cursor model — keep the bulk
-        # set in sync so the canvas highlight matches the tree focus.
-        if name is not None:
+        # The tree cursor is single-target by nature, but the user may
+        # have an active multi-selection that we mustn't trample (e.g.
+        # they're mid-way through a sequence of bulk nudges). Only
+        # collapse the bulk set to the tree cursor when no
+        # multi-selection is in play; otherwise just keep the bulk set
+        # as-is so consecutive arrow keys still operate on the group.
+        if name is not None and len(state.selected_names) <= 1:
             state.selected_names = {name}
         if state.canvas is not None:
             state.canvas.queue_draw()

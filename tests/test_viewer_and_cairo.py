@@ -583,3 +583,28 @@ def test_bulk_move_shifts_every_selected_component():
     assert s.project.components[1].x1 == 1.0   # untouched
     assert s.project.components[2].x1 == 1.5
     assert s.project.components[2].x2 == 2.5
+
+
+def test_bulk_move_survives_repeated_nudges():
+    """Regression: after a bulk move, the tree-panel refresh used to
+    collapse selected_names to the tree cursor's single component, so
+    the second arrow-key nudge would only move one item. Now the
+    selection persists across consecutive nudges.
+    """
+    s = _state_with("R1", "R2", "R3")
+    _place(s.project.components[0], 1.0, 1.0, 2.0, 1.0)
+    _place(s.project.components[1], 1.0, 2.0, 2.0, 2.0)
+    _place(s.project.components[2], 1.0, 3.0, 2.0, 3.0)
+    _tree_mode(s)
+    s.selected_names = {"R1", "R3"}
+    s.selected_name = "R3"
+
+    # Three nudges in a row — each should move R1 + R3, never R2.
+    for _ in range(3):
+        viewer._tree_move(s, dx=0.5, dy=0.0)
+    assert s.selected_names == {"R1", "R3"}, (
+        "selection must persist across consecutive bulk nudges"
+    )
+    assert s.project.components[0].x1 == 2.5   # R1: 1.0 + 3 * 0.5
+    assert s.project.components[1].x1 == 1.0   # R2: untouched
+    assert s.project.components[2].x1 == 2.5   # R3: 1.0 + 3 * 0.5
