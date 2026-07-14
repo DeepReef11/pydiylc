@@ -523,10 +523,18 @@ def _apply_theme(state: _ViewerState, theme: str) -> None:
     keeps component label text legible regardless of theme. What changes
     in dark mode is the chrome: header bar, side panel, status bar,
     canvas off-page area, dialogs.
+
+    GTK-less callers (tests, scripts driving tree mode headlessly) still
+    get the color-state side effects; the Gtk.Settings poke is skipped.
     """
-    import gi
-    gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk
+    try:
+        import gi
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+    except (ImportError, ValueError):
+        state.canvas_backdrop = _canvas_backdrop_for(theme)
+        state.page_color = _page_color_for(theme)
+        return
 
     settings = Gtk.Settings.get_default()
     if settings is None:
@@ -748,11 +756,16 @@ def _install_viewer_actions(state: _ViewerState, win) -> None:
         if not state.tree_mode:
             _enter_tree_mode(state)
 
-    def with_popover(action):
+    def with_popover(action, *, keeps_add_target: bool = False):
         def wrapper(_a, _p):
             if state.context_popover is not None:
                 state.context_popover.popdown()
                 state.context_popover = None
+            if not keeps_add_target:
+                # The right-click stashed its position for "Add here"; any
+                # other action must drop it or every later keyboard add
+                # lands at this stale point.
+                state.next_add_at = None
             ensure_tree()
             action()
         return wrapper
@@ -768,7 +781,7 @@ def _install_viewer_actions(state: _ViewerState, win) -> None:
         ("duplicate", lambda: _tree_duplicate(state)),
     ]:
         a = Gio.SimpleAction.new(name, None)
-        a.connect("activate", with_popover(fn))
+        a.connect("activate", with_popover(fn, keeps_add_target=(name == "add")))
         group.add_action(a)
     win.insert_action_group("viewer", group)
 
@@ -1181,6 +1194,17 @@ def _make_right_click_handler(state: _ViewerState, canvas):
         rect.x = int(x); rect.y = int(y); rect.width = 1; rect.height = 1
         popover.set_pointing_to(rect)
         popover.set_has_arrow(False)
+
+        # GTK4 popovers are not destroyed by popdown(); without an explicit
+        # unparent they pile up as canvas children for the window's lifetime.
+        def _drop(pop):
+            from gi.repository import GLib
+
+            if state.context_popover is pop:
+                state.context_popover = None
+            GLib.idle_add(pop.unparent)
+
+        popover.connect("closed", _drop)
         popover.popup()
         # Stash so the action callbacks can dismiss it.
         state.context_popover = popover
@@ -1398,6 +1422,9 @@ def _make_drag_end(state: _ViewerState, canvas):
             ci = state.project.components.index(comp)
         except ValueError:
             return
+        # An edit like any other: record it so `u` reverts the drag instead
+        # of whatever tree-mode edit came before it.
+        _record(state, "drag move")
         moves.move_component(
             state.project, ci, new_x - orig[0], new_y - orig[1], detach=detach,
         )
@@ -1499,7 +1526,13 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
         else _move_ops_for_component(component, name)
     )
     try:
-        proposal = propose_changes(state.watch_path, moves=ops)
+        if state.buffer is not None:
+            # An edit-mode session is open: build the rewrite against the
+            # working buffer, not disk — a disk-based proposal would silently
+            # drop every pending in-buffer edit when applied.
+            proposal = state.buffer.propose(moves=ops)
+        else:
+            proposal = propose_changes(state.watch_path, moves=ops)
     except LookupError as exc:
         _info_dialog(state.window, "Can't auto-apply", str(exc))
         return
@@ -1515,7 +1548,7 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
         _locate_dialog(state, loc, new_anchor)
         return
 
-    _apply_dialog(state, proposal)
+    _apply_dialog(state, proposal, via_buffer=state.buffer is not None)
 
 
 def _copy_to_clipboard(widget, text: str) -> None:
@@ -1610,10 +1643,13 @@ def _info_dialog(parent, title: str, body: str) -> None:
     close_btn.grab_focus()
 
 
-def _apply_dialog(state: _ViewerState, proposal) -> None:
+def _apply_dialog(state: _ViewerState, proposal, *, via_buffer: bool = False) -> None:
     """Show a modal with the line-numbered diff and Apply / Cancel buttons.
 
-    Enter applies, Escape cancels.
+    Enter applies, Escape cancels. ``via_buffer`` applies through the
+    working buffer (proposal was built against it) and flushes, so pending
+    edit-mode changes and the drag land together instead of clobbering each
+    other; plain mode writes the proposal text straight to disk.
     """
     import gi
     gi.require_version("Gtk", "4.0")
@@ -1656,9 +1692,26 @@ def _apply_dialog(state: _ViewerState, proposal) -> None:
     apply_btn.add_css_class("suggested-action")
 
     def do_apply():
-        from .edit import apply_proposal
-        apply_proposal(proposal)
-        # Writing the file bumps mtime; the watcher reloads from source.
+        if via_buffer and state.buffer is not None:
+            state.buffer.apply(proposal)
+            try:
+                state.buffer.flush()
+            except OSError as exc:
+                _info_dialog(state.window, "Save failed", str(exc))
+                win.close()
+                return
+            # Acknowledge our own write so the poller doesn't reload the
+            # session out from under the in-memory state.
+            if state.watch_path is not None:
+                try:
+                    state.last_mtime = state.watch_path.stat().st_mtime
+                except OSError:
+                    pass
+            _refresh_status(state)
+        else:
+            from .edit import apply_proposal
+            apply_proposal(proposal)
+            # Writing the file bumps mtime; the watcher reloads from source.
         win.close()
 
     copy_btn = _make_copy_button(
@@ -1922,7 +1975,31 @@ def _enter_tree_mode(state: _ViewerState) -> None:
     from .prefs import Prefs
 
     state.nav = NavState(build_tree(state.project))
+    # Land the cursor on the selected component (right-click / click-then-T),
+    # not on component #0 — the context-menu actions read nav.current, so a
+    # cursor left at 0 would rotate/delete/edit the wrong part.
+    if state.selected_name is not None:
+        idx = next(
+            (
+                i for i, c in enumerate(state.project.components)
+                if getattr(c, "name", None) == state.selected_name
+            ),
+            None,
+        )
+        if idx is not None:
+            state.nav.focus_node(idx, None)
     state.history = History(state.project)
+    # Undo/redo must revert the working buffer together with the project —
+    # otherwise Enter after an undo saves the edit that was just undone.
+    state.history.capture_extra = (
+        lambda: state.buffer.text if state.buffer is not None else None
+    )
+
+    def _restore_buffer_text(text):
+        if state.buffer is not None and text is not None:
+            state.buffer.text = text
+
+    state.history.restore_extra = _restore_buffer_text
     state.pending_d = False
     # Preserve any existing buffer with unsaved changes when re-entering tree
     # mode (T off then T on should NOT silently discard edits). Only create
@@ -2082,10 +2159,17 @@ def _sync_buffer_rotate(state: _ViewerState, component) -> None:
     if not name:
         return
     orientation = getattr(component, "orientation", None)
+    angle = getattr(component, "angle", None)
     try:
         if orientation is not None:
             proposal = state.buffer.propose(
                 keyword_ops=[KeywordOp(name, "orientation", orientation)]
+            )
+        elif isinstance(angle, (int, float)) and not isinstance(angle, bool):
+            # Angle-based bodies (TubeSocket) rotate by bumping the angle
+            # field; mirror that keyword into the source.
+            proposal = state.buffer.propose(
+                keyword_ops=[KeywordOp(name, "angle", angle)]
             )
         elif hasattr(component, "x1") and hasattr(component, "x2"):
             proposal = state.buffer.propose(
@@ -2130,8 +2214,8 @@ def _flush_buffer_silent(state: _ViewerState) -> None:
     except OSError as exc:
         _info_dialog(state.window, "Save failed", str(exc))
         return
-    if state.history is not None:
-        state.history.record("save")
+    # Saving is not a mutation: recording a history snapshot here would
+    # clear the redo stack and make the next undo a no-op.
     if state.canvas is not None:
         state.canvas.queue_draw()
     if state.watch_path is not None:
@@ -2160,10 +2244,17 @@ def _save_buffer(state: _ViewerState) -> None:
     if not buf.is_dirty:
         return  # nothing to do
     if state.prefs is not None and not state.prefs.show_save_dialog:
-        if buf.flush():
-            state.history.record("save") if state.history is not None else None
+        buf.flush()
+        # Acknowledge our own write, or the 500 ms poller treats it as an
+        # external change and reloads out from under the session.
+        if state.watch_path is not None:
+            try:
+                state.last_mtime = state.watch_path.stat().st_mtime
+            except OSError:
+                pass
         if state.canvas is not None:
             state.canvas.queue_draw()
+        _refresh_status(state)
         return
     _save_dialog(state)
 
@@ -2325,6 +2416,13 @@ def _tree_rotate(state: _ViewerState, clockwise: bool,
         return
 
     ci = nav.current.component_index
+    if not moves.can_rotate(state.project.components[ci]):
+        state.error_msg = (
+            f"{type(state.project.components[ci]).__name__} has no rotation "
+            "support (no orientation/angle field)"
+        )
+        _refresh_status(state)
+        return
     _record(state, "rotate")
     moves.rotate_component(
         state.project, ci, clockwise=clockwise, detach=detach,
@@ -2849,8 +2947,13 @@ def _do_snap_to_grid(state: _ViewerState, canvas) -> None:
     names = list(state.selected_names) if state.selected_names else None
     if state.tree_mode:
         _record(state, "snap_to_grid")
+    before = _snapshot_points(state.project)
     grid = state.project.grid_inches or 0.1
     rep = align_snap.snap_to_grid(state.project, names=names, grid=grid)
+    # Mirror the moved points into the working buffer like every other edit
+    # — otherwise the cleanup is lost on save (canvas and file diverge with
+    # no unsaved indication).
+    _sync_buffer_changed_points(state, before)
     state.error_msg = f"snapped {rep['snapped']} pin(s)" if rep["snapped"] else "nothing to snap"
     if state.nav is not None:
         state.nav.rebuild(state.project)
@@ -2870,6 +2973,7 @@ def _do_align(state: _ViewerState, canvas, axis: str, mode: str) -> None:
         return
     if state.tree_mode:
         _record(state, f"align {axis}/{mode}")
+    before = _snapshot_points(state.project)
     try:
         rep = align_snap.align(
             state.project, list(state.selected_names), axis=axis, mode=mode
@@ -2878,6 +2982,7 @@ def _do_align(state: _ViewerState, canvas, axis: str, mode: str) -> None:
         state.error_msg = f"align: {exc}"
         _refresh_status(state)
         return
+    _sync_buffer_changed_points(state, before)
     state.error_msg = f"aligned {rep['aligned']} component(s) on {axis}"
     if state.nav is not None:
         state.nav.rebuild(state.project)
@@ -2948,9 +3053,9 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool,
 
     # Plain arrow = move the focused node by one board hole (if it's on a
     # perf/stripboard). Off-board, fall back to a grid-step nudge so arrows
-    # still do something useful everywhere.
+    # still do something useful everywhere. Alt detaches, same as Ctrl+Alt.
     if not ctrl and keyval in _DIRS:
-        _tree_hole_nudge(state, _DIRS[keyval])
+        _tree_hole_nudge(state, _DIRS[keyval], detach=alt)
         return True
 
     # Tab / Shift-Tab: at component level, move between components; at node
@@ -2986,8 +3091,8 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool,
         _refresh_tree_panel(state)
         return True
 
-    # R / Shift+R rotate.
-    if keyval in (Gdk.KEY_r, Gdk.KEY_R):
+    # R / Shift+R rotate. Ctrl+R is not ours — leave it to global handlers.
+    if not ctrl and keyval in (Gdk.KEY_r, Gdk.KEY_R):
         _tree_rotate(state, clockwise=not shift, detach=alt)
         return True
 
@@ -2997,20 +3102,22 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool,
         return True
 
     # "g" — fuzzy search to SEND the focused node to a destination.
-    if keyval in (Gdk.KEY_g, Gdk.KEY_G):
+    # Plain g only: Ctrl+G is the global snap-to-grid ("works in and out of
+    # edit mode") and must fall through to that handler.
+    if not ctrl and keyval in (Gdk.KEY_g, Gdk.KEY_G):
         _open_fuzzy_menu(state, mode="send")
         return True
 
     # "a" — add a new component (type picker, placed at cursor or focused).
     # Lowercase 'a' auto-wires the new component to the focused node when it
     # makes sense; uppercase 'A' (Shift) skips the auto-wire.
-    if keyval in (Gdk.KEY_a, Gdk.KEY_A):
+    if not ctrl and keyval in (Gdk.KEY_a, Gdk.KEY_A):
         autowire = not shift
         _open_add_menu(state, autowire=autowire)
         return True
 
     # "v" — edit the focused component's primary value/text field.
-    if keyval in (Gdk.KEY_v, Gdk.KEY_V):
+    if not ctrl and keyval in (Gdk.KEY_v, Gdk.KEY_V):
         _open_edit_value_dialog(state)
         return True
 
@@ -3036,8 +3143,12 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool,
     return False
 
 
-def _tree_hole_nudge(state: _ViewerState, direction: str) -> None:
-    """Move the focused node by one board hole, or a grid step if off-board."""
+def _tree_hole_nudge(state: _ViewerState, direction: str,
+                     detach: bool = False) -> None:
+    """Move the focused node by one board hole, or a grid step if off-board.
+
+    ``detach`` (Alt+arrow) moves the part out of its joints, leaving every
+    wire behind — same contract as Ctrl+Alt+arrow."""
     from . import moves, jump
 
     nav = state.nav
@@ -3062,7 +3173,7 @@ def _tree_hole_nudge(state: _ViewerState, direction: str) -> None:
             -grid if direction == "left" else grid if direction == "right" else 0.0,
             -grid if direction == "up" else grid if direction == "down" else 0.0,
         )
-    _tree_move(state, delta[0], delta[1])
+    _tree_move(state, delta[0], delta[1], detach=detach)
 
 
 def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
@@ -3151,6 +3262,11 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
         else:  # send
             cur = nav.current
             comp = state.project.components[cur.component_index]
+            # A send is an edit like any other: record it (one undo press
+            # reverts one edit) and mirror the moved points into the buffer
+            # (Enter must save what the canvas shows).
+            _record(state, "send")
+            before = _snapshot_points(state.project)
             if cur.is_node and cur.movable:
                 moves.move_node_to(
                     state.project, cur.component_index, cur.point_index,
@@ -3163,6 +3279,7 @@ def _open_fuzzy_menu(state: _ViewerState, *, mode: str) -> None:
                     state.project, cur.component_index,
                     target.x - anchor[0], target.y - anchor[1],
                 )
+            _sync_buffer_changed_points(state, before)
             nav.rebuild(state.project)
             _refresh_tree_panel(state)
         win.close()
@@ -3785,6 +3902,16 @@ def _reload(state: _ViewerState) -> None:
         state.error_msg = None
     except Exception as exc:
         state.error_msg = f"{type(exc).__name__}: {exc}"
+    # Rebind everything that referenced the discarded Project. A stale nav
+    # indexes the old component list (IndexError / wrong-target nudges); a
+    # stale history restores snapshots into the orphaned object, leaving
+    # undo/redo permanently dead while the counters keep moving.
+    if state.nav is not None:
+        state.nav.rebuild(state.project)
+    if state.history is not None:
+        state.history.project = state.project
+    if state.tree_mode:
+        _refresh_tree_panel(state)
     # Re-size the canvas content area if the project dimensions changed.
     if state.canvas is not None:
         _size_canvas_to_project(state.project, state.canvas)

@@ -890,3 +890,186 @@ def test_rotating_a_line_still_never_drags_an_overlapping_bus():
 
     bus = next(c for c in p.components if c.name == "BUS")
     assert bus.points == [(2.0, 2.0), (6.0, 2.0)]
+
+
+# ---------------------------------------------------------------------------
+# Regressions: tree-mode entry focus, reload rebinding, buffer/undo coupling
+# ---------------------------------------------------------------------------
+
+
+def _named(p, name):
+    return next(c for c in p.components if getattr(c, "name", None) == name)
+
+
+def test_entering_tree_mode_focuses_the_selected_component():
+    """Right-click → Delete used to target component #0: entering tree mode
+    left the cursor at the top instead of on the selection."""
+    from pydiylc import SolderPad
+
+    p = Project()
+    p.add(SolderPad(name="P1", x=1.0, y=1.0))
+    p.add(SolderPad(name="P2", x=2.0, y=2.0))
+    p.add(SolderPad(name="P3", x=3.0, y=3.0))
+
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    s.selected_names = {"P3"}
+    s.selected_name = "P3"
+    viewer._enter_tree_mode(s)
+    assert s.nav.current is not None
+    assert s.nav.current.component_index == 2
+
+    viewer._tree_delete(s)
+    names = [c.name for c in p.components]
+    assert names == ["P1", "P2"]  # P3 gone, not P1
+
+
+def test_reload_rebuilds_nav_and_rebinds_history():
+    """A reload used to leave nav rows indexing the old component list and
+    history bound to the orphaned Project (undo permanently dead)."""
+    from pydiylc import SolderPad
+
+    def build_small():
+        p = Project()
+        p.add(SolderPad(name="P1", x=1.0, y=1.0))
+        return p
+
+    p0 = Project()
+    p0.add(SolderPad(name="P1", x=1.0, y=1.0))
+    p0.add(SolderPad(name="P2", x=2.0, y=2.0))
+
+    s = viewer._ViewerState(p0, builder=build_small, watch_path=None)
+    viewer._enter_tree_mode(s)
+    s.nav.focus_node(1, None)  # cursor on P2
+
+    viewer._reload(s)
+    assert len(s.nav.rows) == 1  # rebuilt for the 1-component project
+    assert s.history.project is s.project  # rebound, not orphaned
+
+    # An edit + undo after the reload must actually work.
+    viewer._tree_move(s, 0.5, 0.0)
+    assert s.project.components[0].x == 1.5
+    viewer._tree_undo(s)
+    assert s.project.components[0].x == 1.0
+
+
+def test_undo_reverts_the_working_buffer_too(tmp_path):
+    """u after a nudge used to leave the buffer dirty with the undone edit —
+    Enter then saved coordinates the canvas no longer showed."""
+    import textwrap
+
+    from pydiylc.buffer import Buffer
+
+    src = tmp_path / "layout.py"
+    src.write_text(textwrap.dedent("""
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    """).lstrip(), encoding="utf-8")
+
+    from pydiylc.loader import project_from_json  # noqa: F401 (import guard)
+    ns: dict = {}
+    exec(compile(src.read_text(), str(src), "exec"), ns)
+    p = ns["project"]
+
+    s = viewer._ViewerState(p, builder=None, watch_path=src)
+    viewer._enter_tree_mode(s)
+    assert s.buffer is not None
+    s.nav.focus_node(0, None)
+
+    viewer._tree_move(s, 0.5, 0.0)
+    assert "x=1.5" in s.buffer.text
+    viewer._tree_undo(s)
+    assert s.project.components[0].x == 1.0
+    assert "x=1.5" not in s.buffer.text      # buffer reverted with the model
+    assert "x=1.0" in s.buffer.text
+
+    viewer._tree_redo(s)
+    assert s.project.components[0].x == 1.5
+    assert "x=1.5" in s.buffer.text          # and re-applied on redo
+
+
+def test_snap_and_align_reach_the_working_buffer(tmp_path):
+    """Ctrl+G / Ctrl+L used to mutate the project but never the buffer, so
+    the cleanup silently vanished on save."""
+    import textwrap
+
+    src = tmp_path / "layout.py"
+    src.write_text(textwrap.dedent("""
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.03, y=1.0))
+        project.add(SolderPad(name='P2', x=2.0, y=1.27))
+    """).lstrip(), encoding="utf-8")
+    ns: dict = {}
+    exec(compile(src.read_text(), str(src), "exec"), ns)
+    p = ns["project"]
+
+    s = viewer._ViewerState(p, builder=None, watch_path=src)
+    viewer._enter_tree_mode(s)
+    s.selected_names = set()
+
+    viewer._do_snap_to_grid(s, None)
+    assert p.components[0].x == 1.0
+    assert "x=1.0" in s.buffer.text and "1.03" not in s.buffer.text
+
+    s.selected_names = {"P1", "P2"}
+    viewer._do_align(s, None, axis="y", mode="mean")
+    assert s.buffer.is_dirty
+    ys = [c.y for c in p.components]
+    assert ys[0] == ys[1]
+    # The aligned y landed in the buffer as well.
+    import re
+    assert len(re.findall(rf"y={ys[0]:g}", s.buffer.text)) == 2
+
+
+def test_alt_arrow_nudge_detaches(tmp_path):
+    """Alt+arrow is documented as 'move out of the joints'; it used to drop
+    the modifier and carry the soldered wire along anyway."""
+    from pydiylc import SolderPad, HookupWire
+
+    p = Project()
+    p.add(SolderPad(name="P1", x=2.0, y=2.0))
+    p.add(HookupWire(name="W1", points=[(2.0, 2.0), (4.0, 2.0)]))
+
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    viewer._enter_tree_mode(s)
+    s.nav.focus_node(0, None)
+
+    viewer._tree_hole_nudge(s, "left", detach=True)
+    assert p.components[0].x == 1.9
+    assert tuple(p.components[1].points[0]) == (2.0, 2.0)  # wire left behind
+
+
+def test_send_to_records_history_and_syncs_buffer(tmp_path):
+    """The 'g' send used to be unrecorded (one undo reverted two edits) and
+    never reached the buffer."""
+    import textwrap
+
+    src = tmp_path / "layout.py"
+    src.write_text(textwrap.dedent("""
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+        project.add(SolderPad(name='P2', x=3.0, y=3.0))
+    """).lstrip(), encoding="utf-8")
+    ns: dict = {}
+    exec(compile(src.read_text(), str(src), "exec"), ns)
+    p = ns["project"]
+
+    s = viewer._ViewerState(p, builder=None, watch_path=src)
+    viewer._enter_tree_mode(s)
+    s.nav.focus_node(0, None)
+
+    # Simulate what the send branch of the fuzzy menu does (headless — the
+    # GTK popup itself needs a display).
+    viewer._record(s, "send")
+    before = viewer._snapshot_points(s.project)
+    from pydiylc import moves as _moves
+    anchor = viewer._current_anchor(p.components[0])
+    _moves.move_component(s.project, 0, 3.0 - anchor[0], 3.0 - anchor[1])
+    viewer._sync_buffer_changed_points(s, before)
+
+    assert s.buffer.is_dirty and "x=3.0" in s.buffer.text
+    viewer._tree_undo(s)
+    assert p.components[0].x == 1.0          # one undo, one edit
+    assert "x=1.0" in s.buffer.text
