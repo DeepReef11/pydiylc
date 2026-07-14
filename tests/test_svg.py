@@ -188,3 +188,78 @@ def test_label_alignment_propagates():
     p.add(Label("L", x=1.0, y=1.0, text="x", horizontal_alignment="LEFT"))
     svg = render_svg(p)
     assert 'text-anchor="start"' in svg
+
+
+# ---------------------------------------------------------------------------
+# Regressions: wire point counts, alpha scale, colors, inverted corners
+# ---------------------------------------------------------------------------
+
+
+def test_three_five_seven_point_wires_render():
+    """Every legal WIRE_POINT_COUNT renders a path — 3/5/7 used to crash the
+    4-point unpack and disappear from the output."""
+    from pydiylc import HookupWire, CurvedTrace
+
+    shapes = {
+        "THREE": [(1, 1), (2, 2), (3, 1)],
+        "FIVE": [(1, 1), (1.5, 2), (2, 1), (2.5, 2), (3, 1)],
+        "SEVEN": [(1, 1), (1.3, 2), (1.6, 1), (2, 2), (2.4, 1), (2.7, 2), (3, 1)],
+    }
+    for count, pts in shapes.items():
+        p = Project()
+        p.add(HookupWire("W", points=pts, point_count=count))
+        p.add(CurvedTrace("T", points=pts, point_count=count))
+        svg = render_svg(p)
+        assert "error rendering" not in svg, f"{count}: renderer raised"
+        assert 'class="wire"' in svg
+        assert 'class="curved-trace"' in svg
+
+
+def test_alpha_uses_diylc_127_scale():
+    """DIYLC's max alpha is 127 (fully opaque) — dividing by 255 rendered
+    everything at half its intended opacity."""
+    from pydiylc import EllipticalCutout
+
+    p = Project()
+    p.add(EllipticalCutout("E", x1=1, y1=1, x2=2, y2=2, alpha=127))
+    assert 'fill-opacity="1.00"' in render_svg(p)
+
+
+def test_hash_prefixed_colors_do_not_double_hash():
+    """Colors are normalized through _color() everywhere — '#ff0000' used to
+    emit '##ff0000' in renderers that interpolated the raw field."""
+    from pydiylc import Polygon
+
+    p = Project()
+    p.add(Polygon("P", points=[(1, 1), (2, 1), (2, 2)],
+                  color="#ff0000", border_color="#00ff00"))
+    svg = render_svg(p)
+    assert "##" not in svg
+    assert "#ff0000" in svg
+
+
+def test_inverted_corner_boards_render_positive_rects():
+    """Swapped corners must not emit negative-width/height rects (invalid
+    SVG — conforming viewers drop the element)."""
+    from pydiylc import EyeletBoard, MarshallPerfBoard, TriPadBoard
+
+    p = Project()
+    p.add(EyeletBoard("B1", x1=2, y1=2, x2=1, y2=1))
+    p.add(MarshallPerfBoard("B2", x1=4, y1=2, x2=3, y2=1))
+    p.add(TriPadBoard("B3", x1=6, y1=2, x2=5, y2=1))
+    svg = render_svg(p)
+    assert 'width="-' not in svg
+    assert 'height="-' not in svg
+
+
+def test_two_point_curved_trace_honors_size():
+    from pydiylc import CurvedTrace
+    from pydiylc.core import mm
+    import re
+
+    p = Project()
+    p.add(CurvedTrace("T", points=[(1, 1), (2, 1)], size=mm(2.0),
+                      point_count="TWO"))
+    svg = render_svg(p)
+    m = re.search(r'class="curved-trace".*?stroke-width="([\d.]+)"', svg)
+    assert m and abs(float(m.group(1)) - (2.0 / 25.4) * 96) < 0.2

@@ -181,6 +181,31 @@ def _hex_to_rgb(hex6: str) -> tuple[float, float, float]:
     return int(s[0:2], 16) / 255, int(s[2:4], 16) / 255, int(s[4:6], 16) / 255
 
 
+def _smooth_wire_path(cr, pts, s: float) -> None:
+    """Trace a path through N control points (legal wire counts: 2/3/4/5/7).
+
+    Cubic segments while four points remain, then a quadratic (elevated to
+    a cubic — cairo has no quad-to) for three and a line for two. Mirrors
+    ``svg._smooth_path_d`` so both renderers draw the same wire.
+    """
+    if len(pts) < 2:
+        return
+    cr.move_to(pts[0][0] * s, pts[0][1] * s)
+    i, n = 0, len(pts)
+    while n - i >= 4:
+        p1, p2, p3 = pts[i + 1], pts[i + 2], pts[i + 3]
+        cr.curve_to(p1[0] * s, p1[1] * s, p2[0] * s, p2[1] * s,
+                    p3[0] * s, p3[1] * s)
+        i += 3
+    if n - i == 3:
+        (x0, y0), (qx, qy), (x2, y2) = pts[i], pts[i + 1], pts[i + 2]
+        c1x, c1y = x0 + 2.0 * (qx - x0) / 3.0, y0 + 2.0 * (qy - y0) / 3.0
+        c2x, c2y = x2 + 2.0 * (qx - x2) / 3.0, y2 + 2.0 * (qy - y2) / 3.0
+        cr.curve_to(c1x * s, c1y * s, c2x * s, c2y * s, x2 * s, y2 * s)
+    elif n - i == 2:
+        cr.line_to(pts[i + 1][0] * s, pts[i + 1][1] * s)
+
+
 def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
                  background: tuple[float, float, float] = (1, 1, 1),
                  show_grid: bool = True,
@@ -237,13 +262,30 @@ def draw_project(cr, project: Project, *, scale: float = PX_PER_INCH,
     cr.rectangle(0.5, 0.5, w - 1, h - 1)
     cr.stroke()
 
+    from .components import ORIENTED_BY_TRANSFORM, orientation_turns
+
     for component in project.components:
         try:
             handler = _RENDERERS.get(type(component))
             if handler is None:
                 _draw_fallback(cr, component, scale)
             else:
-                handler(cr, component, scale)
+                turns = (
+                    orientation_turns(component)
+                    if type(component) in ORIENTED_BY_TRANSFORM else 0
+                )
+                if turns:
+                    # The renderer draws the DEFAULT-orientation body;
+                    # rotate it whole about the anchor so pads land on the
+                    # (rotated) pins the connectivity graph reports.
+                    cr.save()
+                    cr.translate(component.x * scale, component.y * scale)
+                    cr.rotate(turns * math.pi / 2)
+                    cr.translate(-component.x * scale, -component.y * scale)
+                    handler(cr, component, scale)
+                    cr.restore()
+                else:
+                    handler(cr, component, scale)
                 if selection_set and getattr(component, "name", None) in selection_set:
                     _draw_selection_box(cr, component, scale)
         except Exception:
@@ -744,13 +786,7 @@ def _render_hookup_wire(cr, c: HookupWire, s: float) -> None:
     cr.set_source_rgb(*_hex_to_rgb(c.color))
     cr.set_line_width(1.8)
     cr.set_line_cap(1)
-    if len(pts) == 2:
-        cr.move_to(pts[0][0] * s, pts[0][1] * s)
-        cr.line_to(pts[1][0] * s, pts[1][1] * s)
-    else:
-        p0, p1, p2, p3 = pts
-        cr.move_to(p0[0] * s, p0[1] * s)
-        cr.curve_to(p1[0] * s, p1[1] * s, p2[0] * s, p2[1] * s, p3[0] * s, p3[1] * s)
+    _smooth_wire_path(cr, pts, s)
     cr.stroke()
 
 
@@ -925,8 +961,19 @@ def _render_rectangle(cr, c: Rectangle, s: float) -> None:
     y = min(c.y1, c.y2) * s
     w = abs(c.x2 - c.x1) * s
     h = abs(c.y2 - c.y1) * s
+    # Honor edge_radius like the SVG renderer (clamped to the half-sides so
+    # a huge radius degrades to a capsule instead of a self-crossing path).
+    r = min(_measure_to_inches(c.edge_radius) * s, w / 2, h / 2)
+    if r > 0:
+        cr.new_sub_path()
+        cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+        cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+        cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        cr.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
+        cr.close_path()
+    else:
+        cr.rectangle(x, y, w, h)
     cr.set_source_rgba(*_hex_to_rgb(c.color), 0.3)
-    cr.rectangle(x, y, w, h)
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.2)
@@ -1076,13 +1123,7 @@ def _render_curved_trace(cr, c: CurvedTrace, s: float) -> None:
     cr.set_source_rgb(*_hex_to_rgb(c.color))
     cr.set_line_width(max(2.0, _measure_to_inches(c.size) * s))
     cr.set_line_cap(1)
-    if len(pts) == 2:
-        cr.move_to(pts[0][0] * s, pts[0][1] * s)
-        cr.line_to(pts[1][0] * s, pts[1][1] * s)
-    else:
-        p0, p1, p2, p3 = pts
-        cr.move_to(p0[0] * s, p0[1] * s)
-        cr.curve_to(p1[0] * s, p1[1] * s, p2[0] * s, p2[1] * s, p3[0] * s, p3[1] * s)
+    _smooth_wire_path(cr, pts, s)
     cr.stroke()
 
 
@@ -1196,7 +1237,7 @@ def _render_elliptical_cutout(cr, c: EllipticalCutout, s: float) -> None:
     cr.scale(rx, ry)
     cr.arc(0, 0, 1, 0, 2 * math.pi)
     cr.restore()
-    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1221,7 +1262,7 @@ def _render_polygon(cr, c: Polygon, s: float) -> None:
     for x, y in pts[1:]:
         cr.line_to(x, y)
     cr.close_path()
-    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1261,7 +1302,7 @@ def _render_diode_like(cr, c, s: float) -> None:
     cr.line_to(cx + ux * hl - px * hw, cy + uy * hl - py * hw)
     cr.line_to(cx - ux * hl - px * hw, cy - uy * hl - py * hw)
     cr.close_path()
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1303,7 +1344,7 @@ def _render_potentiometer_symbol(cr, c: PotentiometerSymbol, s: float) -> None:
 def _render_closed_jack(cr, c: ClosedJack1_4, s: float) -> None:
     x, y = c.x * s, c.y * s
     cr.rectangle(x - 4, y - 4, 0.3 * s, 0.8 * s)
-    cr.set_source_rgba(0.4, 0.4, 0.4, c.alpha / 255)
+    cr.set_source_rgba(0.4, 0.4, 0.4, min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0, 0, 0)
     cr.set_line_width(1.0)
@@ -1313,7 +1354,7 @@ def _render_closed_jack(cr, c: ClosedJack1_4, s: float) -> None:
 def _render_rca_jack(cr, c: RCAJack, s: float) -> None:
     x, y = c.x * s, c.y * s
     cr.arc(x, y, 0.12 * s, 0, 2 * math.pi)
-    cr.set_source_rgba(0.7, 0.6, 0.3, c.alpha / 255)
+    cr.set_source_rgba(0.7, 0.6, 0.3, min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0, 0, 0)
     cr.set_line_width(1.0)
@@ -1325,21 +1366,23 @@ def _render_rca_jack(cr, c: RCAJack, s: float) -> None:
 
 def _render_transformer_coil(cr, c: TransformerCoil, s: float) -> None:
     # A series of arcs from (x1,y1) to (x2,y2) to suggest the winding.
+    # Same rotated-frame trick as the inductor: bump endpoints stay on the
+    # winding axis for any orientation, with no stray chords between arcs.
     x1, y1 = c.x1 * s, c.y1 * s
     x2, y2 = c.x2 * s, c.y2 * s
-    dx, dy = x2 - x1, y2 - y1
-    L = math.hypot(dx, dy) or 1
+    L = math.hypot(x2 - x1, y2 - y1) or 1
     bumps = max(3, int(L / 8))
+    r = L / (bumps * 2)
+    cr.save()
+    cr.translate(x1, y1)
+    cr.rotate(math.atan2(y2 - y1, x2 - x1))
     cr.set_source_rgb(*_hex_to_rgb(c.color))
     cr.set_line_width(1.2)
+    cr.new_sub_path()
     for i in range(bumps):
-        t1 = i / bumps
-        t2 = (i + 1) / bumps
-        ax, ay = x1 + dx * t1, y1 + dy * t1
-        bx, by = x1 + dx * t2, y1 + dy * t2
-        cx, cy = (ax + bx) / 2, (ay + by) / 2
-        cr.arc(cx, cy, L / (bumps * 2), 0, math.pi)
+        cr.arc((2 * i + 1) * r, 0, r, math.pi, 2 * math.pi)
     cr.stroke()
+    cr.restore()
 
 
 def _render_transformer_core(cr, c: TransformerCore, s: float) -> None:
@@ -1368,7 +1411,7 @@ def _render_single_coil_pickup(cr, c: SingleCoilPickup, s: float) -> None:
     x, y = c.x * s, c.y * s
     w, h = 0.7 * s, 1.0 * s
     cr.rectangle(x - w / 2, y - h / 2, w, h)
-    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.base_color))
     cr.set_line_width(1.2)
@@ -1388,7 +1431,7 @@ def _render_cliff_jack(cr, c: CliffJack1_4, s: float) -> None:
     w = 0.4 * s
     h = 0.3 * s
     cr.rectangle(x - 4, y - 4, w, h)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1399,7 +1442,7 @@ def _render_tag_strip(cr, c: TagStrip, s: float) -> None:
     ts = c.terminal_spacing.to_inches()
     h = (c.terminal_count - 1) * ts + 0.2
     cr.rectangle((c.x - 0.05) * s, (c.y - 0.1) * s, 0.3 * s, h * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0.2, 0.1, 0)
     cr.set_line_width(1.0)
@@ -1416,7 +1459,7 @@ def _render_tag_strip(cr, c: TagStrip, s: float) -> None:
 def _render_pilot_lamp(cr, c: PilotLampHolder, s: float) -> None:
     cx, cy = c.x * s, c.y * s
     cr.arc(cx, cy, 12, 0, 2 * math.pi)
-    cr.set_source_rgba(1, 0.85, 0.3, c.alpha / 255)
+    cr.set_source_rgba(1, 0.85, 0.3, min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0.3, 0.2, 0)
     cr.set_line_width(1.0)
@@ -1427,7 +1470,7 @@ def _render_multi_section_cap(cr, c: MultiSectionCapacitor, s: float) -> None:
     sections = len(c.values)
     h = sections * 0.2 + 0.1
     cr.rectangle((c.x - 0.15) * s, (c.y - 0.1) * s, 0.3 * s, h * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1449,7 +1492,7 @@ def _render_tape_measure(cr, c: TapeMeasure, s: float) -> None:
 
 def _render_fuse_holder(cr, c: FuseHolderPanel, s: float) -> None:
     cr.rectangle((c.x - 0.05) * s, c.y * s, 0.1 * s, 0.2 * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1460,7 +1503,7 @@ def _render_audio_transformer(cr, c: AudioTransformer, s: float) -> None:
     w = c.coil_width.to_inches() * s
     h = c.coil_length.to_inches() * s
     cr.rectangle(c.x * s - w / 2, c.y * s, w, h)
-    cr.set_source_rgba(*_hex_to_rgb(c.coil_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.coil_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.core_color))
     cr.set_line_width(1.5)
@@ -1493,7 +1536,7 @@ def _render_sil_ic(cr, c: SIL_IC, s: float) -> None:
     ps = c.pin_spacing.to_inches()
     w = (n - 1) * ps + 0.1
     cr.rectangle((c.x - 0.05) * s, (c.y - 0.1) * s, w * s, 0.25 * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1506,7 +1549,7 @@ def _render_chassis_panel(cr, c: ChassisPanel, s: float) -> None:
     w = abs(c.x2 - c.x1) * s
     h = abs(c.y2 - c.y1) * s
     cr.rectangle(x, y, w, h)
-    cr.set_source_rgba(*_hex_to_rgb(c.color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.5)
@@ -1516,7 +1559,7 @@ def _render_chassis_panel(cr, c: ChassisPanel, s: float) -> None:
 def _render_transistor_to1(cr, c: TransistorTO1, s: float) -> None:
     cx, cy = c.x * s, (c.y + c.pin_spacing.to_inches()) * s
     cr.arc(cx, cy, 0.18 * s, 0, 2 * math.pi)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1526,7 +1569,7 @@ def _render_transistor_to1(cr, c: TransistorTO1, s: float) -> None:
 def _render_transistor_to220(cr, c: TransistorTO220, s: float) -> None:
     ps = c.pin_spacing.to_inches()
     cr.rectangle((c.x - 0.15) * s, (c.y - 0.05) * s, 0.3 * s, (2 * ps + 0.1) * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1535,7 +1578,7 @@ def _render_transistor_to220(cr, c: TransistorTO220, s: float) -> None:
 
 def _render_iec_socket(cr, c: IECSocket, s: float) -> None:
     cr.rectangle((c.x - 0.3) * s, (c.y - 0.05) * s, 0.6 * s, 0.3 * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.2)
@@ -1548,7 +1591,7 @@ def _render_tantalum_cap(cr, c: TantalumCapacitor, s: float) -> None:
 
 def _render_eyelet_board(cr, c: EyeletBoard, s: float) -> None:
     cr.rectangle(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1556,20 +1599,27 @@ def _render_eyelet_board(cr, c: EyeletBoard, s: float) -> None:
 
 
 def _render_inductor_symbol(cr, c: InductorSymbol, s: float) -> None:
-    # Series of small arcs along the lead direction.
+    # Series of small arcs along the lead direction. Draw in a rotated local
+    # frame so the bump endpoints lie ON the wire for any orientation —
+    # fixed world-space arcs put the scallops sideways on vertical inductors
+    # (and chained cr.arc calls add stray connecting chords).
     x1, y1 = c.x1 * s, c.y1 * s
     x2, y2 = c.x2 * s, c.y2 * s
-    dx, dy = x2 - x1, y2 - y1
-    L = math.hypot(dx, dy) or 1
+    L = math.hypot(x2 - x1, y2 - y1) or 1
     bumps = 4
+    r = L / (bumps * 2)
+    cr.save()
+    cr.translate(x1, y1)
+    cr.rotate(math.atan2(y2 - y1, x2 - x1))
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.2)
+    cr.new_sub_path()
     for i in range(bumps):
-        t = (i + 0.5) / bumps
-        cx = x1 + dx * t
-        cy = y1 + dy * t
-        cr.arc(cx, cy, L / (bumps * 2), 0, math.pi)
+        # Each semicircle spans [2i*r, (2i+2)*r] on the local x-axis, so
+        # consecutive bumps share their on-wire endpoints.
+        cr.arc((2 * i + 1) * r, 0, r, math.pi, 2 * math.pi)
     cr.stroke()
+    cr.restore()
 
 
 def _render_pentode_symbol(cr, c: PentodeSymbol, s: float) -> None:
@@ -1595,7 +1645,7 @@ def _render_lever_switch(cr, c: LeverSwitch, s: float) -> None:
     n = c._pin_count()
     h = (n // 2) * 0.1 + 0.1
     cr.rectangle((c.x - 0.05) * s, (c.y - 0.05) * s, 0.3 * s, h * s)
-    cr.set_source_rgba(0.6, 0.6, 0.6, c.alpha / 255)
+    cr.set_source_rgba(0.6, 0.6, 0.6, min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0, 0, 0)
     cr.set_line_width(1.0)
@@ -1618,7 +1668,7 @@ def _render_zener_symbol(cr, c: ZenerDiodeSymbol, s: float) -> None:
 
 def _render_marshall_perf(cr, c: MarshallPerfBoard, s: float) -> None:
     cr.rectangle(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s)
-    cr.set_source_rgba(*_hex_to_rgb(c.board_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.board_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.0)
@@ -1636,7 +1686,7 @@ def _fill_stroke_rect(cr, x, y, w, h, fill, stroke, alpha=1.0, line_w=1.0):
 
 def _render_mini_relay(cr, c: MiniRelay, s: float) -> None:
     _fill_stroke_rect(cr, (c.x - 0.05) * s, (c.y - 0.05) * s,
-                      0.3 * s, 0.4 * s, "404040", "000000", c.alpha / 255)
+                      0.3 * s, 0.4 * s, "404040", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_rect_cutout(cr, c: RectangularCutout, s: float) -> None:
@@ -1644,12 +1694,12 @@ def _render_rect_cutout(cr, c: RectangularCutout, s: float) -> None:
     y = min(c.y1, c.y2) * s
     w = abs(c.x2 - c.x1) * s
     h = abs(c.y2 - c.y1) * s
-    _fill_stroke_rect(cr, x, y, w, h, c.color, c.border_color, c.alpha / 255)
+    _fill_stroke_rect(cr, x, y, w, h, c.color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_bass_pickup(cr, c, s, w=0.4, h=0.5) -> None:
     _fill_stroke_rect(cr, (c.x - w / 2) * s, c.y * s, w * s, h * s,
-                      c.color, c.pole_color, c.alpha / 255, 1.2)
+                      c.color, c.pole_color, min(1.0, c.alpha / 127), 1.2)
     cr.set_source_rgb(*_hex_to_rgb(c.pole_color))
     for i in range(4):
         cr.arc(c.x * s, (c.y + (i + 0.5) * (h / 4)) * s, 2, 0, 2 * math.pi)
@@ -1666,17 +1716,17 @@ def _render_pbass_pickup(cr, c: PBassPickup, s: float) -> None:
 
 def _render_humbucker(cr, c: HumbuckerPickup, s: float) -> None:
     _fill_stroke_rect(cr, (c.x - 0.4) * s, c.y * s, 0.8 * s, 1.4 * s,
-                      c.color, c.pole_color, c.alpha / 255, 1.2)
+                      c.color, c.pole_color, min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_lp_switch(cr, c: LPSwitch, s: float) -> None:
     _fill_stroke_rect(cr, (c.x - 0.05) * s, c.y * s, 0.4 * s, 1.4 * s,
-                      "606060", "000000", c.alpha / 255)
+                      "606060", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_battery_snap_9v(cr, c: BatterySnap9V, s: float) -> None:
     _fill_stroke_rect(cr, (c.x - 0.15) * s, c.y * s, 0.3 * s, 0.5 * s,
-                      c.color, "000000", c.alpha / 255)
+                      c.color, "000000", min(1.0, c.alpha / 127))
 
 
 def _render_ic_symbol(cr, c: ICSymbol, s: float) -> None:
@@ -1686,7 +1736,7 @@ def _render_ic_symbol(cr, c: ICSymbol, s: float) -> None:
     cr.line_to(x, y + 0.2 * s)
     cr.line_to(x + 0.4 * s, y + 0.1 * s)
     cr.close_path()
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.2)
@@ -1695,7 +1745,7 @@ def _render_ic_symbol(cr, c: ICSymbol, s: float) -> None:
 
 def _render_rotary_selector(cr, c: RotarySelectorSwitch, s: float) -> None:
     cr.arc(c.x * s, c.y * s, 0.4 * s, 0, 2 * math.pi)
-    cr.set_source_rgba(0.7, 0.7, 0.7, c.alpha / 255)
+    cr.set_source_rgba(0.7, 0.7, 0.7, min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(0, 0, 0)
     cr.set_line_width(1.2)
@@ -1723,7 +1773,7 @@ def _render_battery_symbol(cr, c: BatterySymbol, s: float) -> None:
 
 def _render_electrolytic_can(cr, c: ElectrolyticCanCapacitor, s: float) -> None:
     cr.arc(c.x * s, (c.y + 1.0) * s, s, 0, 2 * math.pi)
-    cr.set_source_rgba(*_hex_to_rgb(c.body_color), c.alpha / 255)
+    cr.set_source_rgba(*_hex_to_rgb(c.body_color), min(1.0, c.alpha / 127))
     cr.fill_preserve()
     cr.set_source_rgb(*_hex_to_rgb(c.border_color))
     cr.set_line_width(1.2)
@@ -1733,7 +1783,7 @@ def _render_electrolytic_can(cr, c: ElectrolyticCanCapacitor, s: float) -> None:
 def _render_tripad_board(cr, c: TriPadBoard, s: float) -> None:
     _fill_stroke_rect(cr, c.x1 * s, c.y1 * s,
                       (c.x2 - c.x1) * s, (c.y2 - c.y1) * s,
-                      c.board_color, c.border_color, c.alpha / 255)
+                      c.board_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_fuse_symbol(cr, c: FuseSymbol, s: float) -> None:
@@ -1774,24 +1824,24 @@ def _render_crystal(cr, c: CrystalOscillator, s: float) -> None:
                       (min(c.y1, c.y2) - 0.1) * s,
                       abs(c.x2 - c.x1) * s + 12,
                       c.width.to_inches() * s,
-                      c.body_color, c.border_color, c.alpha / 255)
+                      c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_neutrik_jack(cr, c: NeutrikJack1_4, s: float) -> None:
     _fill_stroke_rect(cr, c.x * s, (c.y - 0.5) * s,
-                      0.7 * s, 0.5 * s, "303030", "000000", c.alpha / 255)
+                      0.7 * s, 0.5 * s, "303030", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_transistor_to126(cr, c: TransistorTO126, s: float) -> None:
     ps = c.pin_spacing.to_inches()
     _fill_stroke_rect(cr, (c.x - 0.15) * s, (c.y - 0.05) * s,
                       0.3 * s, (2 * ps + 0.1) * s,
-                      c.body_color, c.border_color, c.alpha / 255)
+                      c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_p90_pickup(cr, c: P90Pickup, s: float) -> None:
     _fill_stroke_rect(cr, (c.x - 0.5) * s, c.y * s, 1.0 * s, 1.5 * s,
-                      c.color, "404040", c.alpha / 255, 1.2)
+                      c.color, "404040", min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_smd_resistor(cr, c: SMDResistor, s: float) -> None:
@@ -1799,7 +1849,7 @@ def _render_smd_resistor(cr, c: SMDResistor, s: float) -> None:
     len_in = sz / 1000
     _fill_stroke_rect(cr, c.x * s, (c.y - len_in / 4) * s,
                       len_in * s, (len_in / 2) * s,
-                      c.body_color, c.border_color, c.alpha / 255)
+                      c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_smd_capacitor(cr, c: SMDCapacitor, s: float) -> None:
@@ -1807,7 +1857,7 @@ def _render_smd_capacitor(cr, c: SMDCapacitor, s: float) -> None:
     len_in = sz / 1000
     _fill_stroke_rect(cr, c.x * s, (c.y - len_in / 4) * s,
                       len_in * s, (len_in / 2) * s,
-                      c.body_color, c.border_color, c.alpha / 255)
+                      c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_schottky_symbol(cr, c: SchottkyDiodeSymbol, s: float) -> None:
@@ -1826,7 +1876,7 @@ def _render_schottky_symbol(cr, c: SchottkyDiodeSymbol, s: float) -> None:
 
 def _render_bridge_rectifier(cr, c: BridgeRectifier, s: float) -> None:
     _fill_stroke_rect(cr, c.x * s, c.y * s, 0.2 * s, 0.2 * s,
-                      c.body_color, c.border_color, c.alpha / 255)
+                      c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_photo_diode_symbol(cr, c: PhotoDiodeSymbol, s: float) -> None:

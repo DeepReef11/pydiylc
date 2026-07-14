@@ -85,3 +85,44 @@ def test_cli_render_png_exits_2_without_pycairo(tmp_path, monkeypatch, capsys):
     assert rc == 2
     err = capsys.readouterr().err
     assert "pycairo" in err
+
+
+@pytest.mark.skipif(not cairo_render.has_cairo(), reason="pycairo not installed")
+def test_nonstandard_wire_point_counts_draw_ink(tmp_path):
+    """3/5/7-point wires must draw — the 4-point unpack used to raise and the
+    per-component guard swallowed it, leaving a blank spot."""
+    import cairo
+
+    from pydiylc import Project, HookupWire
+
+    p = Project()
+    p.add(HookupWire("W", points=[(1, 1), (2, 2), (3, 1)], point_count="THREE"))
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 500, 400)
+    cairo_render.draw_project(cairo.Context(surf), p, show_grid=False)
+    buf = surf.get_data()
+    ink = sum(1 for i in range(0, len(buf), 4) if buf[i + 2] < 200 and buf[i + 3] > 200)
+    assert ink > 50
+
+
+@pytest.mark.skipif(not cairo_render.has_cairo(), reason="pycairo not installed")
+def test_vertical_inductor_bumps_follow_the_wire(tmp_path):
+    """Cairo used to draw coil scallops at fixed world angles — a vertical
+    inductor got sideways bumps and stray chords. The ink must hug the wire."""
+    import cairo
+
+    from pydiylc import Project, InductorSymbol
+
+    p = Project()
+    p.add(InductorSymbol("L1", x1=1.0, y1=1.0, x2=1.0, y2=2.0))
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, 400, 400)
+    cairo_render.draw_project(cairo.Context(surf), p, show_grid=False)
+    buf = surf.get_data()
+    W = surf.get_width()
+    xs = [
+        xx
+        for yy in range(90, 200)
+        for xx in range(20, 300)
+        if buf[(yy * W + xx) * 4 + 2] < 200 and buf[(yy * W + xx) * 4 + 3] > 200
+    ]
+    assert xs, "no inductor ink found"
+    assert max(xs) - min(xs) < 40  # bump diameter, not sideways scallops

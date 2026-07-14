@@ -163,6 +163,32 @@ def _color(hex6: str) -> str:
     return f"#{hex6.lstrip('#').lower()}"
 
 
+def _smooth_path_d(pts, s: float) -> str:
+    """SVG path through N control points (the legal wire counts: 2/3/4/5/7).
+
+    Cubic segments while four points remain, then a quadratic for three and
+    a line for two — matching how DIYLC builds curved-component paths, so a
+    3/5/7-point wire renders instead of crashing the 4-point unpack.
+    """
+    d = [f"M {pts[0][0]*s:.1f},{pts[0][1]*s:.1f}"]
+    i, n = 0, len(pts)
+    while n - i >= 4:
+        p1, p2, p3 = pts[i + 1], pts[i + 2], pts[i + 3]
+        d.append(
+            f"C {p1[0]*s:.1f},{p1[1]*s:.1f} "
+            f"{p2[0]*s:.1f},{p2[1]*s:.1f} "
+            f"{p3[0]*s:.1f},{p3[1]*s:.1f}"
+        )
+        i += 3
+    if n - i == 3:
+        q, p2 = pts[i + 1], pts[i + 2]
+        d.append(f"Q {q[0]*s:.1f},{q[1]*s:.1f} {p2[0]*s:.1f},{p2[1]*s:.1f}")
+    elif n - i == 2:
+        p1 = pts[i + 1]
+        d.append(f"L {p1[0]*s:.1f},{p1[1]*s:.1f}")
+    return " ".join(d)
+
+
 def render_svg(project: Project, options: RenderOptions | None = None) -> str:
     """Render a Project to an SVG string."""
     opts = options or RenderOptions()
@@ -242,6 +268,18 @@ def _render_one(c: Component, s: float) -> str:
     if handler is None:
         # Generic fallback: small marker at the first coord we can find
         return _fallback(c, s)
+    from .components import ORIENTED_BY_TRANSFORM, orientation_turns
+
+    if type(c) in ORIENTED_BY_TRANSFORM:
+        turns = orientation_turns(c)
+        if turns:
+            # The renderer draws the DEFAULT-orientation body; rotate it
+            # whole about the anchor so pads land on the (rotated) pins the
+            # connectivity graph reports.
+            return (
+                f'<g transform="rotate({turns * 90} '
+                f'{c.x * s:.1f} {c.y * s:.1f})">{handler(c, s)}</g>'
+            )
     return handler(c, s)
 
 
@@ -597,14 +635,8 @@ def _render_hookup_wire(c: HookupWire, s: float) -> str:
             f'stroke="{_color(c.color)}" stroke-width="1.8" '
             f'stroke-linecap="round"/></g>'
         )
-    # Quadratic-ish smooth curve through 4 control points
-    p0, p1, p2, p3 = pts
-    d = (
-        f"M {p0[0]*s:.1f},{p0[1]*s:.1f} "
-        f"C {p1[0]*s:.1f},{p1[1]*s:.1f} "
-        f"{p2[0]*s:.1f},{p2[1]*s:.1f} "
-        f"{p3[0]*s:.1f},{p3[1]*s:.1f}"
-    )
+    # Smooth curve through however many control points the wire has.
+    d = _smooth_path_d(pts, s)
     return (
         f'<g class="wire" data-name="{_esc(c.name)}">'
         f'<path d="{d}" fill="none" stroke="{_color(c.color)}" '
@@ -1007,22 +1039,17 @@ def _render_ground_symbol(c: GroundSymbol, s: float) -> str:
 
 def _render_curved_trace(c: CurvedTrace, s: float) -> str:
     pts = list(c.points)
+    thickness_px = max(2.0, _measure_to_inches(c.size) * s)
     if len(pts) == 2:
         x1, y1 = pts[0]
         x2, y2 = pts[1]
         return (
             f'<g class="curved-trace" data-name="{_esc(c.name)}">'
             f'<line x1="{x1*s:.1f}" y1="{y1*s:.1f}" x2="{x2*s:.1f}" y2="{y2*s:.1f}" '
-            f'stroke="{_color(c.color)}" stroke-width="2" stroke-linecap="round"/></g>'
+            f'stroke="{_color(c.color)}" stroke-width="{thickness_px:.1f}" '
+            f'stroke-linecap="round"/></g>'
         )
-    p0, p1, p2, p3 = pts
-    thickness_px = max(2.0, _measure_to_inches(c.size) * s)
-    d = (
-        f"M {p0[0]*s:.1f},{p0[1]*s:.1f} "
-        f"C {p1[0]*s:.1f},{p1[1]*s:.1f} "
-        f"{p2[0]*s:.1f},{p2[1]*s:.1f} "
-        f"{p3[0]*s:.1f},{p3[1]*s:.1f}"
-    )
+    d = _smooth_path_d(pts, s)
     return (
         f'<g class="curved-trace" data-name="{_esc(c.name)}">'
         f'<path d="{d}" fill="none" stroke="{_color(c.color)}" '
@@ -1143,8 +1170,8 @@ def _render_ground_fill(c: GroundFill, s: float) -> str:
         return ""
     pts = " ".join(f"{x*s:.1f},{y*s:.1f}" for x, y in c.points)
     return (
-        f'<polygon points="{pts}" fill="#{c.color}" fill-opacity="0.35" '
-        f'stroke="#{c.color}" stroke-width="1"/>'
+        f'<polygon points="{pts}" fill="{_color(c.color)}" fill-opacity="0.35" '
+        f'stroke="{_color(c.color)}" stroke-width="1"/>'
     )
 
 
@@ -1155,11 +1182,11 @@ def _render_elliptical_cutout(c: EllipticalCutout, s: float) -> str:
     ry = abs(c.y2 - c.y1) / 2 * s
     if rx <= 0 or ry <= 0:
         return ""
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     return (
         f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" '
-        f'fill="#{c.color}" fill-opacity="{fa:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.color)}" fill-opacity="{fa:.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1177,10 +1204,10 @@ def _render_polygon(c: Polygon, s: float) -> str:
     if len(c.points) < 3:
         return ""
     pts = " ".join(f"{x*s:.1f},{y*s:.1f}" for x, y in c.points)
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     return (
-        f'<polygon points="{pts}" fill="#{c.color}" fill-opacity="{fa:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'<polygon points="{pts}" fill="{_color(c.color)}" fill-opacity="{fa:.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1194,7 +1221,7 @@ def _render_wrap_label(c: WrapLabel, s: float) -> str:
     )
     return (
         f'<text x="{x:.1f}" y="{y:.1f}" font-size="{c.font_size}" '
-        f'text-anchor="{anchor}" fill="#{c.color}">{_esc(c.text)}</text>'
+        f'text-anchor="{anchor}" fill="{_color(c.color)}">{_esc(c.text)}</text>'
     )
 
 
@@ -1224,16 +1251,16 @@ def _render_diode_like(c, s: float, *, body_color: str) -> str:
         (cx - ux*hl - px*hw, cy - uy*hl - py*hw),
     ]
     pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in corners)
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     leads = (
         f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{cx-ux*hl:.1f}" y2="{cy-uy*hl:.1f}" '
-        f'stroke="#{c.lead_color}" stroke-width="1.2"/>'
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/>'
         f'<line x1="{cx+ux*hl:.1f}" y1="{cy+uy*hl:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-        f'stroke="#{c.lead_color}" stroke-width="1.2"/>'
+        f'stroke="{_color(c.lead_color)}" stroke-width="1.2"/>'
     )
     body = (
-        f'<polygon points="{pts}" fill="#{body_color}" fill-opacity="{fa:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'<polygon points="{pts}" fill="{_color(body_color)}" fill-opacity="{fa:.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
     return "<g>" + leads + body + "</g>"
 
@@ -1242,7 +1269,7 @@ def _render_pcb_text(c: PCBText, s: float) -> str:
     return (
         f'<text x="{c.x*s:.1f}" y="{c.y*s + c.font_size:.1f}" '
         f'font-family="monospace" font-size="{c.font_size}" '
-        f'fill="#{c.color}">{_esc(c.text)}</text>'
+        f'fill="{_color(c.color)}">{_esc(c.text)}</text>'
     )
 
 
@@ -1253,19 +1280,19 @@ def _render_potentiometer_symbol(c: PotentiometerSymbol, s: float) -> str:
     cx, cy = sum(sx) / 3, sum(sy) / 3
     lines = "".join(
         f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x:.1f}" y2="{y:.1f}" '
-        f'stroke="#{c.color}" stroke-width="1"/>'
+        f'stroke="{_color(c.color)}" stroke-width="1"/>'
         for x, y in zip(sx, sy)
     )
     body = (
         f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="8" '
-        f'fill="none" stroke="#{c.color}" stroke-width="1"/>'
+        f'fill="none" stroke="{_color(c.color)}" stroke-width="1"/>'
     )
     return "<g>" + lines + body + "</g>"
 
 
 def _render_closed_jack(c: ClosedJack1_4, s: float) -> str:
     x, y = c.x * s, c.y * s
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     return (
         f'<rect x="{x-4:.1f}" y="{y-4:.1f}" width="{0.3*s:.1f}" height="{0.8*s:.1f}" '
         f'fill="#666" fill-opacity="{fa:.2f}" stroke="#000" stroke-width="1"/>'
@@ -1274,7 +1301,7 @@ def _render_closed_jack(c: ClosedJack1_4, s: float) -> str:
 
 def _render_rca_jack(c: RCAJack, s: float) -> str:
     x, y = c.x * s, c.y * s
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     return (
         f'<g>'
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{0.12*s:.1f}" '
@@ -1301,7 +1328,7 @@ def _render_transformer_coil(c: TransformerCoil, s: float) -> str:
         path_parts.append(f"A {r:.1f},{r:.1f} 0 0 1 {bx:.1f},{by:.1f}")
     d = " ".join(path_parts)
     return (
-        f'<path d="{d}" fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+        f'<path d="{d}" fill="none" stroke="{_color(c.color)}" stroke-width="1.2"/>'
     )
 
 
@@ -1309,7 +1336,7 @@ def _render_transformer_core(c: TransformerCore, s: float) -> str:
     return (
         f'<line x1="{c.x1*s:.1f}" y1="{c.y1*s:.1f}" '
         f'x2="{c.x2*s:.1f}" y2="{c.y2*s:.1f}" '
-        f'stroke="#{c.color}" stroke-width="2"/>'
+        f'stroke="{_color(c.color)}" stroke-width="2"/>'
     )
 
 
@@ -1319,9 +1346,9 @@ def _render_triode_symbol(c: TriodeSymbol, s: float) -> str:
     return (
         f'<g>'
         f'<circle cx="{x+r:.1f}" cy="{y:.1f}" r="{r:.1f}" '
-        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+        f'fill="none" stroke="{_color(c.color)}" stroke-width="1.2"/>'
         f'<line x1="{x+r-6:.1f}" y1="{y-r:.1f}" x2="{x+r+6:.1f}" y2="{y-r:.1f}" '
-        f'stroke="#{c.color}" stroke-width="1.2"/>'
+        f'stroke="{_color(c.color)}" stroke-width="1.2"/>'
         f'</g>'
     )
 
@@ -1329,7 +1356,7 @@ def _render_triode_symbol(c: TriodeSymbol, s: float) -> str:
 def _render_single_coil_pickup(c: SingleCoilPickup, s: float) -> str:
     x, y = c.x * s, c.y * s
     w, h = 0.7 * s, 1.0 * s
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     poles = "".join(
         f'<circle cx="{x:.1f}" cy="{y - h/2 + (i+0.5)*(h/6):.1f}" r="2.5" fill="#888"/>'
         for i in range(6)
@@ -1337,8 +1364,8 @@ def _render_single_coil_pickup(c: SingleCoilPickup, s: float) -> str:
     return (
         f'<g>'
         f'<rect x="{x-w/2:.1f}" y="{y-h/2:.1f}" width="{w:.1f}" height="{h:.1f}" '
-        f'fill="#{c.color}" fill-opacity="{fa:.2f}" '
-        f'stroke="#{c.base_color}" stroke-width="1.2"/>'
+        f'fill="{_color(c.color)}" fill-opacity="{fa:.2f}" '
+        f'stroke="{_color(c.base_color)}" stroke-width="1.2"/>'
         f'{poles}'
         f'</g>'
     )
@@ -1349,11 +1376,11 @@ def _render_cliff_jack(c: CliffJack1_4, s: float) -> str:
     y = c.y * s
     w = 0.4 * s
     h = 0.3 * s
-    fa = c.alpha / 255
+    fa = min(1.0, c.alpha / 127)
     return (
         f'<rect x="{x-4:.1f}" y="{y-4:.1f}" width="{w:.1f}" height="{h:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{fa:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{fa:.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1363,7 +1390,7 @@ def _render_tag_strip(c: TagStrip, s: float) -> str:
     body = (
         f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
         f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
-        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
+        f'fill="{_color(c.board_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
         f'stroke="#3d1f00" stroke-width="1"/>'
     )
     lugs = "".join(
@@ -1376,7 +1403,7 @@ def _render_tag_strip(c: TagStrip, s: float) -> str:
 def _render_pilot_lamp(c: PilotLampHolder, s: float) -> str:
     return (
         f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="12" '
-        f'fill="#ffd84d" fill-opacity="{c.alpha/255:.2f}" stroke="#4c3200" stroke-width="1"/>'
+        f'fill="#ffd84d" fill-opacity="{min(1.0, c.alpha / 127):.2f}" stroke="#4c3200" stroke-width="1"/>'
     )
 
 
@@ -1386,8 +1413,8 @@ def _render_multi_section_cap(c: MultiSectionCapacitor, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.15)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
         f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1395,7 +1422,7 @@ def _render_tape_measure(c: TapeMeasure, s: float) -> str:
     return (
         f'<line x1="{c.x1*s:.1f}" y1="{c.y1*s:.1f}" '
         f'x2="{c.x2*s:.1f}" y2="{c.y2*s:.1f}" '
-        f'stroke="#{c.color}" stroke-width="1" '
+        f'stroke="{_color(c.color)}" stroke-width="1" '
         f'marker-start="url(#arrow)" marker-end="url(#arrow)"/>'
     )
 
@@ -1404,8 +1431,8 @@ def _render_fuse_holder(c: FuseHolderPanel, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.05)*s:.1f}" y="{c.y*s:.1f}" '
         f'width="{0.1*s:.1f}" height="{0.2*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1415,8 +1442,8 @@ def _render_audio_transformer(c: AudioTransformer, s: float) -> str:
     return (
         f'<rect x="{c.x*s - w/2:.1f}" y="{c.y*s:.1f}" '
         f'width="{w:.1f}" height="{h:.1f}" '
-        f'fill="#{c.coil_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.core_color}" stroke-width="1.5"/>'
+        f'fill="{_color(c.coil_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.core_color)}" stroke-width="1.5"/>'
     )
 
 
@@ -1435,7 +1462,7 @@ def _render_led_symbol(c: LEDSymbol, s: float) -> str:
     p3 = (cx + px * size, cy + py * size)
     pts = f"{p1[0]:.1f},{p1[1]:.1f} {p2[0]:.1f},{p2[1]:.1f} {p3[0]:.1f},{p3[1]:.1f}"
     return (
-        f'<polygon points="{pts}" fill="#{c.body_color}" '
+        f'<polygon points="{pts}" fill="{_color(c.body_color)}" '
         f'stroke="#000" stroke-width="1"/>'
     )
 
@@ -1447,8 +1474,8 @@ def _render_sil_ic(c: SIL_IC, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.1)*s:.1f}" '
         f'width="{w*s:.1f}" height="{0.25*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1459,8 +1486,8 @@ def _render_chassis_panel(c: ChassisPanel, s: float) -> str:
     h = abs(c.y2 - c.y1) * s
     return (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-        f'fill="#{c.color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1.5"/>'
+        f'fill="{_color(c.color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1.5"/>'
     )
 
 
@@ -1468,8 +1495,8 @@ def _render_transistor_to1(c: TransistorTO1, s: float) -> str:
     cy = (c.y + c.pin_spacing.to_inches()) * s
     return (
         f'<circle cx="{c.x*s:.1f}" cy="{cy:.1f}" r="{0.18*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1478,8 +1505,8 @@ def _render_transistor_to220(c: TransistorTO220, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.15)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
         f'width="{0.3*s:.1f}" height="{(2*ps+0.1)*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1487,8 +1514,8 @@ def _render_iec_socket(c: IECSocket, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.3)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
         f'width="{0.6*s:.1f}" height="{0.3*s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1.2"/>'
     )
 
 
@@ -1497,11 +1524,13 @@ def _render_tantalum_cap(c: TantalumCapacitor, s: float) -> str:
 
 
 def _render_eyelet_board(c: EyeletBoard, s: float) -> str:
+    x, y = min(c.x1, c.x2) * s, min(c.y1, c.y2) * s
+    w, h = abs(c.x2 - c.x1) * s, abs(c.y2 - c.y1) * s
     return (
-        f'<rect x="{c.x1*s:.1f}" y="{c.y1*s:.1f}" '
-        f'width="{(c.x2-c.x1)*s:.1f}" height="{(c.y2-c.y1)*s:.1f}" '
-        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'<rect x="{x:.1f}" y="{y:.1f}" '
+        f'width="{w:.1f}" height="{h:.1f}" '
+        f'fill="{_color(c.board_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
@@ -1518,7 +1547,7 @@ def _render_inductor_symbol(c: InductorSymbol, s: float) -> str:
         t = (i + 1) / bumps
         bx, by = x1 + dx * t, y1 + dy * t
         parts.append(f"A {r:.1f},{r:.1f} 0 0 1 {bx:.1f},{by:.1f}")
-    return f'<path d="{" ".join(parts)}" fill="none" stroke="#{c.border_color}" stroke-width="1.2"/>'
+    return f'<path d="{" ".join(parts)}" fill="none" stroke="{_color(c.border_color)}" stroke-width="1.2"/>'
 
 
 def _render_pentode_symbol(c: PentodeSymbol, s: float) -> str:
@@ -1526,7 +1555,7 @@ def _render_pentode_symbol(c: PentodeSymbol, s: float) -> str:
     y = (c.y + 0.1) * s
     return (
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{0.3*s:.1f}" '
-        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+        f'fill="none" stroke="{_color(c.color)}" stroke-width="1.2"/>'
     )
 
 
@@ -1545,7 +1574,7 @@ def _render_lever_switch(c: LeverSwitch, s: float) -> str:
     return (
         f'<rect x="{(c.x-0.05)*s:.1f}" y="{(c.y-0.05)*s:.1f}" '
         f'width="{0.3*s:.1f}" height="{h*s:.1f}" '
-        f'fill="#999" fill-opacity="{c.alpha/255:.2f}" '
+        f'fill="#999" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
         f'stroke="#000" stroke-width="1"/>'
     )
 
@@ -1558,30 +1587,32 @@ def _render_zener_symbol(c: ZenerDiodeSymbol, s: float) -> str:
     return (
         f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
         f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
-        f'fill="#{c.body_color}"/>'
+        f'fill="{_color(c.body_color)}"/>'
     )
 
 
 def _render_marshall_perf(c: MarshallPerfBoard, s: float) -> str:
+    x, y = min(c.x1, c.x2) * s, min(c.y1, c.y2) * s
+    w, h = abs(c.x2 - c.x1) * s, abs(c.y2 - c.y1) * s
     return (
-        f'<rect x="{c.x1*s:.1f}" y="{c.y1*s:.1f}" '
-        f'width="{(c.x2-c.x1)*s:.1f}" height="{(c.y2-c.y1)*s:.1f}" '
-        f'fill="#{c.board_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1"/>'
+        f'<rect x="{x:.1f}" y="{y:.1f}" '
+        f'width="{w:.1f}" height="{h:.1f}" '
+        f'fill="{_color(c.board_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1"/>'
     )
 
 
 def _svg_rect(x, y, w, h, fill, stroke, alpha=1.0, line_w=1.0):
     return (
         f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-        f'fill="#{fill}" fill-opacity="{alpha:.2f}" '
-        f'stroke="#{stroke}" stroke-width="{line_w}"/>'
+        f'fill="{_color(fill)}" fill-opacity="{alpha:.2f}" '
+        f'stroke="{_color(stroke)}" stroke-width="{line_w}"/>'
     )
 
 
 def _render_mini_relay(c: MiniRelay, s: float) -> str:
     return _svg_rect((c.x - 0.05) * s, (c.y - 0.05) * s,
-                     0.3 * s, 0.4 * s, "404040", "000000", c.alpha / 255)
+                     0.3 * s, 0.4 * s, "404040", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_rect_cutout(c: RectangularCutout, s: float) -> str:
@@ -1589,32 +1620,32 @@ def _render_rect_cutout(c: RectangularCutout, s: float) -> str:
     y = min(c.y1, c.y2) * s
     w = abs(c.x2 - c.x1) * s
     h = abs(c.y2 - c.y1) * s
-    return _svg_rect(x, y, w, h, c.color, c.border_color, c.alpha / 255)
+    return _svg_rect(x, y, w, h, c.color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_jazz_bass_pickup(c: JazzBassPickup, s: float) -> str:
     return _svg_rect((c.x - 0.2) * s, c.y * s, 0.4 * s, 0.5 * s,
-                     c.color, c.pole_color, c.alpha / 255, 1.2)
+                     c.color, c.pole_color, min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_pbass_pickup(c: PBassPickup, s: float) -> str:
     return _svg_rect((c.x - 0.2) * s, c.y * s, 0.4 * s, 0.5 * s,
-                     c.color, c.pole_color, c.alpha / 255, 1.2)
+                     c.color, c.pole_color, min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_humbucker(c: HumbuckerPickup, s: float) -> str:
     return _svg_rect((c.x - 0.4) * s, c.y * s, 0.8 * s, 1.4 * s,
-                     c.color, c.pole_color, c.alpha / 255, 1.2)
+                     c.color, c.pole_color, min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_lp_switch(c: LPSwitch, s: float) -> str:
     return _svg_rect((c.x - 0.05) * s, c.y * s, 0.4 * s, 1.4 * s,
-                     "606060", "000000", c.alpha / 255)
+                     "606060", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_battery_snap_9v(c: BatterySnap9V, s: float) -> str:
     return _svg_rect((c.x - 0.15) * s, c.y * s, 0.3 * s, 0.5 * s,
-                     c.color, "000000", c.alpha / 255)
+                     c.color, "000000", min(1.0, c.alpha / 127))
 
 
 def _render_ic_symbol(c: ICSymbol, s: float) -> str:
@@ -1622,15 +1653,15 @@ def _render_ic_symbol(c: ICSymbol, s: float) -> str:
     pts = f"{x:.1f},{y:.1f} {x:.1f},{y + 0.2*s:.1f} {x + 0.4*s:.1f},{y + 0.1*s:.1f}"
     return (
         f'<polygon points="{pts}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1.2"/>'
     )
 
 
 def _render_rotary_selector(c: RotarySelectorSwitch, s: float) -> str:
     return (
         f'<circle cx="{c.x*s:.1f}" cy="{c.y*s:.1f}" r="{0.4*s:.1f}" '
-        f'fill="#b3b3b3" fill-opacity="{c.alpha/255:.2f}" stroke="#000" stroke-width="1.2"/>'
+        f'fill="#b3b3b3" fill-opacity="{min(1.0, c.alpha / 127):.2f}" stroke="#000" stroke-width="1.2"/>'
     )
 
 
@@ -1649,7 +1680,7 @@ def _render_battery_symbol(c: BatterySymbol, s: float) -> str:
         ex, ey = cx + ux * offset + px * half, cy + uy * offset + py * half
         lines.append(
             f'<line x1="{sx:.1f}" y1="{sy:.1f}" x2="{ex:.1f}" y2="{ey:.1f}" '
-            f'stroke="#{c.border_color}" stroke-width="1.5"/>'
+            f'stroke="{_color(c.border_color)}" stroke-width="1.5"/>'
         )
     return "<g>" + "".join(lines) + "</g>"
 
@@ -1657,14 +1688,15 @@ def _render_battery_symbol(c: BatterySymbol, s: float) -> str:
 def _render_electrolytic_can(c: ElectrolyticCanCapacitor, s: float) -> str:
     return (
         f'<circle cx="{c.x*s:.1f}" cy="{(c.y+1.0)*s:.1f}" r="{s:.1f}" '
-        f'fill="#{c.body_color}" fill-opacity="{c.alpha/255:.2f}" '
-        f'stroke="#{c.border_color}" stroke-width="1.2"/>'
+        f'fill="{_color(c.body_color)}" fill-opacity="{min(1.0, c.alpha / 127):.2f}" '
+        f'stroke="{_color(c.border_color)}" stroke-width="1.2"/>'
     )
 
 
 def _render_tripad_board(c: TriPadBoard, s: float) -> str:
-    return _svg_rect(c.x1 * s, c.y1 * s, (c.x2 - c.x1) * s, (c.y2 - c.y1) * s,
-                     c.board_color, c.border_color, c.alpha / 255)
+    return _svg_rect(min(c.x1, c.x2) * s, min(c.y1, c.y2) * s,
+                     abs(c.x2 - c.x1) * s, abs(c.y2 - c.y1) * s,
+                     c.board_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_fuse_symbol(c: FuseSymbol, s: float) -> str:
@@ -1676,7 +1708,7 @@ def _render_fuse_symbol(c: FuseSymbol, s: float) -> str:
     angle = math.degrees(math.atan2(dy, dx))
     return (
         f'<rect x="{-body_l/2:.1f}" y="-4" width="{body_l:.1f}" height="8" '
-        f'fill="none" stroke="#{c.border_color}" stroke-width="1.2" '
+        f'fill="none" stroke="{_color(c.border_color)}" stroke-width="1.2" '
         f'transform="translate({cx:.1f},{cy:.1f}) rotate({angle:.1f})"/>'
     )
 
@@ -1684,38 +1716,38 @@ def _render_fuse_symbol(c: FuseSymbol, s: float) -> str:
 def _render_tube_diode(c: TubeDiodeSymbol, s: float) -> str:
     return (
         f'<circle cx="{(c.x+0.15)*s:.1f}" cy="{(c.y+0.2)*s:.1f}" r="{0.25*s:.1f}" '
-        f'fill="none" stroke="#{c.color}" stroke-width="1.2"/>'
+        f'fill="none" stroke="{_color(c.color)}" stroke-width="1.2"/>'
     )
 
 
 def _render_jfet_symbol(c: JFETSymbol, s: float) -> str:
     return (
         f'<circle cx="{(c.x+0.1)*s:.1f}" cy="{c.y*s:.1f}" r="{0.15*s:.1f}" '
-        f'fill="none" stroke="#{c.color}" stroke-width="1"/>'
+        f'fill="none" stroke="{_color(c.color)}" stroke-width="1"/>'
     )
 
 
 def _render_crystal(c: CrystalOscillator, s: float) -> str:
     return _svg_rect(min(c.x1, c.x2) * s - 6, (min(c.y1, c.y2) - 0.1) * s,
                      abs(c.x2 - c.x1) * s + 12, c.width.to_inches() * s,
-                     c.body_color, c.border_color, c.alpha / 255)
+                     c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_neutrik_jack(c: NeutrikJack1_4, s: float) -> str:
     return _svg_rect(c.x * s, (c.y - 0.5) * s, 0.7 * s, 0.5 * s,
-                     "303030", "000000", c.alpha / 255)
+                     "303030", "000000", min(1.0, c.alpha / 127))
 
 
 def _render_transistor_to126(c: TransistorTO126, s: float) -> str:
     ps = c.pin_spacing.to_inches()
     return _svg_rect((c.x - 0.15) * s, (c.y - 0.05) * s,
                      0.3 * s, (2 * ps + 0.1) * s,
-                     c.body_color, c.border_color, c.alpha / 255)
+                     c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_p90_pickup(c: P90Pickup, s: float) -> str:
     return _svg_rect((c.x - 0.5) * s, c.y * s, 1.0 * s, 1.5 * s,
-                     c.color, "404040", c.alpha / 255, 1.2)
+                     c.color, "404040", min(1.0, c.alpha / 127), 1.2)
 
 
 def _render_smd_resistor(c: SMDResistor, s: float) -> str:
@@ -1723,7 +1755,7 @@ def _render_smd_resistor(c: SMDResistor, s: float) -> str:
     len_in = sz / 1000
     return _svg_rect(c.x * s, (c.y - len_in / 4) * s,
                      len_in * s, (len_in / 2) * s,
-                     c.body_color, c.border_color, c.alpha / 255)
+                     c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_smd_capacitor(c: SMDCapacitor, s: float) -> str:
@@ -1731,7 +1763,7 @@ def _render_smd_capacitor(c: SMDCapacitor, s: float) -> str:
     len_in = sz / 1000
     return _svg_rect(c.x * s, (c.y - len_in / 4) * s,
                      len_in * s, (len_in / 2) * s,
-                     c.body_color, c.border_color, c.alpha / 255)
+                     c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_schottky_symbol(c: SchottkyDiodeSymbol, s: float) -> str:
@@ -1740,13 +1772,13 @@ def _render_schottky_symbol(c: SchottkyDiodeSymbol, s: float) -> str:
     return (
         f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
         f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
-        f'fill="#{c.body_color}"/>'
+        f'fill="{_color(c.body_color)}"/>'
     )
 
 
 def _render_bridge_rectifier(c: BridgeRectifier, s: float) -> str:
     return _svg_rect(c.x * s, c.y * s, 0.2 * s, 0.2 * s,
-                     c.body_color, c.border_color, c.alpha / 255)
+                     c.body_color, c.border_color, min(1.0, c.alpha / 127))
 
 
 def _render_photo_diode_symbol(c: PhotoDiodeSymbol, s: float) -> str:
@@ -1755,7 +1787,7 @@ def _render_photo_diode_symbol(c: PhotoDiodeSymbol, s: float) -> str:
     return (
         f'<polygon points="{cx-size:.1f},{cy-size:.1f} '
         f'{cx+size:.1f},{cy:.1f} {cx-size:.1f},{cy+size:.1f}" '
-        f'fill="#{c.body_color}"/>'
+        f'fill="{_color(c.body_color)}"/>'
     )
 
 
