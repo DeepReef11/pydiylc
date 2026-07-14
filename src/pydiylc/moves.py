@@ -7,10 +7,12 @@ mount / wire / rigid attachment rules, then mutates the components.
 
 Two granularities of move:
 
-- **component move** (``move_component``): the whole component translates by
-  Δ. If it's a board, every mounted component goes with it. Wire endpoints
-  coincident with any moved point follow (stay connected); the wire's other
-  end stays, so leads stretch.
+- **component move** (``move_component`` / ``move_components``): the selection
+  translates by Δ. Attachment is never inferred from geometry — something that
+  merely touches the selection is not dragged along; select it too if you want
+  it to move. The only propagation is containment (a board carries the
+  components mounted on it) and the stretch rule that keeps a selected wire
+  plugged into the *unselected* pin it sits on (see ``_translate_group``).
 
 - **node move** (``move_node``): a single control point shifts by Δ. Used for
   the Tab-into-a-node + nudge workflow. Coincident points on *other*
@@ -23,21 +25,16 @@ viewer) can preview, then commit through the AST-edit path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Iterable
 
-from .components import (
-    Component,
-    HookupWire,
-    CopperTrace,
-    CurvedTrace,
-    Jumper,
-)
+from .components import Component
 from .core import Project
 from .graph import (
     ConnectivityGraph,
-    EdgeType,
     build_graph,
     components_on_board,
     control_points_of,
+    is_wire_like,
 )
 
 
@@ -129,6 +126,98 @@ def _translate_in_place(component: Component, dx: float, dy: float) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _rigid_set(
+    project: Project, g: ConnectivityGraph, indices: Iterable[int]
+) -> set[int]:
+    """The selection, expanded to include everything mounted on a board in it."""
+    from .graph import _BOARD_TYPES  # local import to avoid cycle at top
+
+    rigid: set[int] = set(indices)
+    for ci in list(rigid):
+        if isinstance(project.components[ci], _BOARD_TYPES):
+            rigid.update(components_on_board(g, ci))
+    return rigid
+
+
+def _pinned_outside(
+    project: Project, g: ConnectivityGraph, wire_index: int,
+    cp, rigid_set: set[int],
+) -> bool:
+    """True if this wire endpoint is anchored on a pin *outside* the move.
+
+    "Anchored" means the endpoint shares a junction with a rigid (non-wire)
+    pin — a component pin, a pad, a board. A wire never anchors another wire:
+    both ends are elastic, so two of them sharing a coordinate are merely
+    touching. That is what let a line parked on a bus drag the bus away.
+    """
+    j = g.junction_at(cp.x, cp.y)
+    if j is None:
+        return False
+    return any(
+        m.component_index != wire_index
+        and m.component_index not in rigid_set
+        and not is_wire_like(project.components[m.component_index])
+        for m in j.members
+    )
+
+
+def _translate_group(
+    project: Project, g: ConnectivityGraph, rigid_set: set[int],
+    dx: float, dy: float,
+) -> MoveResult:
+    """Translate ``rigid_set`` by (dx, dy). Nothing outside the set moves.
+
+    Attachment is never inferred from geometry: a component that merely
+    touches the moving set stays exactly where it is. To move something along
+    with the selection, select it too — that is the whole attachment
+    mechanism, and it's the only one the user can see.
+
+    The single exception keeps *untouched* parts wired up: an endpoint of a
+    selected wire that is anchored on a pin outside the set stays put, so the
+    wire stretches rather than silently unplugging a component the user never
+    selected. Both of a wire's ends can be pinned this way, in which case it
+    doesn't move at all.
+    """
+    components = project.components
+    result = MoveResult()
+
+    # Resolve the topology up front — once the components move, the junctions
+    # they used to sit on are gone.
+    pinned: dict[int, set[int]] = {}
+    for ci in rigid_set:
+        comp = components[ci]
+        if not is_wire_like(comp):
+            continue
+        pinned[ci] = {
+            cp.point_index
+            for cp in control_points_of(comp, ci)
+            if _pinned_outside(project, g, ci, cp, rigid_set)
+        }
+
+    for ci in sorted(rigid_set):
+        comp = components[ci]
+        before = control_points_of(comp, ci)
+        held = pinned.get(ci)
+        if not held:
+            _translate_in_place(comp, dx, dy)
+        else:
+            # Shift only the free ends; the pinned ones hold their anchor.
+            for cp in before:
+                if cp.point_index in held:
+                    continue
+                _set_point(comp, cp.point_index,
+                           _clean(cp.x + dx), _clean(cp.y + dy))
+        after = control_points_of(comp, ci)
+        for b, a in zip(before, after):
+            if (b.x, b.y) == (a.x, a.y):
+                continue
+            result.shifts.append(
+                PointShift(ci, b.point_index, (b.x, b.y), (a.x, a.y))
+            )
+
+    return result
+
+
 def move_component(
     project: Project,
     component_index: int,
@@ -137,71 +226,14 @@ def move_component(
     *,
     graph: ConnectivityGraph | None = None,
 ) -> MoveResult:
-    """Move a whole component by (dx, dy), propagating per attachment rules.
+    """Move one component by (dx, dy). Only it (and its board's parts) move.
 
-    - Board → all mounted components move with it.
-    - Any wire endpoint coincident with a moved point follows (stays
-      connected); the wire's far endpoint stays (leads stretch).
+    Nothing attaches itself to the move. A wire whose endpoint sits on this
+    component's pin does *not* follow — select it too if you want it along.
     """
     g = graph or build_graph(project)
-    components = project.components
-    target = components[component_index]
-
-    result = MoveResult()
-
-    # Determine the set of components to translate rigidly.
-    rigid_set = {component_index}
-    from .graph import _BOARD_TYPES  # local import to avoid cycle at top
-
-    if isinstance(target, _BOARD_TYPES):
-        for ci in components_on_board(g, component_index):
-            rigid_set.add(ci)
-
-    # Collect the post-move positions of every point on the rigid set so we
-    # can find wire endpoints that should follow.
-    moved_points: dict[tuple[int, int], tuple[float, float]] = {}
-    pre_positions: dict[tuple[int, int], tuple[float, float]] = {}
-    for ci in rigid_set:
-        for cp in control_points_of(components[ci], ci):
-            pre_positions[(ci, cp.point_index)] = (cp.x, cp.y)
-
-    # Translate the rigid set.
-    for ci in sorted(rigid_set):
-        comp = components[ci]
-        before = control_points_of(comp, ci)
-        _translate_in_place(comp, dx, dy)
-        after = control_points_of(comp, ci)
-        for b, a in zip(before, after):
-            result.shifts.append(
-                PointShift(ci, b.point_index, (b.x, b.y), (a.x, a.y))
-            )
-            moved_points[(ci, b.point_index)] = (a.x, a.y)
-
-    # Pull along wire endpoints that were coincident with any pre-move point
-    # of the rigid set, but only if the wire itself is not in the rigid set.
-    tol = g.tolerance
-    for e in g.edges:
-        if e.edge_type is not EdgeType.WIRE:
-            continue
-        if e.component_index in rigid_set:
-            continue
-        wire = components[e.component_index]
-        wpts = control_points_of(wire, e.component_index)
-        wp = next((p for p in wpts if p.point_index == e.point_index), None)
-        if wp is None:
-            continue
-        # Was this wire endpoint sitting on a (pre-move) rigid point?
-        for (ci, pi), (ox, oy) in pre_positions.items():
-            if abs(wp.x - ox) <= tol and abs(wp.y - oy) <= tol:
-                nx, ny = moved_points[(ci, pi)]
-                _set_point(wire, e.point_index, _clean(nx), _clean(ny))
-                result.shifts.append(
-                    PointShift(e.component_index, e.point_index,
-                               (wp.x, wp.y), (_clean(nx), _clean(ny)))
-                )
-                break
-
-    return result
+    rigid_set = _rigid_set(project, g, [component_index])
+    return _translate_group(project, g, rigid_set, dx, dy)
 
 
 def move_components(
@@ -210,98 +242,22 @@ def move_components(
     dx: float,
     dy: float,
 ) -> MoveResult:
-    """Rigidly translate a group of components by (dx, dy).
+    """Rigidly translate a selection by (dx, dy).
 
-    Unlike repeated ``move_component`` calls, this routine resolves the
-    topology once up front, so:
-    - Wires entirely inside the selection (both endpoints on selected
-      components) translate as a whole — both endpoints shift +dx, +dy.
-    - Wires straddling the boundary (one endpoint on a selected
-      component, the other on an unselected component) have ONLY the
-      selected-side endpoint moved — the other end stays anchored.
-    - Components on a selected board move with the board, but only
-      once (no double-move from also appearing in the selection list).
-    - Geometric coincidence between an unselected wire endpoint and a
-      moved component's pre-position does NOT cascade. That distinguishes
-      this from looping ``move_component`` per index.
+    The selection *is* the attachment: exactly what's listed moves, plus the
+    components mounted on any board in it (they sit on it, so they ride along).
+    A component that merely touches the selection never follows.
+
+    - Wires inside the selection translate as a whole — both endpoints shift.
+    - A selected wire endpoint anchored on an *unselected* pin stays put, so
+      the wire stretches instead of unplugging a component the user never
+      selected.
+    - Components on a selected board move with it, but only once (no
+      double-move from also appearing in the selection list).
     """
     g = build_graph(project)
-    components = project.components
-
-    # Expand boards in the selection to cover everything mounted on them
-    # so a board move doesn't get double-applied to the components atop it.
-    rigid_set: set[int] = set(component_indices)
-    from .graph import _BOARD_TYPES, EdgeType as _EdgeType
-
-    for ci in list(rigid_set):
-        if isinstance(components[ci], _BOARD_TYPES):
-            for mounted in components_on_board(g, ci):
-                rigid_set.add(mounted)
-
-    result = MoveResult()
-
-    # Step 1: capture pre-move topology. A wire endpoint follows iff its
-    # junction has at least one rigid anchor AND no unselected anchor.
-    # Why both conditions: when the user has previously dragged a
-    # selected component on top of an unselected one, the junction now
-    # contains BOTH. Dragging the wire along would silently detach it
-    # from the unselected anchor — which the user can't see and didn't
-    # ask for. Better to leave the wire stretched (visually obvious)
-    # than to silently rewire the layout.
-    tol = g.tolerance
-    is_wire_like = lambda c: isinstance(  # noqa: E731
-        c, (HookupWire, CopperTrace, CurvedTrace, Jumper)
-    )
-    endpoints_to_follow: list[tuple[int, int]] = []
-    for i, wire in enumerate(components):
-        if i in rigid_set:
-            continue
-        if not is_wire_like(wire):
-            continue
-        wpts = control_points_of(wire, i)
-        for cp in wpts:
-            j = g.junction_at(cp.x, cp.y)
-            if j is None:
-                continue
-            has_rigid_anchor = False
-            has_unselected_anchor = False
-            for member in j.members:
-                if member.component_index == i:
-                    continue
-                if is_wire_like(components[member.component_index]):
-                    continue
-                if member.component_index in rigid_set:
-                    has_rigid_anchor = True
-                else:
-                    has_unselected_anchor = True
-            if has_rigid_anchor and not has_unselected_anchor:
-                endpoints_to_follow.append((i, cp.point_index))
-
-    # Step 2: translate the rigid set in place.
-    for ci in sorted(rigid_set):
-        comp = components[ci]
-        before = control_points_of(comp, ci)
-        _translate_in_place(comp, dx, dy)
-        after = control_points_of(comp, ci)
-        for b, a in zip(before, after):
-            result.shifts.append(
-                PointShift(ci, b.point_index, (b.x, b.y), (a.x, a.y))
-            )
-
-    # Step 3: translate each pre-captured wire endpoint by the same delta.
-    for (wi, pi) in endpoints_to_follow:
-        wire = components[wi]
-        wpts = control_points_of(wire, wi)
-        wp = next((p for p in wpts if p.point_index == pi), None)
-        if wp is None:
-            continue
-        new_x, new_y = _clean(wp.x + dx), _clean(wp.y + dy)
-        _set_point(wire, pi, new_x, new_y)
-        result.shifts.append(
-            PointShift(wi, pi, (wp.x, wp.y), (new_x, new_y))
-        )
-
-    return result
+    rigid_set = _rigid_set(project, g, component_indices)
+    return _translate_group(project, g, rigid_set, dx, dy)
 
 
 def move_node(
@@ -438,7 +394,14 @@ def _follow_wires_after_geometry_change(
     operation). Matches by pre-change position, so two wires sharing
     a junction at the same old pin both follow that pin's new
     location. Wire endpoints on other components are left alone.
+
+    Same anchoring rule as ``_endpoints_to_follow``: a wire's pins are
+    elastic, so rotating one drags nothing — otherwise spinning a line
+    that happened to overlap a bus would drag the bus with it.
     """
+    if is_wire_like(components[component_index]):
+        return
+
     post_pins = control_points_of(components[component_index], component_index)
     if len(post_pins) != len(pre_pins):
         return  # shape change; can't pair-up pins safely
@@ -459,7 +422,7 @@ def _follow_wires_after_geometry_change(
     for i, wire in enumerate(components):
         if i == component_index:
             continue
-        if not isinstance(wire, (HookupWire, CopperTrace, CurvedTrace, Jumper)):
+        if not is_wire_like(wire):
             continue
         pts = list(getattr(wire, "points", []))
         if not pts:

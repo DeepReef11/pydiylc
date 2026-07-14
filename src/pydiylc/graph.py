@@ -43,6 +43,16 @@ _WIRE_TYPES = (CopperTrace, CurvedTrace, HookupWire, Jumper, Line)
 DEFAULT_TOLERANCE = 0.001
 
 
+def is_wire_like(component: Component) -> bool:
+    """True for elastic components (leads, traces, jumpers, lines).
+
+    The move engine keys its attachment rules off this: an elastic endpoint
+    sticks to the *rigid* pin it sits on, but two elastic endpoints that
+    merely share a coordinate are not attached to each other.
+    """
+    return isinstance(component, _WIRE_TYPES)
+
+
 class EdgeType(str, Enum):
     MOUNT = "mount"      # component sits on a board
     WIRE = "wire"        # elastic lead/trace/jumper endpoint

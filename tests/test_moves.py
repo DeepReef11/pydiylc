@@ -9,13 +9,19 @@ from pydiylc import (
     Project,
     PerfBoard,
     VeroBoard,
+    Line,
     Resistor,
     SolderPad,
     HookupWire,
     OpenJack1_4,
     TransistorTO92,
 )
-from pydiylc.moves import move_component, move_node, move_node_to
+from pydiylc.moves import (
+    move_component,
+    move_components,
+    move_node,
+    move_node_to,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -58,20 +64,53 @@ def test_board_move_drags_mounted_components():
     assert jack.x == 8.0
 
 
-def test_moving_component_stretches_attached_wire():
-    """A wire endpoint coincident with a moved component follows; far end stays."""
+def test_moving_a_component_leaves_an_unselected_wire_alone():
+    """Touching is not attaching: an unselected wire never follows a move.
+
+    Attachment is the selection, not the geometry — see
+    ``test_selected_wire_stretches_off_an_unselected_pin`` for taking it along.
+    """
     p = Project()
     p.add(SolderPad("P1", x=1.0, y=1.0))
-    # Wire from the pad (1.0, 1.0) out to (3.0, 1.0)
+    # Wire sitting on the pad (1.0, 1.0), running out to (3.0, 1.0).
     p.add(HookupWire("W1", points=[(1.0, 1.0), (3.0, 1.0)]))
 
-    move_component(p, 0, 0.0, 0.5)  # move the pad down
+    move_component(p, 0, 0.0, 0.5)  # move the pad down, on its own
 
     pad, wire = p.components
-    assert (pad.x, pad.y) == (1.0, 1.5)
-    # Near endpoint followed the pad; far endpoint unchanged → wire stretched.
-    assert wire.points[0] == (1.0, 1.5)
-    assert wire.points[1] == (3.0, 1.0)
+    assert (pad.x, pad.y) == (1.0, 1.5)          # pad moved
+    assert wire.points == [(1.0, 1.0), (3.0, 1.0)]  # wire stayed behind
+
+
+def test_selected_wire_stretches_off_an_unselected_pin():
+    """Select the pad AND the wire: the wire travels, but stays plugged in.
+
+    W1's far end sits on P2, which the user did not select — that endpoint
+    holds its anchor, so the wire stretches instead of unplugging P2.
+    """
+    p = Project()
+    p.add(SolderPad("P1", x=1.0, y=1.0))
+    p.add(SolderPad("P2", x=3.0, y=1.0))
+    p.add(HookupWire("W1", points=[(1.0, 1.0), (3.0, 1.0)]))
+
+    move_components(p, [0, 2], 0.0, 0.5)  # P1 + W1, leaving P2 behind
+
+    p1, p2, wire = p.components
+    assert (p1.x, p1.y) == (1.0, 1.5)   # selected pad moved
+    assert (p2.x, p2.y) == (3.0, 1.0)   # unselected pad untouched
+    assert wire.points[0] == (1.0, 1.5)  # P1 end travelled with it
+    assert wire.points[1] == (3.0, 1.0)  # P2 end held its anchor → stretched
+
+
+def test_selected_wire_with_free_ends_moves_whole():
+    """No outside anchor to hold: the whole wire translates."""
+    p = Project()
+    p.add(SolderPad("P1", x=1.0, y=1.0))
+    p.add(HookupWire("W1", points=[(1.0, 1.0), (3.0, 1.0)]))
+
+    move_components(p, [0, 1], 0.0, 0.5)
+
+    assert p.components[1].points == [(1.0, 1.5), (3.0, 1.5)]
 
 
 def test_moving_wire_itself_moves_both_ends():
@@ -83,8 +122,82 @@ def test_moving_wire_itself_moves_both_ends():
     assert w.points[1] == (3.0, 2.0)
 
 
-def test_board_move_stretches_boundary_crossing_wire():
-    """A wire with one end on a mounted pad and the other off-board stretches."""
+def test_line_parked_on_a_bus_does_not_drag_it_away():
+    """A line dropped on top of a bus and moved back leaves the bus alone.
+
+    Both are elastic, so overlapping them is *touching*, not attaching. The
+    old rule anchored any coincident point, so the round trip dragged the
+    whole bus along under the line — it looked like the bus had vanished.
+    """
+    p = Project()
+    p.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
+    p.add(Line("L1", points=[(1.0, 3.0), (5.0, 3.0)]))
+
+    move_component(p, 1, 0.0, -2.0)  # park L1 exactly on top of the bus
+    move_component(p, 1, 0.0, 2.0)   # ...and take it back off again
+
+    bus, line = p.components
+    assert bus.points == [(1.0, 1.0), (5.0, 1.0)]   # bus never moved
+    assert line.points == [(1.0, 3.0), (5.0, 3.0)]  # round trip is a no-op
+
+
+def test_line_touching_one_bus_end_does_not_deform_it():
+    """The partial-overlap case: one shared endpoint must not bend the bus."""
+    p = Project()
+    p.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
+    p.add(Line("L1", points=[(1.0, 3.0), (3.0, 3.0)]))
+
+    move_component(p, 1, 0.0, -2.0)  # L1's left end lands on the bus's left end
+    move_component(p, 1, 0.0, 2.0)
+
+    bus = p.components[0]
+    assert bus.points == [(1.0, 1.0), (5.0, 1.0)]  # not dragged into a diagonal
+
+
+def test_wire_endpoints_do_not_anchor_each_other():
+    """Two wires sharing a junction: moving one leaves the other in place."""
+    p = Project()
+    p.add(HookupWire("W1", points=[(1.0, 1.0), (2.0, 1.0)]))
+    p.add(HookupWire("W2", points=[(2.0, 1.0), (3.0, 1.0)]))
+
+    move_component(p, 0, 0.0, 1.0)
+
+    assert p.components[0].points == [(1.0, 2.0), (2.0, 2.0)]  # W1 moved
+    assert p.components[1].points == [(2.0, 1.0), (3.0, 1.0)]  # W2 stayed put
+
+
+def test_rotating_a_line_does_not_drag_an_overlapping_bus():
+    """Same anchoring rule on the rotate path."""
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
+    p.add(HookupWire("W1", points=[(1.0, 1.0), (1.0, 3.0)]))
+
+    rotate_component(p, 0, clockwise=True)  # spin the bus about its centroid
+
+    # The bus rotated; the wire that merely touched its end stayed behind.
+    assert p.components[1].points == [(1.0, 1.0), (1.0, 3.0)]
+
+
+def test_component_dropped_on_a_bus_corner_does_not_stick_to_it():
+    """Parking a pad on the bus's endpoint must not weld the two together."""
+    p = Project()
+    p.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
+    p.add(SolderPad("P1", x=1.0, y=1.0))  # sitting exactly on the bus corner
+
+    move_component(p, 1, 2.0, 2.0)  # drag the pad away again
+
+    assert p.components[0].points == [(1.0, 1.0), (5.0, 1.0)]  # bus stayed
+    assert (p.components[1].x, p.components[1].y) == (3.0, 3.0)
+
+
+def test_board_move_carries_its_parts_but_not_an_unselected_wire():
+    """Containment still propagates; coincidence does not.
+
+    The pad rides the board because it's mounted *on* it. The wire only
+    touches the pad, so it stays — select it to bring it along.
+    """
     p = Project()
     p.add(PerfBoard("B1", x1=1.0, y1=1.0, x2=3.0, y2=2.0))
     p.add(SolderPad("P1", x=2.0, y=1.5))  # on the board
@@ -93,9 +206,8 @@ def test_board_move_stretches_boundary_crossing_wire():
     move_component(p, 0, 1.0, 0.0)  # move board right
 
     board, pad, wire = p.components
-    assert pad.x == 3.0  # pad moved with board
-    assert wire.points[0] == (3.0, 1.5)  # near end followed
-    assert wire.points[1] == (6.0, 5.0)  # far end stayed → stretched
+    assert pad.x == 3.0  # pad is mounted on the board → moved with it
+    assert wire.points == [(2.0, 1.5), (6.0, 5.0)]  # unselected wire untouched
 
 
 def test_multi_node_component_moves_as_body():
