@@ -1,6 +1,6 @@
 # pydiylc
 
-![tests](https://img.shields.io/badge/tests-436%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1110%20passing-brightgreen)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)
 ![corpus](https://img.shields.io/badge/corpus%20recognition-100%25-brightgreen)
