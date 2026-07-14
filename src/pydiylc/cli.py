@@ -2,7 +2,7 @@
 
 Subcommands:
 
-    pydiylc convert IN OUT      # .py | .json | .diy → .diy | .json | .svg
+    pydiylc convert IN OUT      # .py | .json | .diy → .diy | .json | .svg | .png
     pydiylc render IN [--out]   # → svg (default), --dpi N for resolution
     pydiylc info FILE           # component count, warnings, breakdown
 
@@ -102,6 +102,8 @@ def save_project(project: Project, path: str | Path, *, dpi: int = 96) -> Path:
             "author": project.author,
             "width_cm": project.width_cm,
             "height_cm": project.height_cm,
+            "grid_inches": project.grid_inches,
+            "dot_spacing": project.dot_spacing,
             "components": [_component_to_dict(c) for c in project.components],
         }
         p.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -166,7 +168,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         return 2
     try:
         out = save_project(project, args.target, dpi=args.dpi)
-    except (ValueError, NotImplementedError) as exc:
+    except (ValueError, NotImplementedError, ImportError) as exc:
         print(f"pydiylc convert: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {out} ({len(project.components)} components)")
@@ -242,10 +244,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_convert = sub.add_parser(
         "convert",
-        help="Convert between formats (.py / .json / .diy → .diy / .json / .svg).",
+        help="Convert between formats (.py / .json / .diy → .diy / .json / .svg / .png).",
     )
     p_convert.add_argument("source", help="input file")
-    p_convert.add_argument("target", help="output file (.diy / .json / .svg)")
+    p_convert.add_argument("target", help="output file (.diy / .json / .svg / .png)")
     p_convert.add_argument(
         "--dpi", type=int, default=96, help="SVG resolution (default 96)"
     )

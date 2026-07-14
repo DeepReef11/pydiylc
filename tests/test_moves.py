@@ -494,3 +494,98 @@ def test_a_node_move_resolders_the_endpoint():
 
     move_node(p, 1, 1, 0.5, 0.0)                  # and peel it back off
     assert links.soldered_to(p, "W", 1) is None
+
+
+# ---------------------------------------------------------------------------
+# Rotation follows every wire shape; multi-node bodies rotate sanely
+# ---------------------------------------------------------------------------
+
+
+def test_rotate_carries_a_soldered_jumper_like_any_other_wire():
+    """Two-pin wires (Jumper) follow a rotation exactly like points-list ones.
+
+    Regression: the follow logic only looked at ``points`` wires, so a
+    rotation dragged CopperTraces along but abandoned Jumpers.
+    """
+    from pydiylc import Jumper, CopperTrace
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    p.add(Resistor("R1", x1=1.0, y1=1.0, x2=1.0, y2=2.0))
+    p.add(Jumper("J1", x1=1.0, y1=1.0, x2=3.0, y2=1.0))          # on R1 end 1
+    p.add(CopperTrace("T1", points=[(1.0, 2.0), (3.0, 2.0)]))    # on R1 end 2
+
+    rotate_component(p, 0, clockwise=True)
+
+    r = p.components[0]
+    j = p.components[1]
+    t = p.components[2]
+    assert (j.x1, j.y1) == (r.x1, r.y1)      # jumper tracked its pin
+    assert (j.x2, j.y2) == (3.0, 1.0)        # far end anchored
+    assert tuple(t.points[0]) == (r.x2, r.y2)  # trace tracked its pin too
+
+
+def test_rotate_tube_socket_bumps_angle_and_spins_the_pin_ring():
+    """A multi-node body with an ``angle`` field rotates through it.
+
+    Regression: the coordinate path used to write each derived pin back
+    individually, which *translated* the whole body once per pin instead of
+    rotating it — the socket jumped to a garbage position.
+    """
+    import pytest
+
+    from pydiylc import TubeSocket, HookupWire
+    from pydiylc.moves import rotate_component
+
+    p = Project()
+    v = TubeSocket("V1", x=2.0, y=2.0)
+    p.add(v)
+    pin0 = v._control_points()[0]
+    p.add(HookupWire("W1", points=[pin0, (5.0, 5.0)]))  # soldered to pin 1
+
+    res = rotate_component(p, 0, clockwise=True)
+
+    assert res.kind == "enum"
+    assert res.field == "angle"
+    assert (res.old_value, res.new_value) == (0, 90)
+    assert (v.x, v.y) == (2.0, 2.0)          # the anchor never moves
+    assert v.angle == 90
+    new_pin0 = v._control_points()[0]
+    # 90° CW about the center: (x, y) -> (cx - (y - cy), cy + (x - cx))
+    assert new_pin0[0] == pytest.approx(2.0 - (pin0[1] - 2.0), abs=2e-3)
+    assert new_pin0[1] == pytest.approx(2.0 + (pin0[0] - 2.0), abs=2e-3)
+    # The soldered wire end tracked its pin.
+    assert tuple(p.components[1].points[0]) == new_pin0
+
+    # Counter-clockwise brings it back.
+    rotate_component(p, 0, clockwise=False)
+    assert v.angle == 0
+    assert tuple(p.components[1].points[0]) == pytest.approx(pin0, abs=2e-3)
+
+
+def test_rotate_multinode_without_rotation_field_is_a_clean_noop():
+    """No orientation enum, no angle: the body must not move at all."""
+    from pydiylc import ICSymbol, PlasticDCJack
+    from pydiylc.moves import can_rotate, rotate_component
+
+    p = Project()
+    p.add(ICSymbol("U1", x=2.0, y=2.0))
+    p.add(PlasticDCJack("DC1", x=4.0, y=4.0))
+
+    for i in (0, 1):
+        comp = p.components[i]
+        before = (comp.x, comp.y, comp._control_points())
+        assert not can_rotate(comp)
+        res = rotate_component(p, i, clockwise=True)
+        assert res.kind == "unsupported"
+        assert (comp.x, comp.y, comp._control_points()) == before
+
+
+def test_can_rotate_covers_the_supported_shapes():
+    from pydiylc import TubeSocket, TransistorTO92, ICSymbol
+    from pydiylc.moves import can_rotate
+
+    assert can_rotate(Resistor("R", x1=0, y1=0, x2=1, y2=0))     # coords
+    assert can_rotate(TransistorTO92("Q", x=0, y=0))             # orientation
+    assert can_rotate(TubeSocket("V", x=0, y=0))                 # angle
+    assert not can_rotate(ICSymbol("U", x=0, y=0))               # neither

@@ -407,10 +407,25 @@ class RotateResult:
     """What a rotation changed. The component is already mutated."""
 
     component_index: int
-    kind: str  # "enum" or "coords"
-    field: str | None = None  # the orientation field, when kind == "enum"
-    old_value: str | None = None
-    new_value: str | None = None
+    kind: str  # "enum", "coords", or "unsupported" (nothing changed)
+    field: str | None = None  # the rotated field, when kind == "enum"
+    old_value: str | int | None = None
+    new_value: str | int | None = None
+
+
+def can_rotate(component: Component) -> bool:
+    """True when ``rotate_component`` can actually change this component.
+
+    Multi-node bodies whose pins derive from the anchor rotate through an
+    ``orientation`` enum or an ``angle`` field; lacking both, there is nothing
+    to rotate (per-pin coordinate writes would only translate the body).
+    """
+    if getattr(component, "orientation", None) in _ORIENT_4 + _ORIENT_HV:
+        return True
+    angle = getattr(component, "angle", None)
+    if isinstance(angle, (int, float)) and not isinstance(angle, bool):
+        return True
+    return not hasattr(component, "_control_points")
 
 
 def rotate_component(
@@ -464,6 +479,25 @@ def rotate_component(
         )
         _refresh_links(project)
         return RotateResult(component_index, "enum", "orientation", orientation, new)
+
+    if hasattr(comp, "_control_points"):
+        # A multi-node body derives its pins from the anchor, so writing the
+        # rotated coordinates back pin-by-pin wouldn't rotate anything — each
+        # write translates the whole body, and N of them walk it off to a
+        # garbage position. Rotate through the ``angle`` field when the body
+        # has one (TubeSocket); otherwise the part has no rotation support
+        # and its geometry must stay put.
+        angle = getattr(comp, "angle", None)
+        if isinstance(angle, (int, float)) and not isinstance(angle, bool):
+            comp.angle = (int(angle) + (90 if clockwise else -90)) % 360
+            _follow_wires_after_geometry_change(
+                components, component_index, pre_pins, detach, project
+            )
+            _refresh_links(project)
+            return RotateResult(
+                component_index, "enum", "angle", int(angle), comp.angle
+            )
+        return RotateResult(component_index, "unsupported")
 
     # Coordinate rotation about the centroid of the component's points.
     if not pre_pins:
@@ -538,25 +572,21 @@ def _follow_wires_after_geometry_change(
         if not is_wire_like(wire):
             continue
         wire_name = getattr(wire, "name", None)
-        pts = list(getattr(wire, "points", []))
-        if not pts or not wire_name:
+        if not wire_name:
             continue
-        changed = False
-        new_pts: list[tuple[float, float]] = []
-        for pi, (px, py) in enumerate(pts):
-            moved = False
+        # Works for every wire shape: points-list (traces, hookup wires)
+        # and two-pin x1/y1/x2/y2 (jumpers) alike.
+        for cp in control_points_of(wire, i):
             # Only a lead actually soldered to the spinning part follows it.
             soldered_here = (
                 project is None  # no project → fall back to pure geometry
-                or _links.soldered_to(project, wire_name, pi) == spinning
+                or _links.soldered_to(project, wire_name, cp.point_index)
+                == spinning
             )
+            if not soldered_here:
+                continue
             for (old_x, old_y), (new_x, new_y) in pin_moves.items():
-                if soldered_here and _close(px, old_x) and _close(py, old_y):
-                    new_pts.append((_clean(new_x), _clean(new_y)))
-                    moved = True
-                    changed = True
+                if _close(cp.x, old_x) and _close(cp.y, old_y):
+                    _set_point(wire, cp.point_index,
+                               _clean(new_x), _clean(new_y))
                     break
-            if not moved:
-                new_pts.append((px, py))
-        if changed:
-            wire.points = new_pts

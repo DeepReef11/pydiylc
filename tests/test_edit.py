@@ -722,3 +722,52 @@ def test_dragging_a_points_list_component_moves_every_point(tmp_path):
 
     w = _reload(path).components[0]
     assert [tuple(t) for t in w.points] == [(1.0, 1.5), (2.0, 1.5)]
+
+
+# ---------------------------------------------------------------------------
+# Emitted add lines import the measure helpers they call
+# ---------------------------------------------------------------------------
+
+def test_propose_add_imports_measure_helpers(tmp_path):
+    """A component with a non-default Measure field emits ``size=mm(...)`` —
+    the helper must be imported or the rewritten file dies with NameError.
+    """
+    from pydiylc.edit import propose_add
+    from pydiylc import SolderPad
+    from pydiylc.core import mm
+
+    p = _write(tmp_path, '''
+        from pydiylc import Project, SolderPad
+        project = Project()
+        project.add(SolderPad(name='P1', x=1.0, y=1.0))
+    ''')
+    proposal = propose_add(p, SolderPad("P2", x=2.0, y=2.0, size=mm(5.0)))
+    assert "mm(5.0)" in proposal.new_text
+    apply_proposal(proposal)
+    ns: dict = {}
+    exec(compile(p.read_text(), str(p), "exec"), ns)  # must not NameError
+    added = ns["project"].components[-1]
+    assert added.name == "P2"
+    assert (added.size.value, added.size.unit) == (5.0, "mm")
+
+
+def test_propose_changes_adds_imports_measure_helpers(tmp_path):
+    """Same guarantee on the batch path the viewer's duplicate flow uses."""
+    from pydiylc.edit import propose_changes
+    from pydiylc import Turret
+    from pydiylc.core import inches
+
+    p = _write(tmp_path, '''
+        from pydiylc import Project, Turret
+        project = Project()
+        project.add(Turret(name='T1', x=1.0, y=1.0))
+    ''')
+    proposal = propose_changes(
+        p, adds=[Turret("T2", x=2.0, y=2.0, size=inches(0.25))]
+    )
+    apply_proposal(proposal)
+    ns: dict = {}
+    exec(compile(p.read_text(), str(p), "exec"), ns)  # must not NameError
+    added = ns["project"].components[-1]
+    assert added.name == "T2"
+    assert (added.size.value, added.size.unit) == (0.25, "in")

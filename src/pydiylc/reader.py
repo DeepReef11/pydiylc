@@ -94,6 +94,17 @@ _FIELD_RENAMES: dict[str, dict[str, str]] = {
         # `tube_type` on the dataclass.
         "type": "tube_type",
     },
+    "diylc.misc.WrapLabel": {
+        # Upstream stores the label text in AbstractComponent's <value>.
+        "value": "text",
+    },
+    "diylc.boards.Breadboard": {
+        "breadboardSize": "size",
+    },
+    "diylc.boards.TerminalStrip": {
+        # Our dataclass calls it body_color; upstream tag is boardColor.
+        "boardColor": "body_color",
+    },
 }
 
 
@@ -224,6 +235,26 @@ def _set_single_anchor(values: dict[str, Any], pts: list[tuple[float, float]]) -
     values["x"], values["y"] = pts[0]
 
 
+def _drop_label_midpoint(
+    pts: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Strip the label-anchor point DIYLC appends to 2-point traces.
+
+    A 2-point CopperTrace/Line is stored as ``[p1, p2, mid]`` — the third
+    point positions the label, it is not a path vertex. Keeping it corrupts
+    the polyline (the trace doubles back to its own middle). Only an exact
+    midpoint is dropped, so a genuine 3-vertex polyline survives.
+    """
+    if len(pts) == 3:
+        (x1, y1), (x2, y2), (mx, my) = pts
+        if (
+            abs(mx - (x1 + x2) / 2.0) <= 1e-6
+            and abs(my - (y1 + y2) / 2.0) <= 1e-6
+        ):
+            return pts[:2]
+    return pts
+
+
 def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Component | None:
     cls = _TAG_TO_CLASS.get(el.tag)
     if cls is None:
@@ -286,9 +317,18 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         if tag == "name":
             values["name"] = child.text or ""
             continue
-        if tag == "value" and "value" in field_names and child.get("unit") is None:
+        if (
+            tag == "value"
+            and "value" in field_names
+            and child.get("unit") is None
+            and len(child) == 0
+        ):
             # Plain string value (resistor models actually use <value
-            # value="..." unit="..."/>, those are handled below)
+            # value="..." unit="..."/>, those are handled below). The
+            # len(child) guard keeps v3 XStream's nested measure form
+            # (<value><value>10.0</value><unit>K</unit></value>) out of this
+            # branch — it must reach the measure handler below, not be
+            # swallowed as the container's whitespace text.
             values["value"] = child.text or ""
             continue
         if tag == "alpha":
@@ -359,7 +399,7 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
     elif diylc_class == "diylc.connectivity.CurvedTrace":
         values["points"] = wire_pts or pts
     elif diylc_class == "diylc.connectivity.CopperTrace":
-        values["points"] = pts or wire_pts
+        values["points"] = _drop_label_midpoint(pts or wire_pts)
     elif diylc_class == "diylc.connectivity.SolderPad":
         if single_point is not None:
             values["x"], values["y"] = single_point
@@ -377,7 +417,7 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
             _set_single_anchor(values, pts)
     elif diylc_class == "diylc.connectivity.Line":
         # Line is a polyline like CopperTrace.
-        values["points"] = pts
+        values["points"] = _drop_label_midpoint(pts)
     elif diylc_class == "diylc.misc.Label":
         if single_point is not None:
             values["x"], values["y"] = single_point
@@ -402,6 +442,22 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         if pts:
             (values["x1"], values["y1"]) = pts[0]
             (values["x2"], values["y2"]) = pts[1] if len(pts) >= 2 else pts[0]
+    elif diylc_class == "diylc.tube.TubeSocket":
+        # DIYLC stores the socket *center* as controlPoints[0], with the pin
+        # ring after it. Files from older pydiylc versions wrote the ring
+        # only — there the centroid recovers the center (the ring pydiylc
+        # emits is evenly spaced).
+        if pts:
+            from .components import TubeSocket as _TubeSocket
+
+            expected = _TubeSocket._PINS_PER_BASE.get(
+                values.get("base", "B9A")
+            )
+            if expected is not None and len(pts) == expected:
+                values["x"] = round(sum(px for px, _ in pts) / len(pts), 3)
+                values["y"] = round(sum(py for _, py in pts) / len(pts), 3)
+            else:
+                values["x"], values["y"] = pts[0]
     elif diylc_class in (
         "diylc.semiconductors.TransistorTO92",
         "diylc.semiconductors.BJTSymbol",
@@ -411,7 +467,6 @@ def _component_from_element(el: ET.Element, warnings_out: list[str]) -> Componen
         "diylc.electromechanical.PlasticDCJack",
         "diylc.electromechanical.OpenJack1_4",
         "diylc.boards.TerminalStrip",
-        "diylc.tube.TubeSocket",
     ):
         # Single-anchor components — take the first control point.
         _set_single_anchor(values, pts)
@@ -592,6 +647,12 @@ def read_project(path: str | Path) -> Project:
         v = float(g_el.get("value"))
         unit = g_el.get("unit", "in")
         project.grid_inches = v if unit == "in" else (v / 25.4 if unit == "mm" else v / 2.54)
+    ds_el = root.find("dotSpacing")
+    if ds_el is not None and (ds_el.text or "").strip():
+        try:
+            project.dot_spacing = int(ds_el.text.strip())
+        except ValueError:
+            pass
     fv = root.find("fileVersion")
     if fv is not None:
         try:

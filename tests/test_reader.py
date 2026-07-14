@@ -419,3 +419,150 @@ def test_xstream_reference_attribute_resolved(tmp_path):
     p.save(out)
     p2 = read_project(out)
     assert len(p2.components) == 2
+
+
+# ---------------------------------------------------------------------------
+# TubeSocket: center-first control points (upstream format) + legacy ring
+# ---------------------------------------------------------------------------
+
+
+def test_tube_socket_round_trip_keeps_center_and_angle(tmp_path):
+    """DIYLC stores the socket center as controlPoints[0]; reading our own
+    output back must land on the same anchor, not walk off pin by pin."""
+    from pydiylc import TubeSocket
+
+    p = Project(title="t")
+    p.add(TubeSocket("V1", x=2.0, y=2.0, angle=90, base="B9A"))
+    f = tmp_path / "tube.diy"
+    p.save(f)
+
+    v = read_project(f).components[0]
+    assert (v.x, v.y) == (2.0, 2.0)
+    assert v.angle == 90
+    assert v.base == "B9A"
+
+    # And a second cycle stays put (this used to drift every save/read).
+    p2 = Project(title="t")
+    p2.add(v)
+    p2.save(f)
+    v2 = read_project(f).components[0]
+    assert (v2.x, v2.y) == (2.0, 2.0)
+
+
+def test_tube_socket_legacy_ring_only_file_recovers_the_center(tmp_path):
+    """Files written by older pydiylc carry the 9-pin ring with no center
+    point; its centroid is the center."""
+    from pydiylc import TubeSocket
+
+    ring = TubeSocket("V1", x=2.0, y=2.0, base="B9A")._control_points()
+    pts = "\n".join(
+        f'        <point x="{x}" y="{y}"/>' for x, y in ring
+    )
+    xml = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<project>
+  <fileVersion><major>5</major><minor>7</minor><build>0</build></fileVersion>
+  <title>legacy</title>
+  <author></author>
+  <width value="29.0" unit="cm"/>
+  <height value="21.0" unit="cm"/>
+  <gridSpacing value="0.1" unit="in"/>
+  <dotSpacing>1</dotSpacing>
+  <components>
+    <diylc.tube.TubeSocket>
+      <name>V1</name>
+      <base>B9A</base>
+      <type>12AX7</type>
+      <angle>0</angle>
+      <controlPoints>
+{pts}
+      </controlPoints>
+    </diylc.tube.TubeSocket>
+  </components>
+  <groups/>
+  <lockedLayers/>
+</project>
+"""
+    f = tmp_path / "legacy_tube.diy"
+    f.write_text(xml, encoding="utf-8")
+    v = read_project(f).components[0]
+    assert v.x == pytest.approx(2.0, abs=1e-3)
+    assert v.y == pytest.approx(2.0, abs=1e-3)
+
+
+def test_tube_socket_angle_spins_the_pin_ring():
+    """``angle`` (degrees, like upstream) must rotate the derived pins."""
+    from pydiylc import TubeSocket
+
+    flat = TubeSocket("V0", x=2.0, y=2.0)._control_points()
+    spun = TubeSocket("V1", x=2.0, y=2.0, angle=90)._control_points()
+    for (x0, y0), (x1, y1) in zip(flat, spun):
+        # 90° CW about the center: (x, y) -> (cx - (y - cy), cy + (x - cx))
+        assert x1 == pytest.approx(2.0 - (y0 - 2.0), abs=2e-3)
+        assert y1 == pytest.approx(2.0 + (x0 - 2.0), abs=2e-3)
+
+
+def test_v3_nested_value_measure_is_not_swallowed(tmp_path):
+    """v3 XStream serializes Resistance as a nested <value><value>10.0</value>
+    <unit>K</unit></value>; the plain-string branch must not eat it."""
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<org.diylc.core.Project>
+  <fileVersion><major>3</major><minor>0</minor><build>0</build></fileVersion>
+  <title>t</title><author></author>
+  <width><value>29.0</value><unit>cm</unit></width>
+  <height><value>21.0</value><unit>cm</unit></height>
+  <gridSpacing><value>0.1</value><unit>in</unit></gridSpacing>
+  <components>
+    <diylc.passive.Resistor>
+      <name>R1</name>
+      <value><value>10.0</value><unit>K</unit></value>
+      <points>
+        <point x="1.0" y="1.0"/><point x="2.0" y="1.0"/><point x="1.5" y="1.0"/>
+      </points>
+    </diylc.passive.Resistor>
+  </components>
+</org.diylc.core.Project>"""
+    f = tmp_path / "v3.diy"
+    f.write_text(xml, encoding="utf-8")
+    r = read_project(f).components[0]
+    assert r.value == "10K"
+
+
+def test_two_point_trace_round_trips_without_label_midpoint(tmp_path):
+    """The emitted third point of a 2-point trace is a label anchor, not a
+    path vertex — reading it back as one corrupts the polyline."""
+    p = Project(title="t")
+    p.add(CopperTrace("T1", points=[(1.0, 1.0), (2.0, 1.0)]))
+    p.add(Line("L1", points=[(1.0, 2.0), (2.0, 2.0)]))
+    f = tmp_path / "t.diy"
+    p.save(f)
+    p2 = read_project(f)
+    assert list(p2.components[0].points) == [(1.0, 1.0), (2.0, 1.0)]
+    assert list(p2.components[1].points) == [(1.0, 2.0), (2.0, 2.0)]
+
+
+def test_genuine_three_vertex_polyline_survives(tmp_path):
+    """Only an exact-midpoint third point is dropped."""
+    p = Project(title="t")
+    p.add(CopperTrace("T1", points=[(1.0, 1.0), (2.0, 1.0), (2.0, 2.0)]))
+    f = tmp_path / "t.diy"
+    p.save(f)
+    assert list(read_project(f).components[0].points) == [
+        (1.0, 1.0), (2.0, 1.0), (2.0, 2.0),
+    ]
+
+
+def test_project_dot_spacing_round_trips(tmp_path):
+    p = Project(title="t", dot_spacing=4)
+    f = tmp_path / "t.diy"
+    p.save(f)
+    assert read_project(f).dot_spacing == 4
+
+
+def test_iec_socket_value_round_trips(tmp_path):
+    from pydiylc import IECSocket
+
+    p = Project(title="t")
+    p.add(IECSocket("J1", x=1.0, y=1.0, value="mains inlet"))
+    f = tmp_path / "t.diy"
+    p.save(f)
+    assert read_project(f).components[0].value == "mains inlet"

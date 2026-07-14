@@ -61,6 +61,53 @@ class Component:
         for field_name, allowed in self.__enums__.items():
             E.check(f"{type(self).__name__}.{field_name}", getattr(self, field_name), allowed)
 
+    def _oriented(self, pts: "list[Point]") -> "list[Point]":
+        """Rotate derived pins about the (x, y) anchor per ``orientation``.
+
+        For multi-pin bodies whose pin layout is computed in the DEFAULT
+        orientation: _90/_180/_270 turn the layout clockwise about the
+        anchor (DIYLC's convention, matching the hand-rolled TO92 math),
+        and a two-state HORIZONTAL/VERTICAL enum turns 90° away from the
+        class's default. Without an orientation field this is a no-op.
+        """
+        turns = orientation_turns(self)
+        if not turns:
+            return pts
+        cx, cy = float(self.x), float(self.y)
+        out: list[Point] = []
+        for px, py in pts:
+            dx, dy = px - cx, py - cy
+            for _ in range(turns):
+                dx, dy = -dy, dx  # 90° clockwise on a y-down canvas
+            out.append((round(cx + dx, 3), round(cy + dy, 3)))
+        return out
+
+
+def orientation_turns(component) -> int:
+    """Number of clockwise 90° turns a component's ``orientation`` implies.
+
+    _90/_180/_270 map to 1/2/3; a two-state HORIZONTAL/VERTICAL enum is one
+    turn away from the class's declared default. 0 for DEFAULT, for the
+    default HV value, and for components without an orientation field.
+    """
+    o = getattr(component, "orientation", None)
+    turns = {"DEFAULT": 0, "_90": 1, "_180": 2, "_270": 3}.get(o)
+    if turns is not None:
+        return turns
+    if o in ("HORIZONTAL", "VERTICAL"):
+        import dataclasses
+
+        default = next(
+            (
+                f.default
+                for f in dataclasses.fields(component)
+                if f.name == "orientation"
+            ),
+            o,
+        )
+        return 0 if o == default else 1
+    return 0
+
 
 # ---------------------------------------------------------------------------
 # Boards
@@ -664,9 +711,14 @@ class TubeSocket(Component):
         r /= 2.0
         # Start at the top and go clockwise, leaving a gap at the bottom (the
         # "key") for B9A/OCTAL conventions. Good enough for layout work.
+        # `angle` (degrees, like upstream DIYLC) spins the whole pin ring.
         pts: list[Point] = []
         for i in range(n):
-            theta = -math.pi / 2 + (2 * math.pi * (i + 0.5) / n)
+            theta = (
+                -math.pi / 2
+                + (2 * math.pi * (i + 0.5) / n)
+                + math.radians(self.angle)
+            )
             px = self.x + r * math.cos(theta)
             py = self.y + r * math.sin(theta)
             pts.append((round(px, 3), round(py, 3)))
@@ -674,7 +726,9 @@ class TubeSocket(Component):
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
-        pts = self._control_points()
+        # DIYLC stores the socket center as controlPoints[0] and the pins
+        # after it — the center is the drag anchor the reader must recover.
+        pts = [(self.x, self.y)] + self._control_points()
         return (
             f"{pad}<diylc.tube.TubeSocket>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
@@ -686,6 +740,7 @@ class TubeSocket(Component):
             f"{pad}  <electrodeLabels>{esc(self.electrode_labels)}</electrodeLabels>\n"
             f"{pad}  <mount>{self.mount}</mount>\n"
             f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f"{pad}  <pinCircleDiameter {self.pin_circle_diameter.attrs()}/>\n"
             f"{_points_block('controlPoints', pts, indent + 2)}\n"
             f"{pad}</diylc.tube.TubeSocket>"
         )
@@ -1652,6 +1707,7 @@ class AxialElectrolyticCapacitor(Component):
             f'{pad}  <markerColor hex="{hex_color(self.marker_color)}"/>\n'
             f'{pad}  <tickColor hex="{hex_color(self.tick_color)}"/>\n'
             f"{pad}  <polarized>{str(self.polarized).lower()}</polarized>\n"
+            f"{pad}  <invert>{str(self.invert).lower()}</invert>\n"
             f"{pad}</diylc.passive.AxialElectrolyticCapacitor>"
         )
 
@@ -2504,11 +2560,11 @@ class OpenJack1_4(Component):
 
     def _control_points(self) -> list[Point]:
         # 3 control points: tip, sleeve, (ring/switch). Use 0.1 in offsets.
-        return [
+        return self._oriented([
             (self.x, self.y),
             (self.x, self.y + 0.1),
             (self.x, self.y + 0.2),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -2935,13 +2991,13 @@ class CliffJack1_4(Component):
     def _control_points(self) -> list[Point]:
         # Five control points: tip / ring / sleeve / nut / mounting (rough
         # 0.1-in offsets; DIYLC's editor places them precisely).
-        return [
+        return self._oriented([
             (self.x, self.y),
             (self.x, self.y + 0.1),
             (self.x, self.y + 0.2),
             (self.x + 0.3, self.y + 0.1),
             (self.x + 0.3, self.y + 0.2),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -2993,9 +3049,9 @@ class ClosedJack1_4(Component):
     def _control_points(self) -> list[Point]:
         # MONO: 2 contacts (tip, sleeve). STEREO/SWITCHED: 3 (+ ring).
         if self.type == "MONO":
-            return [(self.x, self.y), (self.x, self.y + 0.8)]
-        return [(self.x, self.y), (self.x, self.y + 0.8),
-                (self.x - 0.2, self.y)]
+            return self._oriented([(self.x, self.y), (self.x, self.y + 0.8)])
+        return self._oriented([(self.x, self.y), (self.x, self.y + 0.8),
+                (self.x - 0.2, self.y)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3035,7 +3091,7 @@ class RCAJack(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        return [(self.x, self.y), (self.x, self.y + 0.5)]
+        return self._oriented([(self.x, self.y), (self.x, self.y + 0.5)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3158,13 +3214,13 @@ class TriodeSymbol(Component):
         # 5 control points around the triode envelope (DIYLC sets them
         # precisely; we use a reasonable default cluster). The graph
         # module reads this for pin-aware wiring (connect, get_pins).
-        return [
+        return self._oriented([
             (self.x, self.y),                  # 0 — grid (signal in)
             (self.x + 0.3, self.y - 0.3),      # 1 — plate (signal out)
             (self.x + 0.2, self.y + 0.3),      # 2 — cathode
             (self.x + 0.3, self.y + 0.3),      # 3 — heater
             (self.x + 0.4, self.y + 0.3),      # 4 — heater
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3262,9 +3318,9 @@ class TagStrip(Component):
     def _control_points(self) -> list[Point]:
         # Layout the terminals along the +Y direction at the configured spacing.
         spacing_in = self.terminal_spacing.to_inches()
-        return [
+        return self._oriented([
             (self.x, self.y + i * spacing_in) for i in range(self.terminal_count)
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3310,12 +3366,12 @@ class PilotLampHolder(Component):
     def _control_points(self) -> list[Point]:
         # 4 control points: lamp center + base + 2 wire-attachment offsets.
         s = 0.1
-        return [
+        return self._oriented([
             (self.x, self.y),
             (self.x + 0.32, self.y + 0.16),
             (self.x, self.y + s),
             (self.x + 0.24, self.y + 0.22),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3365,7 +3421,7 @@ class MultiSectionCapacitor(Component):
 
     def _control_points(self) -> list[Point]:
         # One control point per section along +Y; first point is anchor.
-        return [(self.x, self.y + i * 0.2) for i in range(len(self.values))]
+        return self._oriented([(self.x, self.y + i * 0.2) for i in range(len(self.values))])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3472,7 +3528,7 @@ class FuseHolderPanel(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        return [(self.x, self.y), (self.x, self.y + 0.2)]
+        return self._oriented([(self.x, self.y), (self.x, self.y + 0.2)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3532,14 +3588,14 @@ class AudioTransformer(Component):
         # winding_spacing vertically.
         ls = self.lead_spacing.to_inches()
         ws = self.winding_spacing.to_inches()
-        return [
+        return self._oriented([
             (self.x,          self.y),         # 0 — primary lug 1
             (self.x - ls,     self.y),         # 1 — primary lug 2 (center tap)
             (self.x - 2 * ls, self.y),         # 2 — primary lug 3
             (self.x,          self.y + ws),    # 3 — secondary lug 1
             (self.x - ls,     self.y + ws),    # 4 — secondary lug 2 (center tap)
             (self.x - 2 * ls, self.y + ws),    # 5 — secondary lug 3
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3635,7 +3691,7 @@ class SIL_IC(Component):
     def _control_points(self) -> list[Point]:
         n = int(self.pin_count.lstrip("_"))
         ps = self.pin_spacing.to_inches()
-        return [(self.x + i * ps, self.y) for i in range(n)]
+        return self._oriented([(self.x + i * ps, self.y) for i in range(n)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3728,11 +3784,11 @@ class TransistorTO1(Component):
 
     def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        return [
+        return self._oriented([
             (self.x,      self.y),
             (self.x - ps, self.y + ps),
             (self.x,      self.y + 2 * ps),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3792,11 +3848,11 @@ class TransistorTO220(Component):
 
     def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        return [
+        return self._oriented([
             (self.x, self.y),
             (self.x, self.y + ps),
             (self.x, self.y + 2 * ps),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3845,11 +3901,11 @@ class IECSocket(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        return [
+        return self._oriented([
             (self.x,        self.y),
             (self.x - 0.3,  self.y + 0.2),
             (self.x + 0.3,  self.y + 0.2),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -3858,6 +3914,7 @@ class IECSocket(Component):
             f"{pad}<diylc.electromechanical.IECSocket>\n"
             f"{pad}  <name>{esc(self.name)}</name>\n"
             f"{pad}  <alpha>{self.alpha}</alpha>\n"
+            f"{pad}  <value>{esc(self.value)}</value>\n"
             f"{_points_block('controlPoints', pts, indent + 2)}\n"
             f"{pad}  <orientation>{self.orientation}</orientation>\n"
             f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
@@ -4051,7 +4108,7 @@ class PentodeSymbol(Component):
 
     def _control_points(self) -> list[Point]:
         # 7 control points around the pentode envelope.
-        return [
+        return self._oriented([
             (self.x,       self.y),            # 0 — control grid (signal in)
             (self.x + 0.3, self.y - 0.4),      # 1 — plate (signal out)
             (self.x + 0.2, self.y + 0.2),      # 2 — screen grid
@@ -4059,7 +4116,7 @@ class PentodeSymbol(Component):
             (self.x,       self.y + 0.2),      # 4 — cathode
             (self.x + 0.3, self.y + 0.4),      # 5 — heater
             (self.x + 0.4, self.y + 0.4),      # 6 — heater
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4153,10 +4210,10 @@ class LeverSwitch(Component):
     def _control_points(self) -> list[Point]:
         # Two columns spaced 0.1 in apart, n/2 rows of 0.1 in.
         n = self._pin_count()
-        return [
+        return self._oriented([
             (self.x + (i % 2) * 0.1, self.y + (i // 2) * 0.1)
             for i in range(n)
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4292,11 +4349,11 @@ class MiniRelay(Component):
 
     def _control_points(self) -> list[Point]:
         # 4 pins × 2 rows. Pin order: col 0 top→bottom, then col 1 top→bottom.
-        return [
+        return self._oriented([
             (self.x + col * 0.2, self.y + row * 0.1)
             for col in (0, 1)
             for row in range(4)
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4382,7 +4439,7 @@ class JazzBassPickup(Component):
 
     def _control_points(self) -> list[Point]:
         # 4 pole pieces along +Y.
-        return [(self.x, self.y + i * 0.1) for i in range(4)]
+        return self._oriented([(self.x, self.y + i * 0.1) for i in range(4)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4431,7 +4488,7 @@ class PBassPickup(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        return [(self.x, self.y + i * 0.1) for i in range(4)]
+        return self._oriented([(self.x, self.y + i * 0.1) for i in range(4)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4527,12 +4584,12 @@ class LPSwitch(Component):
 
     def _control_points(self) -> list[Point]:
         # 4 control points: tip + 3 lugs.
-        return [
+        return self._oriented([
             (self.x,       self.y),
             (self.x - 0.2, self.y + 1.3),
             (self.x,       self.y + 1.3),
             (self.x + 0.2, self.y + 1.3),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4683,7 +4740,7 @@ class RotarySelectorSwitch(Component):
         for i in range(n):
             theta = -math.pi / 2 + 2 * math.pi * i / n
             pts.append((self.x + r * math.cos(theta), self.y + r * math.sin(theta)))
-        return pts
+        return self._oriented(pts)
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4767,11 +4824,11 @@ class ElectrolyticCanCapacitor(Component):
 
     def _control_points(self) -> list[Point]:
         # 3 control points (top, side, bottom).
-        return [
+        return self._oriented([
             (self.x,       self.y),
             (self.x - 1.0, self.y + 1.0),
             (self.x,       self.y + 2.0),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4915,13 +4972,13 @@ class TubeDiodeSymbol(Component):
 
     def _control_points(self) -> list[Point]:
         # 5 control points around the envelope (plate, cathode, heaters).
-        return [
+        return self._oriented([
             (self.x,       self.y),            # 0 — plate (anode)
             (self.x - 0.3, self.y + 0.3),      # 1 — cathode
             (self.x + 0.3, self.y + 0.2),      # 2 — heater
             (self.x + 0.3, self.y + 0.3),      # 3 — heater center tap
             (self.x + 0.3, self.y + 0.4),      # 4 — heater
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -4971,11 +5028,11 @@ class JFETSymbol(Component):
 
     def _control_points(self) -> list[Point]:
         # 3 control points: gate (input), source, drain.
-        return [
+        return self._oriented([
             (self.x,       self.y),            # 0 — gate
             (self.x + 0.2, self.y - 0.2),      # 1 — drain (or source for P-channel)
             (self.x + 0.2, self.y + 0.2),      # 2 — source (or drain)
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5080,12 +5137,12 @@ class NeutrikJack1_4(Component):
         self._validate_enums()
 
     def _control_points(self) -> list[Point]:
-        return [
+        return self._oriented([
             (self.x,            self.y),
             (self.x + 0.635,    self.y),
             (self.x,            self.y - 0.5),
             (self.x + 0.635,    self.y - 0.5),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5138,11 +5195,11 @@ class TransistorTO126(Component):
 
     def _control_points(self) -> list[Point]:
         ps = self.pin_spacing.to_inches()
-        return [
+        return self._oriented([
             (self.x, self.y),
             (self.x, self.y + ps),
             (self.x, self.y + 2 * ps),
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5157,6 +5214,7 @@ class TransistorTO126(Component):
             f'{pad}  <bodyColor hex="{hex_color(self.body_color)}"/>\n'
             f'{pad}  <borderColor hex="{hex_color(self.border_color)}"/>\n'
             f'{pad}  <labelColor hex="{hex_color(self.label_color)}"/>\n'
+            f'{pad}  <leadColor hex="{hex_color(self.lead_color)}"/>\n'
             f"{pad}  <display>{self.display}</display>\n"
             f"{pad}  <folded>{str(self.folded).lower()}</folded>\n"
             f"{pad}  <leadLength {self.lead_length.attrs()}/>\n"
@@ -5239,7 +5297,7 @@ class SMDResistor(Component):
         # 1206 ≈ 0.12 × 0.06 in. Two pad endpoints along +X.
         sz = float(self.size.lstrip("_"))
         len_in = sz / 1000
-        return [(self.x, self.y), (self.x + len_in, self.y)]
+        return self._oriented([(self.x, self.y), (self.x + len_in, self.y)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5292,7 +5350,7 @@ class SMDCapacitor(Component):
     def _control_points(self) -> list[Point]:
         sz = float(self.size.lstrip("_"))
         len_in = sz / 1000
-        return [(self.x, self.y), (self.x + len_in, self.y)]
+        return self._oriented([(self.x, self.y), (self.x + len_in, self.y)])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5398,12 +5456,12 @@ class BridgeRectifier(Component):
 
     def _control_points(self) -> list[Point]:
         # 4 corners labeled +, ~, ~, - (DC out, AC in, AC in, DC out).
-        return [
+        return self._oriented([
             (self.x,       self.y),            # 0 — +
             (self.x + 0.2, self.y),            # 1 — ~
             (self.x,       self.y + 0.2),      # 2 — ~
             (self.x + 0.2, self.y + 0.2),      # 3 — -
-        ]
+        ])
 
     def to_xml(self, indent: int = 4) -> str:
         pad = _indent(indent)
@@ -5587,3 +5645,43 @@ ALL_COMPONENTS: tuple[type[Component], ...] = (
     BOM,
     GroundSymbol,
 )
+
+
+# Multi-pin bodies whose pin layout is computed in the DEFAULT orientation
+# and rotated generically by ``Component._oriented``. Their SVG/Cairo
+# renderers draw the DEFAULT-orientation body, so the render dispatch wraps
+# them in a whole-body rotation about the anchor (``orientation_turns``) —
+# keeping the drawn pads on the same spots the connectivity graph reports.
+# Classes NOT listed here either have no orientation, or handle it inside
+# their own _control_points + renderer (TO92, DIL_IC, pots, toggles, …).
+ORIENTED_BY_TRANSFORM: frozenset[type[Component]] = frozenset({
+    CliffJack1_4,
+    ClosedJack1_4,
+    RCAJack,
+    TriodeSymbol,
+    TagStrip,
+    PilotLampHolder,
+    MultiSectionCapacitor,
+    FuseHolderPanel,
+    AudioTransformer,
+    SIL_IC,
+    TransistorTO1,
+    TransistorTO220,
+    IECSocket,
+    PentodeSymbol,
+    LeverSwitch,
+    MiniRelay,
+    JazzBassPickup,
+    PBassPickup,
+    LPSwitch,
+    RotarySelectorSwitch,
+    ElectrolyticCanCapacitor,
+    TubeDiodeSymbol,
+    JFETSymbol,
+    NeutrikJack1_4,
+    TransistorTO126,
+    SMDResistor,
+    SMDCapacitor,
+    BridgeRectifier,
+    OpenJack1_4,
+})

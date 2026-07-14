@@ -30,6 +30,8 @@ def snap_to_grid(
     """
     from .graph import control_points_of
 
+    if grid <= 0:
+        raise ValueError(f"grid must be > 0 inches, got {grid!r}")
     if names is None:
         indices = list(range(len(project.components)))
     else:
@@ -89,10 +91,18 @@ def align(
         raise ValueError("axis must be 'x' or 'y'")
     if mode not in ("first", "mean", "min", "max"):
         raise ValueError("mode must be one of: first, mean, min, max")
+    # A repeated name must not shift its component twice (the precomputed
+    # delta would be applied to already-moved coordinates the second time).
+    names = list(dict.fromkeys(names))
     if len(names) < 2:
-        raise ValueError("align needs at least 2 component names")
+        raise ValueError("align needs at least 2 distinct component names")
 
-    by_name = {getattr(c, "name", None): i for i, c in enumerate(project.components)}
+    # First match wins, matching how the MCP server resolves names.
+    by_name: dict = {}
+    for i, c in enumerate(project.components):
+        nm = getattr(c, "name", None)
+        if nm is not None and nm not in by_name:
+            by_name[nm] = i
     targets: list[tuple[int, float, float]] = []
     for nm in names:
         i = by_name.get(nm)

@@ -203,3 +203,21 @@ def test_pydiylc_info_subprocess(tmp_path):
     )
     assert rc.returncode == 0
     assert "clitest" in rc.stdout
+
+
+def test_convert_json_keeps_grid_and_dot_spacing(tmp_path):
+    """diy → json → diy must not silently reset the grid."""
+    import json as _json
+
+    from pydiylc import Project
+    from pydiylc.cli import save_project, load_project
+
+    p = Project(title="t", grid_inches=0.2, dot_spacing=3)
+    j = tmp_path / "layout.json"
+    save_project(p, j)
+    data = _json.loads(j.read_text())
+    assert data["grid_inches"] == 0.2
+    assert data["dot_spacing"] == 3
+    p2 = load_project(j)
+    assert p2.grid_inches == 0.2
+    assert p2.dot_spacing == 3

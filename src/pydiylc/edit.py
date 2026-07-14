@@ -480,6 +480,23 @@ def _ensure_import(tree: ast.Module, name: str) -> None:
     tree.body.insert(insert_at, new_import)
 
 
+def _ensure_call_imports(tree: ast.Module, call_expr: ast.Call) -> None:
+    """Ensure every pydiylc helper the emitted call references is imported.
+
+    ``_value_to_ast`` renders Measure fields as ``mm(...)`` / ``inches(...)``
+    / ``cm(...)`` / ``Measure(...)`` calls; without their imports the
+    rewritten file raises NameError on the next reload.
+    """
+    helpers = {"mm", "inches", "cm", "Measure"}
+    needed = {
+        node.id
+        for node in ast.walk(call_expr)
+        if isinstance(node, ast.Name) and node.id in helpers
+    }
+    for name in sorted(needed):
+        _ensure_import(tree, name)
+
+
 def propose_add(
     path: str | Path,
     component,
@@ -519,8 +536,10 @@ def propose_add(
     body.insert(idx + 1, new_stmt)
 
     # Make sure the component's class name is imported. Without this, the
-    # rewritten file blows up at import time with NameError.
+    # rewritten file blows up at import time with NameError. Same for the
+    # measure helpers (mm/inches/cm) the emitted keywords may call.
     _ensure_import(tree, type(component).__name__)
+    _ensure_call_imports(tree, call_expr)
 
     ast.fix_missing_locations(tree)
 
@@ -691,6 +710,7 @@ def propose_changes(
         new_stmt = ast.Expr(value=new_call)
         body.insert(body.index(anchor_stmt) + 1, new_stmt)
         _ensure_import(tree, type(component).__name__)
+        _ensure_call_imports(tree, call_expr)
         focus_line = anchor_stmt.lineno + 1
         summary_lines.append(
             f"+ {type(component).__name__}({getattr(component, 'name', '?')!r})"
