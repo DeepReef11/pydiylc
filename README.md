@@ -163,12 +163,19 @@ line on top of a bus and taking it off again leaves the bus exactly where it
 was.
 
 Hold **Alt** to *detach* — move or rotate a part out of its joints and leave
-every wire behind. That's also the escape hatch for the one case geometry
-can't resolve on its own: a part parked exactly on a rail's **endpoint** looks
-identical to a part with a lead soldered to it, so it will be carried along
-unless you Alt-move it. A node-level move (Tab into a node, then Ctrl+arrow)
-always moves just that one point, peeling it off its junction. See
-`docs/keyboard-tree-editor.md` for the full design.
+every wire behind. A node-level move (Tab into a node, then Ctrl+arrow) always
+moves just that one point, peeling it off its junction; drop it on a pin and it
+solders there.
+
+**Joints are remembered, not guessed.** Stack two parts and a wire endpoint at
+that coordinate touches both of them — but it is soldered to exactly one, and
+which one is a fact about history, not position. pydiylc records the joint
+(`links.py`) while the layout still says it unambiguously and carries it from
+there, so you can park a part on top of another and move it off again without
+either one stealing the other's wires. The map is runtime state rebuilt from
+geometry on load, since the DIYLC file format has nowhere to record it.
+
+See `docs/keyboard-tree-editor.md` for the full design.
 
 > **Note:** the tree-editor GTK UI is built against a fully unit-tested core
 > (graph, move engine, rotation, navigation — 60+ tests) but the GTK panel and

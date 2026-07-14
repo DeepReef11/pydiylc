@@ -140,26 +140,29 @@ def _rigid_set(
     return rigid
 
 
-def _pinned_outside(
-    project: Project, g: ConnectivityGraph, wire_index: int,
-    cp, rigid_set: set[int],
-) -> bool:
-    """True if this wire endpoint is anchored on a pin *outside* the move.
+def _refresh_links(project: Project) -> None:
+    """Re-derive the solder joints after a geometry change."""
+    from . import links as _links
 
-    "Anchored" means the endpoint shares a junction with a rigid (non-wire)
-    pin — a component pin, a pad, a board. A wire never anchors another wire:
-    both ends are elastic, so two of them sharing a coordinate are merely
-    touching. That is what let a line parked on a bus drag the bus away.
-    """
-    j = g.junction_at(cp.x, cp.y)
-    if j is None:
-        return False
-    return any(
-        m.component_index != wire_index
-        and m.component_index not in rigid_set
-        and not is_wire_like(project.components[m.component_index])
-        for m in j.members
-    )
+    _links.update(project)
+
+
+def _moving_names(project: Project, rigid_set: set[int]) -> set[str]:
+    names = {
+        getattr(project.components[ci], "name", None) for ci in rigid_set
+    }
+    names.discard(None)
+    return names
+
+
+def _pinned_outside(
+    project: Project, wire_name: str, point_index: int, moving: set[str],
+) -> bool:
+    """True if this wire endpoint is soldered to a pin *outside* the move."""
+    from . import links
+
+    joint = links.soldered_to(project, wire_name, point_index)
+    return joint is not None and joint not in moving
 
 
 def _leads_to_follow(
@@ -167,41 +170,33 @@ def _leads_to_follow(
 ) -> list[tuple[int, int]]:
     """Wire endpoints soldered to a moving pin, which travel with it.
 
-    An endpoint follows iff it shares a junction with a *rigid* pin in the
-    moving set. Move a pad and the lead soldered to it comes along, far end
+    An endpoint follows iff the pin it is *soldered to* (see ``links``) is in
+    the moving set. Move a pad and the lead joined to it comes along, far end
     anchored, so the wire stretches.
 
-    The anchor must be rigid: a wire never anchors another wire. Both ends are
-    elastic, so two of them sharing a coordinate are merely touching, not
-    joined — without this, parking a line on a bus and taking it off again
-    dragged the whole bus along underneath it.
+    The joint is looked up, not inferred from coordinates. Two parts can sit at
+    the same coordinate, and then the geometry says a wire endpoint touches
+    both — but it belongs to one of them, and only the recorded joint knows
+    which. Guessing from position drags the wrong wire: it either abandons the
+    lead on a pad that was merely passed over, or walks off with a wire that
+    was never ours.
 
-    Other rigid pins may share the junction, and the lead still follows the one
-    that moves. It is tempting to bail out in that case, on the grounds that
-    the lead also touches a part we aren't moving and dragging it away would
-    silently unplug that part. Doing so loses the connection you actually care
-    about: park a pad on top of another and move it off again, and the lead
-    stays behind, re-soldered to the pad you merely passed over. Following the
-    pin that moves keeps the link with the thing the user is manipulating,
-    which is the one they can see.
-
-    Called *before* the move, while the junctions still describe the old
-    layout.
+    Called *before* the move, while the links still describe the old layout.
     """
+    from . import links as _links
+
     components = project.components
+    moving = _moving_names(project, rigid_set)
     follow: list[tuple[int, int]] = []
     for i, wire in enumerate(components):
         if i in rigid_set or not is_wire_like(wire):
             continue
+        wire_name = getattr(wire, "name", None)
+        if not wire_name:
+            continue
         for cp in control_points_of(wire, i):
-            j = g.junction_at(cp.x, cp.y)
-            if j is None:
-                continue
-            if any(
-                m.component_index in rigid_set
-                and not is_wire_like(components[m.component_index])
-                for m in j.members
-            ):
+            joint = _links.soldered_to(project, wire_name, cp.point_index)
+            if joint is not None and joint in moving:
                 follow.append((i, cp.point_index))
     return follow
 
@@ -218,7 +213,7 @@ def _translate_group(
     - Leads follow: a wire endpoint soldered to a moving pin travels with it,
       far end anchored, so the wire stretches (see ``_leads_to_follow``).
     - Stretch, don't unplug: when a part carries a wire along, an endpoint of
-      that wire anchored on a pin *outside* the move stays put, so the wire
+      that wire soldered to a pin *outside* the move stays put, so the wire
       stretches instead of silently unplugging a component the user never
       selected. Both ends can be pinned this way, in which case the wire
       doesn't move at all.
@@ -226,20 +221,30 @@ def _translate_group(
     That last rule applies only when a *part* is doing the carrying. Grab a
     wire on its own and it moves whole, joints and all: pinning it would mean
     that dragging a wire over a pad welds it there, and the next drag deforms
-    the wire instead of moving it — the same trap, from the other side, as a
-    lead being left behind on a pad it was merely passed over.
+    the wire instead of moving it.
+
+    Which pin a wire is soldered to is *looked up*, never inferred from
+    coordinates (see ``links``) — that is what makes stacking parts survivable.
 
     ``detach=True`` ignores every joint: the selection moves alone, leads stay
     behind, and pinned endpoints are released. That's the deliberate way to
     pull a part off its wires — and the escape hatch for the one case geometry
     can't resolve, a part parked exactly on a rail's endpoint.
     """
+    from . import links as _links
+
     components = project.components
     result = MoveResult()
 
-    # Resolve the topology up front — once the components move, the junctions
-    # they used to sit on are gone.
+    # Fold in anything that changed the layout outside this engine — a wire
+    # just added, an undo restoring a snapshot — while keeping the joints we
+    # already know about.
+    _refresh_links(project)
+
+    # Resolve the topology up front — once the components move, the joints they
+    # sat on are gone.
     follow = [] if detach else _leads_to_follow(project, g, rigid_set)
+    moving = _moving_names(project, rigid_set)
     # Is a part carrying wires along, or did the user grab wires directly?
     carried_by_a_part = any(
         not is_wire_like(components[ci]) for ci in rigid_set
@@ -248,12 +253,13 @@ def _translate_group(
     if carried_by_a_part and not detach:
         for ci in rigid_set:
             comp = components[ci]
-            if not is_wire_like(comp):
+            wire_name = getattr(comp, "name", None)
+            if not is_wire_like(comp) or not wire_name:
                 continue
             pinned[ci] = {
                 cp.point_index
                 for cp in control_points_of(comp, ci)
-                if _pinned_outside(project, g, ci, cp, rigid_set)
+                if _pinned_outside(project, wire_name, cp.point_index, moving)
             }
 
     for ci in sorted(rigid_set):
@@ -291,6 +297,10 @@ def _translate_group(
         _set_point(wire, pi, new_x, new_y)
         result.shifts.append(PointShift(wi, pi, (wp.x, wp.y), (new_x, new_y)))
 
+    # Re-derive the joints: a lead that came along is still soldered where it
+    # was, a detached one has left its pin, and anything parked on top of
+    # something else keeps the joint it already had.
+    _links.update(project)
     return result
 
 
@@ -360,6 +370,9 @@ def move_node(
         )
     new = (_clean(cp.x + dx), _clean(cp.y + dy))
     _set_point(comp, point_index, new[0], new[1])
+    # Dragging a point off a junction unsolders it; dropping it on a pin
+    # solders it there. Either way the joint has changed.
+    _refresh_links(project)
     return MoveResult([PointShift(component_index, point_index, (cp.x, cp.y), new)])
 
 
@@ -380,6 +393,7 @@ def move_node_to(
         )
     new = (_clean(x), _clean(y))
     _set_point(comp, point_index, new[0], new[1])
+    _refresh_links(project)
     return MoveResult([PointShift(component_index, point_index, (cp.x, cp.y), new)])
 
 
@@ -423,6 +437,7 @@ def rotate_component(
     this component's pins (pre-rotate) is moved to that pin's new
     position. The wire's other endpoint stays.
     """
+    _refresh_links(project)
     comp = project.components[component_index]
     orientation = getattr(comp, "orientation", None)
 
@@ -436,16 +451,18 @@ def rotate_component(
         new = _ORIENT_4[(idx + (1 if clockwise else -1)) % 4]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins, detach
+            components, component_index, pre_pins, detach, project
         )
+        _refresh_links(project)
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
     if orientation in _ORIENT_HV:
         new = _ORIENT_HV[(_ORIENT_HV.index(orientation) + 1) % 2]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins, detach
+            components, component_index, pre_pins, detach, project
         )
+        _refresh_links(project)
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
     # Coordinate rotation about the centroid of the component's points.
@@ -464,8 +481,9 @@ def rotate_component(
             ny = cy + (cp.x - cx)
         _set_point(comp, cp.point_index, _clean(nx), _clean(ny))
     _follow_wires_after_geometry_change(
-        components, component_index, pre_pins, detach
+        components, component_index, pre_pins, detach, project
     )
+    _refresh_links(project)
     return RotateResult(component_index, "coords")
 
 
@@ -474,12 +492,18 @@ def _follow_wires_after_geometry_change(
     component_index: int,
     pre_pins: list,
     detach: bool = False,
+    project: Project | None = None,
 ) -> None:
     """Drag soldered leads to track a component's per-pin movement.
 
     Used by rotate_component (and any future geometry-changing operation).
-    Matches by pre-change position, so two wires sharing a junction at the same
-    old pin both follow that pin to its new location.
+    Matches by pre-change position, so two wires soldered to the same old pin
+    both follow it to its new location.
+
+    Only wires actually soldered to *this* component move (see ``links``); a
+    wire that merely touches one of its pins because something is stacked here
+    belongs to whatever it was soldered to, and stays there. Rotating a part
+    parked on top of another must not walk off with the other's wires.
 
     A wire's own pins are elastic, so rotating one drags nothing at all —
     otherwise spinning a line that overlapped a bus would drag the bus along.
@@ -488,6 +512,9 @@ def _follow_wires_after_geometry_change(
     if detach or is_wire_like(components[component_index]):
         return
 
+    from . import links as _links
+
+    spinning = getattr(components[component_index], "name", None)
     post_pins = control_points_of(components[component_index], component_index)
     if len(post_pins) != len(pre_pins):
         return  # shape change; can't pair-up pins safely
@@ -510,15 +537,21 @@ def _follow_wires_after_geometry_change(
             continue
         if not is_wire_like(wire):
             continue
+        wire_name = getattr(wire, "name", None)
         pts = list(getattr(wire, "points", []))
-        if not pts:
+        if not pts or not wire_name:
             continue
         changed = False
         new_pts: list[tuple[float, float]] = []
-        for (px, py) in pts:
+        for pi, (px, py) in enumerate(pts):
             moved = False
+            # Only a lead actually soldered to the spinning part follows it.
+            soldered_here = (
+                project is None  # no project → fall back to pure geometry
+                or _links.soldered_to(project, wire_name, pi) == spinning
+            )
             for (old_x, old_y), (new_x, new_y) in pin_moves.items():
-                if _close(px, old_x) and _close(py, old_y):
+                if soldered_here and _close(px, old_x) and _close(py, old_y):
                     new_pts.append((_clean(new_x), _clean(new_y)))
                     moved = True
                     changed = True

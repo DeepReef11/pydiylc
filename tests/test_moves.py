@@ -417,3 +417,80 @@ def test_a_wire_grabbed_on_its_own_moves_whole():
 
     assert p.components[1].points == [(2.0, 2.0), (3.0, 2.0)]  # shape intact
     assert (p.components[0].x, p.components[0].y) == (3.0, 1.0)  # pad stayed
+
+
+# ---------------------------------------------------------------------------
+# Solder joints: which pin a wire is actually attached to
+# ---------------------------------------------------------------------------
+
+def test_stacked_pads_each_keep_their_own_wire():
+    """Park A on B and move it off: neither steals the other's wire.
+
+    While the two overlap, a wire endpoint at that coordinate touches both
+    pads. Geometry cannot say whose it is, and every rule built on position
+    gets it wrong one way or the other — following the pin that moves walks off
+    with B's wire, refusing to follow abandons A's on B. The recorded joint
+    knows.
+    """
+    p = Project()
+    p.add(SolderPad("A", x=1.0, y=1.0))
+    p.add(SolderPad("B", x=2.0, y=2.0))
+    p.add(HookupWire("WA", points=[(1.0, 1.0), (0.0, 1.0)]))  # soldered to A
+    p.add(HookupWire("WB", points=[(2.0, 2.0), (4.0, 2.0)]))  # soldered to B
+
+    move_component(p, 0, 1.0, 1.0)  # A lands exactly on B
+    move_component(p, 0, 2.0, 0.0)  # ...and moves off again
+
+    a, b, wa, wb = p.components
+    assert (a.x, a.y) == (4.0, 2.0)
+    assert wa.points[0] == (4.0, 2.0)               # A kept its own wire
+    assert (b.x, b.y) == (2.0, 2.0)                 # B never moved
+    assert wb.points == [(2.0, 2.0), (4.0, 2.0)]    # B kept its own wire, intact
+
+
+def test_rotating_a_part_stacked_on_another_does_not_steal_its_wires():
+    """Same, on the rotate path — it used to match leads by coordinate."""
+    p = Project()
+    p.add(Resistor("R1", x1=2.0, y1=2.0, x2=3.0, y2=2.0))
+    p.add(SolderPad("B", x=2.0, y=2.0))                       # R1's pin0 sits on B
+    p.add(HookupWire("WB", points=[(2.0, 2.0), (5.0, 2.0)]))  # soldered to B
+
+    from pydiylc.moves import rotate_component
+    rotate_component(p, 0, clockwise=True)
+
+    assert p.components[2].points == [(2.0, 2.0), (5.0, 2.0)]  # B's wire stayed
+    assert (p.components[1].x, p.components[1].y) == (2.0, 2.0)  # B stayed
+
+
+def test_joints_survive_the_overlap():
+    """The link map is what remembers whose wire is whose while parts stack."""
+    from pydiylc import links
+
+    p = Project()
+    p.add(SolderPad("A", x=1.0, y=1.0))
+    p.add(SolderPad("B", x=2.0, y=2.0))
+    p.add(HookupWire("WA", points=[(1.0, 1.0), (0.0, 1.0)]))
+    p.add(HookupWire("WB", points=[(2.0, 2.0), (4.0, 2.0)]))
+
+    assert links.get(p) == {("WA", 0): "A", ("WB", 0): "B"}
+
+    move_component(p, 0, 1.0, 1.0)  # A now sits exactly on top of B
+    # Both wire ends are at (2, 2) touching both pads — the joints still know.
+    assert links.get(p) == {("WA", 0): "A", ("WB", 0): "B"}
+
+
+def test_a_node_move_resolders_the_endpoint():
+    """Drag a wire end onto a pin and it becomes soldered to it; off, and it isn't."""
+    from pydiylc import links
+
+    p = Project()
+    p.add(SolderPad("P", x=2.0, y=1.0))
+    p.add(HookupWire("W", points=[(1.0, 1.0), (1.5, 1.0)]))
+
+    assert links.soldered_to(p, "W", 1) is None   # floating
+
+    move_node(p, 1, 1, 0.5, 0.0)                  # drop the end onto P
+    assert links.soldered_to(p, "W", 1) == "P"    # soldered on
+
+    move_node(p, 1, 1, 0.5, 0.0)                  # and peel it back off
+    assert links.soldered_to(p, "W", 1) is None
