@@ -1384,6 +1384,39 @@ def _current_anchor(component) -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def _move_ops_for_component(component, name: str) -> list:
+    """Every control point of ``component``, as source-rewrite ops.
+
+    A drag translates the *whole* component in memory, so the rewrite has to
+    carry every point. Writing only the anchor (which is what this used to do)
+    left the far end of a two-pin part pinned at its old coordinate: the canvas
+    showed a clean move, and the file got a resistor stretched — or, when the
+    anchor was dragged onto the far end, collapsed to zero length.
+
+    Mirrors the dispatch order in ``edit.move_component_inplace``, so what gets
+    written is exactly what got moved. Multi-node bodies (pots, ICs) derive
+    their pins from an (x, y) anchor, so the anchor is the only thing to write.
+    """
+    from .edit import MoveOp
+
+    def r(v: float) -> float:
+        return round(float(v), 4)  # keep float noise out of the source
+
+    if hasattr(component, "x1") and hasattr(component, "x2"):
+        return [
+            MoveOp(name, r(component.x1), r(component.y1)),
+            MoveOp(name, r(component.x2), r(component.y2), second_point=True),
+        ]
+    if hasattr(component, "points"):
+        return [
+            MoveOp(name, r(px), r(py), point_index=i)
+            for i, (px, py) in enumerate(component.points)
+        ]
+    if hasattr(component, "x") and hasattr(component, "y"):
+        return [MoveOp(name, r(component.x), r(component.y))]
+    return []
+
+
 def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float, float],
                          new_anchor: tuple[float, float]) -> None:
     """Compute a source-rewrite proposal and surface a confirmation dialog.
@@ -1421,10 +1454,10 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
         )
         return
 
-    from .edit import propose_move, locate_component
+    from .edit import propose_changes, locate_component
     try:
-        proposal = propose_move(
-            state.watch_path, name, new_anchor[0], new_anchor[1],
+        proposal = propose_changes(
+            state.watch_path, moves=_move_ops_for_component(component, name),
         )
     except LookupError as exc:
         _info_dialog(state.window, "Can't auto-apply", str(exc))

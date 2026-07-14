@@ -618,3 +618,107 @@ def test_propose_add_inserts_import_when_missing(tmp_path):
     ''')
     proposal = propose_add(p, Resistor("R1", x1=0, y1=0, x2=0, y2=0.5))
     assert "from pydiylc import Resistor" in proposal.new_text
+
+
+# ---------------------------------------------------------------------------
+# Drag-to-move writes back EVERY control point, not just the anchor
+# ---------------------------------------------------------------------------
+
+def _drag_and_apply(path, comp, name, dx, dy):
+    """Replay what the viewer does on drag-end: move, then rewrite the source."""
+    from pydiylc.edit import move_component_inplace, propose_changes
+    from pydiylc import viewer
+
+    move_component_inplace(comp, dx, dy)
+    apply_proposal(
+        propose_changes(path, moves=viewer._move_ops_for_component(comp, name))
+    )
+
+
+def _reload(path):
+    ns = {}
+    exec(compile(path.read_text(), str(path), "exec"), ns)
+    return ns["build"]()
+
+
+def test_dragging_a_two_pin_component_keeps_its_length_in_the_source(tmp_path):
+    """The far end used to stay pinned at its old coordinate.
+
+    The canvas showed a clean move while the *file* got a deformed component —
+    and when the anchor was dragged onto the far end, a zero-length one.
+    """
+    path = tmp_path / "lay.py"
+    path.write_text(textwrap.dedent("""
+        from pydiylc import Project, Resistor
+
+        def build() -> Project:
+            p = Project()
+            p.add(Resistor('R1', x1=1.6, y1=2.8, x2=1.6, y2=3.0, value='3.3K'))
+            return p
+    """).lstrip())
+
+    p = _reload(path)
+    _drag_and_apply(path, p.components[0], "R1", 0.0, 0.2)
+
+    r = _reload(path).components[0]
+    assert (r.x1, r.y1) == (1.6, 3.0)   # anchor moved
+    assert (r.x2, r.y2) == (1.6, 3.2)   # far end came along
+    assert round(r.y2 - r.y1, 4) == 0.2  # length survived the round trip
+
+
+def test_dragging_a_two_pin_component_onto_its_far_end_does_not_collapse_it(tmp_path):
+    """The exact corruption seen in the wild: a 0.2in pull-up became 0-length."""
+    path = tmp_path / "lay.py"
+    path.write_text(textwrap.dedent("""
+        from pydiylc import Project, Resistor
+
+        def build() -> Project:
+            p = Project()
+            p.add(Resistor('R1', x1=1.6, y1=2.8, x2=1.6, y2=3.0, value='3.3K'))
+            return p
+    """).lstrip())
+
+    p = _reload(path)
+    _drag_and_apply(path, p.components[0], "R1", 0.0, 0.2)  # anchor lands on (1.6, 3.0)
+
+    r = _reload(path).components[0]
+    assert (r.x1, r.y1) != (r.x2, r.y2)
+
+
+def test_dragging_a_two_pin_component_rewrites_non_literal_coords(tmp_path):
+    """x2=<variable> must be replaced by the moved literal, not left dangling."""
+    path = tmp_path / "lay.py"
+    path.write_text(textwrap.dedent("""
+        from pydiylc import Project, Resistor
+
+        def build() -> Project:
+            p = Project()
+            x2, y2 = 1.6, 3.0
+            p.add(Resistor('R1', x1=1.6, y1=2.8, x2=x2, y2=y2, value='3.3K'))
+            return p
+    """).lstrip())
+
+    p = _reload(path)
+    _drag_and_apply(path, p.components[0], "R1", 0.0, 0.2)
+
+    r = _reload(path).components[0]
+    assert (r.x1, r.y1) == (1.6, 3.0)
+    assert (r.x2, r.y2) == (1.6, 3.2)
+
+
+def test_dragging_a_points_list_component_moves_every_point(tmp_path):
+    path = tmp_path / "lay.py"
+    path.write_text(textwrap.dedent("""
+        from pydiylc import Project, HookupWire
+
+        def build() -> Project:
+            p = Project()
+            p.add(HookupWire('W1', points=[(1.0, 1.0), (2.0, 1.0)]))
+            return p
+    """).lstrip())
+
+    p = _reload(path)
+    _drag_and_apply(path, p.components[0], "W1", 0.0, 0.5)
+
+    w = _reload(path).components[0]
+    assert [tuple(t) for t in w.points] == [(1.0, 1.5), (2.0, 1.5)]
