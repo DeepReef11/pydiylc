@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from .core import Project
 
@@ -31,16 +32,46 @@ class History:
 
     project: Project
     limit: int = DEFAULT_LIMIT
-    _stack: list[tuple[str, list]] = field(default_factory=list)
-    _redo: list[tuple[str, list]] = field(default_factory=list)
+    # Optional extra-state hooks. The viewer snapshots its working buffer
+    # text through these, so undo/redo revert the buffer together with the
+    # components — otherwise Enter would save the edit you just undid.
+    capture_extra: Callable[[], Any] | None = None
+    restore_extra: Callable[[Any], None] | None = None
+    _stack: list[tuple[str, list, dict, Any]] = field(default_factory=list)
+    _redo: list[tuple[str, list, dict, Any]] = field(default_factory=list)
+
+    # Project-level fields captured alongside the component list, so that
+    # metadata edits (title, canvas size, ...) are undoable too.
+    _META_FIELDS = (
+        "title", "author", "width_cm", "height_cm", "grid_inches",
+        "dot_spacing",
+    )
+
+    def _meta(self) -> dict:
+        return {k: getattr(self.project, k) for k in self._META_FIELDS}
+
+    def _restore_meta(self, meta: dict) -> None:
+        for k, v in meta.items():
+            setattr(self.project, k, v)
+
+    def _extra(self) -> Any:
+        return self.capture_extra() if self.capture_extra is not None else None
+
+    def _put_extra(self, extra: Any) -> None:
+        if self.restore_extra is not None:
+            self.restore_extra(extra)
 
     def record(self, label: str = "") -> None:
-        """Snapshot the current component list before a mutating action.
+        """Snapshot the component list + project metadata before a mutating
+        action.
 
         Clears the redo stack — a fresh edit means any "future" you'd undone
         back from is now off the timeline.
         """
-        snapshot = (label, copy.deepcopy(self.project.components))
+        snapshot = (
+            label, copy.deepcopy(self.project.components), self._meta(),
+            self._extra(),
+        )
         self._stack.append(snapshot)
         if len(self._stack) > self.limit:
             self._stack.pop(0)
@@ -58,12 +89,17 @@ class History:
         there's nothing to undo."""
         if not self._stack:
             return False
-        label, components = self._stack.pop()
+        label, components, meta, extra = self._stack.pop()
         # Capture what we're about to undo *from* so redo can come back here.
-        self._redo.append((label, copy.deepcopy(self.project.components)))
+        self._redo.append(
+            (label, copy.deepcopy(self.project.components), self._meta(),
+             self._extra())
+        )
         if len(self._redo) > self.limit:
             self._redo.pop(0)
         self.project.components[:] = components
+        self._restore_meta(meta)
+        self._put_extra(extra)
         return True
 
     def redo(self) -> bool:
@@ -72,11 +108,16 @@ class History:
         Returns False when there's nothing to redo."""
         if not self._redo:
             return False
-        label, components = self._redo.pop()
-        self._stack.append((label, copy.deepcopy(self.project.components)))
+        label, components, meta, extra = self._redo.pop()
+        self._stack.append(
+            (label, copy.deepcopy(self.project.components), self._meta(),
+             self._extra())
+        )
         if len(self._stack) > self.limit:
             self._stack.pop(0)
         self.project.components[:] = components
+        self._restore_meta(meta)
+        self._put_extra(extra)
         return True
 
     def last_label(self) -> str | None:

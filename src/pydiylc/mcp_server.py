@@ -118,11 +118,83 @@ def _record_history(project_id: str, label: str) -> None:
 
     Failures here are swallowed — undo is a convenience, not a hard
     invariant; never block an edit on a snapshot error.
+
+    Call this only once the call is certain to mutate: recording before a
+    validation error burns an undo level on a no-op and destroys the redo
+    stack (``record`` clears it).
     """
     try:
         _history_for(project_id).record(label)
     except Exception:
         pass
+
+
+_PRIMITIVE_BY_NAME = {"int": int, "float": float, "bool": bool, "str": str}
+
+
+def _coerce_field_value(f, value):
+    """Coerce a JSON-ish value to a dataclass field's annotated type.
+
+    Annotations are *strings* here (components.py uses ``from __future__
+    import annotations``), so match by name — an ``isinstance(ann, type)``
+    guard never fires and would silently store raw dicts/strings that only
+    blow up at save/render time.
+    """
+    from .core import Measure
+
+    ann = f.type
+    ann_name = ann if isinstance(ann, str) else getattr(ann, "__name__", "")
+    if ann_name == "Measure" or ann is Measure:
+        if isinstance(value, Measure):
+            return value
+        if isinstance(value, dict):
+            return Measure(
+                value=float(value.get("value", 0)),
+                unit=str(value.get("unit", "in")),
+            )
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return Measure(float(value), "in")
+        raise ValueError(
+            f"{f.name} is a Measure field; pass "
+            "{'value': <number>, 'unit': 'in'|'mm'|'cm'|...} or a bare "
+            "number (inches)."
+        )
+    prim = _PRIMITIVE_BY_NAME.get(ann_name)
+    if prim is None and isinstance(ann, type) and ann in (int, float, bool, str):
+        prim = ann
+    if prim is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            low = value.strip().lower()
+            if low in ("true", "1", "yes", "on"):
+                return True
+            if low in ("false", "0", "no", "off"):
+                return False
+        raise ValueError(
+            f"{f.name} is a boolean field; pass true/false, got {value!r}"
+        )
+    if prim is not None:
+        try:
+            return prim(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{f.name}: {exc}") from exc
+    return value
+
+
+def _guard_name_collision(p: Project, new_name, current_name) -> None:
+    """Reject renames that would create a duplicate component name.
+
+    Name-based tools (move/rotate/set_*) operate on the first match, so a
+    duplicate silently redirects every later edit."""
+    if new_name == current_name:
+        return
+    existing = {getattr(c, "name", None) for c in p.components}
+    if new_name in existing:
+        raise ValueError(
+            f"a component named {new_name!r} already exists; names must be "
+            "unique for name-based edits to stay unambiguous"
+        )
 
 
 def _find_component(p: Project, name: str):
@@ -351,7 +423,8 @@ def build_server():
     ) -> dict:
         """Update project-level fields (title / author / canvas size)."""
         p = _get(project_id)
-        _record_history(project_id, "set metadata")
+        if any(v is not None for v in (title, author, width_cm, height_cm)):
+            _record_history(project_id, "set metadata")
         if title is not None: p.title = title
         if author is not None: p.author = author
         if width_cm is not None: p.width_cm = float(width_cm)
@@ -474,7 +547,10 @@ def build_server():
                     }
                 built.append(None)
 
-        _record_history(project_id, f"add {len(components)} components")
+        # Record only when the batch will actually add something — an
+        # all-invalid (or empty) batch must not burn an undo level.
+        if any(c is not None for c in built):
+            _record_history(project_id, f"add {len(components)} components")
         added: list[dict] = []
         for c in built:
             if c is None:
@@ -531,8 +607,15 @@ def build_server():
         """Move a single control point of a component by (dx, dy). Unlike
         move_component, this does NOT pull coincident points on other
         components along — use it to deliberately detach a connection."""
+        from .graph import control_points_of
+
         p = _get(project_id)
-        i, _c = _find_component(p, name)
+        i, c = _find_component(p, name)
+        valid = [cp.point_index for cp in control_points_of(c, i)]
+        if point_index not in valid:
+            raise IndexError(
+                f"{name!r} has no point {point_index}; valid: {valid}"
+            )
         _record_history(project_id, f"move node {name}.{point_index}")
         moves.move_node(p, i, point_index, dx, dy)
         return _component_summary(p.components[i], i)
@@ -547,8 +630,15 @@ def build_server():
     ) -> dict:
         """Move a control point to an absolute (x, y) — used for snap-to-target
         operations (place this pin on top of that pin)."""
+        from .graph import control_points_of
+
         p = _get(project_id)
-        i, _c = _find_component(p, name)
+        i, c = _find_component(p, name)
+        valid = [cp.point_index for cp in control_points_of(c, i)]
+        if point_index not in valid:
+            raise IndexError(
+                f"{name!r} has no point {point_index}; valid: {valid}"
+            )
         _record_history(project_id, f"snap node {name}.{point_index}")
         moves.move_node_to(p, i, point_index, x, y)
         return _component_summary(p.components[i], i)
@@ -567,7 +657,14 @@ def build_server():
         Wires soldered to the rotated pins track them to their new positions.
         Pass ``detach=True`` to spin the part out of its joints instead."""
         p = _get(project_id)
-        i, _c = _find_component(p, name)
+        i, c = _find_component(p, name)
+        if not moves.can_rotate(c):
+            summary = _component_summary(c, i)
+            summary["warning"] = (
+                f"{name} ({type(c).__name__}) has no rotation support "
+                "(no orientation/angle field); nothing changed."
+            )
+            return summary
         _record_history(project_id, f"rotate {name}")
         moves.rotate_component(p, i, clockwise=clockwise, detach=detach)
         return _component_summary(p.components[i], i)
@@ -586,6 +683,11 @@ def build_server():
         _i, original = _find_component(p, name)
         existing = {getattr(c, "name", None) for c in p.components}
         existing.discard(None)
+        if new_name is not None and new_name in existing:
+            raise ValueError(
+                f"a component named {new_name!r} already exists; pick "
+                "another or omit new_name for an auto-incremented one"
+            )
         target_name = new_name or tree_editor.increment_name(
             existing, getattr(original, "name", "X")
         )
@@ -617,9 +719,21 @@ def build_server():
             )
         if not hasattr(c, target):
             raise ValueError(f"{type(c).__name__} has no field {target!r}")
+        import dataclasses
+
+        if target == "name":
+            _guard_name_collision(p, value, getattr(c, "name", None))
+        # Route through dataclasses.replace so enum validation runs — a bare
+        # setattr would accept an invalid enum and only blow up at save time.
+        try:
+            updated = dataclasses.replace(c, **{target: value})
+        except Exception as exc:
+            raise ValueError(
+                f"set_value {target}={value!r}: {type(exc).__name__}: {exc}"
+            ) from exc
         _record_history(project_id, f"set {name}.{target}")
-        setattr(c, target, value)
-        return _component_summary(c, _i)
+        p.components[_i] = updated
+        return _component_summary(updated, _i)
 
     @server.tool()
     def add_wire(
@@ -633,9 +747,12 @@ def build_server():
         ``name`` is given."""
         from .components import HookupWire
 
+        from .core import hex_color
+
         p = _get(project_id)
         if len(src) != 2 or len(dst) != 2:
             raise ValueError("src and dst must each be [x, y]")
+        color = hex_color(color)  # fail here, not N calls later at save time
         existing = {getattr(c, "name", None) for c in p.components}
         if name is None:
             i = 1
@@ -671,10 +788,12 @@ def build_server():
         the two components is chosen automatically.
         """
         from .components import HookupWire, CopperTrace
+        from .core import hex_color
         from .graph import control_points_of
 
         if kind not in ("wire", "trace"):
             raise ValueError(f"kind must be 'wire' or 'trace', got {kind!r}")
+        color = hex_color(color)  # fail here, not N calls later at save time
 
         p = _get(project_id)
         i_from, c_from = _find_component(p, from_name)
@@ -701,6 +820,14 @@ def build_server():
         if from_pin is not None and to_pin is not None:
             a = _by_index(cps_from, from_pin)
             b = _by_index(cps_to, to_pin)
+        elif from_pin is not None:
+            # One side pinned explicitly: honor it, pick the nearest pin on
+            # the free side only.
+            a = _by_index(cps_from, from_pin)
+            b = min(cps_to, key=lambda cp: (cp.x - a.x) ** 2 + (cp.y - a.y) ** 2)
+        elif to_pin is not None:
+            b = _by_index(cps_to, to_pin)
+            a = min(cps_from, key=lambda cp: (cp.x - b.x) ** 2 + (cp.y - b.y) ** 2)
         else:
             best = None
             for af in cps_from:
@@ -769,7 +896,6 @@ def build_server():
         actually writing.
         """
         import dataclasses
-        from .core import Measure
 
         p = _get(project_id)
         i, c = _find_component(p, name)
@@ -788,14 +914,7 @@ def build_server():
         # Type coercion. We only special-case the simple cases — anything
         # exotic (Sequence[Point], etc.) should be set via the dedicated
         # move_* / add_component tools instead.
-        ann = f.type
-        if isinstance(ann, type) and ann is Measure and isinstance(value, dict):
-            coerced = Measure(value=float(value.get("value", 0)),
-                              unit=str(value.get("unit", "in")))
-        elif isinstance(ann, type) and ann in (int, float, bool, str):
-            coerced = ann(value)
-        else:
-            coerced = value
+        coerced = _coerce_field_value(f, value)
 
         if dry_run:
             return {
@@ -805,10 +924,12 @@ def build_server():
                 "to": coerced,
             }
 
-        _record_history(project_id, f"set {name}.{field}")
+        if field == "name":
+            _guard_name_collision(p, coerced, getattr(c, "name", None))
         # Re-validate enums by going through __post_init__ via a fresh
         # dataclasses.replace. If the value is invalid, this raises before
-        # we mutate the live component.
+        # we mutate the live component — and before the history snapshot,
+        # so a failed call doesn't burn an undo level.
         try:
             updated = dataclasses.replace(c, **{field: coerced})
         except Exception as exc:
@@ -816,6 +937,7 @@ def build_server():
                 f"set_field {field}={coerced!r}: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
+        _record_history(project_id, f"set {name}.{field}")
         # Replace the component in place to preserve list ordering.
         p.components[i] = updated
         return _component_summary(updated, i)
@@ -839,7 +961,6 @@ def build_server():
         Measure-typed fields take ``{"value": ..., "unit": ...}``.
         """
         import dataclasses
-        from .core import Measure
 
         p = _get(project_id)
         i, c = _find_component(p, name)
@@ -858,16 +979,7 @@ def build_server():
                 raise ValueError(
                     f"{type(c).__name__} has no field {fname!r}{hint}"
                 )
-            ann = spec[fname].type
-            if isinstance(ann, type) and ann is Measure and isinstance(val, dict):
-                coerced[fname] = Measure(
-                    value=float(val.get("value", 0)),
-                    unit=str(val.get("unit", "in")),
-                )
-            elif isinstance(ann, type) and ann in (int, float, bool, str):
-                coerced[fname] = ann(val)
-            else:
-                coerced[fname] = val
+            coerced[fname] = _coerce_field_value(spec[fname], val)
 
         if dry_run:
             return {
@@ -878,13 +990,17 @@ def build_server():
                 },
             }
 
-        _record_history(project_id, f"set {name} ({len(coerced)} fields)")
+        if "name" in coerced:
+            _guard_name_collision(p, coerced["name"], getattr(c, "name", None))
+        # Validate before the history snapshot — a failed call must not
+        # burn an undo level or clear the redo stack.
         try:
             updated = dataclasses.replace(c, **coerced)
         except Exception as exc:
             raise ValueError(
                 f"set_fields: {type(exc).__name__}: {exc}"
             ) from exc
+        _record_history(project_id, f"set {name} ({len(coerced)} fields)")
         p.components[i] = updated
         return _component_summary(updated, i)
 
@@ -908,6 +1024,8 @@ def build_server():
         """
         from .graph import control_points_of
 
+        if grid <= 0:
+            raise ValueError(f"grid must be > 0 inches, got {grid!r}")
         p = _get(project_id)
 
         # Pick target indices.
@@ -1253,21 +1371,22 @@ def build_server():
 
         ``path`` writes to disk and returns the resolved path. Omit
         ``path`` and set ``return_content=True`` to skip disk I/O entirely
-        and get the XML inline. The XML appears under both ``content``
-        (generic) and ``xml`` (descriptive) keys.
+        and get the XML inline. With both, the file is written AND the XML
+        returned. The XML appears under both ``content`` (generic) and
+        ``xml`` (descriptive) keys.
         """
         p = _get(project_id)
+        result: dict = {"components": len(p.components)}
+        if path is not None:
+            out = p.save(path)
+            result["path"] = str(Path(out).resolve())
         if return_content or path is None:
             xml = p.to_xml()
             # Both keys present so callers expecting either still work:
             # 'content' (the documented generic key) and 'xml' (descriptive).
-            return {
-                "content": xml,
-                "xml": xml,
-                "components": len(p.components),
-            }
-        out = p.save(path)
-        return {"path": str(Path(out).resolve()), "components": len(p.components)}
+            result["content"] = xml
+            result["xml"] = xml
+        return result
 
     @server.tool()
     def render_svg(
@@ -1288,11 +1407,15 @@ def build_server():
 
         p = _get(project_id)
         svg_text = _render_svg(p, RenderOptions(px_per_inch=dpi))
+        result: dict = {}
+        if path is not None:
+            out = Path(path)
+            out.write_text(svg_text, encoding="utf-8")
+            result["path"] = str(out.resolve())
         if return_content or path is None:
-            return {"content": svg_text, "svg": svg_text}
-        out = Path(path)
-        out.write_text(svg_text, encoding="utf-8")
-        return {"path": str(out.resolve())}
+            result["content"] = svg_text
+            result["svg"] = svg_text
+        return result
 
     @server.tool()
     def render_png(
@@ -1311,25 +1434,33 @@ def build_server():
         from .cairo_render import render_png as _render_png
 
         p = _get(project_id)
-        if return_content or path is None:
-            import base64, io, tempfile, os
-            # cairo's render_png takes a file path; route through a temp file.
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
-                tmp_path = tf.name
+        result: dict = {}
+        if path is not None:
+            _render_png(p, path, dpi=dpi)
+            result["path"] = str(Path(path).resolve())
+            if return_content:
+                data = Path(path).read_bytes()
+                import base64
+
+                result["content_base64"] = base64.b64encode(data).decode("ascii")
+                result["bytes"] = len(data)
+            return result
+        import base64, tempfile, os
+        # cairo's render_png takes a file path; route through a temp file.
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+            tmp_path = tf.name
+        try:
+            _render_png(p, tmp_path, dpi=dpi)
+            data = Path(tmp_path).read_bytes()
+        finally:
             try:
-                _render_png(p, tmp_path, dpi=dpi)
-                data = Path(tmp_path).read_bytes()
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-            return {
-                "content_base64": base64.b64encode(data).decode("ascii"),
-                "bytes": len(data),
-            }
-        _render_png(p, path, dpi=dpi)
-        return {"path": str(Path(path).resolve())}
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return {
+            "content_base64": base64.b64encode(data).decode("ascii"),
+            "bytes": len(data),
+        }
 
     @server.tool()
     def to_json(project_id: str = "default") -> dict:
@@ -1342,6 +1473,8 @@ def build_server():
             "author": p.author,
             "width_cm": p.width_cm,
             "height_cm": p.height_cm,
+            "grid_inches": p.grid_inches,
+            "dot_spacing": p.dot_spacing,
             "components": [_component_to_dict(c) for c in p.components],
         }
 

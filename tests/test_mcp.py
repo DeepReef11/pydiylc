@@ -1950,3 +1950,197 @@ def test_stats(mcp_fixture):
     assert bb["max_y"] == 2.5
     assert bb["width"] == pytest.approx(1.0)
     assert bb["height"] == pytest.approx(1.5)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: coercion, history integrity, connect pins, save modes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_set_field_coerces_measure_dict_and_primitives(mcp_fixture):
+    """String annotations (PEP 563) must still coerce: Measure dicts become
+    Measures, "64" an int, "false" False — not raw values that blow up at
+    save time."""
+    from pydiylc.core import Measure
+
+    _call(mcp_fixture, "create_project", {"project_id": "c"})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "c",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0},
+    })
+    _call(mcp_fixture, "set_field", {
+        "project_id": "c", "name": "P1", "field": "size",
+        "value": {"value": 0.08, "unit": "in"},
+    })
+    pad = mcp_server._PROJECTS["c"].components[0]
+    assert pad.size == Measure(0.08, "in")
+
+    _call(mcp_fixture, "add_component", {
+        "project_id": "c",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 2.0, "y2": 1.0},
+    })
+    _call(mcp_fixture, "set_field", {
+        "project_id": "c", "name": "R1", "field": "alpha", "value": "64",
+    })
+    _call(mcp_fixture, "set_field", {
+        "project_id": "c", "name": "R1", "field": "flip_standing",
+        "value": "false",
+    })
+    r = mcp_server._PROJECTS["c"].components[1]
+    assert r.alpha == 64
+    assert r.flip_standing is False
+    # And the project still saves (no raw dicts poisoning to_xml).
+    out = _call(mcp_fixture, "save", {"project_id": "c", "return_content": True})
+    assert "<diylc.connectivity.SolderPad>" in out["xml"]
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_failed_set_field_does_not_burn_undo_or_redo(mcp_fixture):
+    """A validation failure must leave the history stacks untouched."""
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "h"})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "h",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0},
+    })
+    _call(mcp_fixture, "move_component", {
+        "project_id": "h", "name": "P1", "dx": 0.5, "dy": 0.0,
+    })
+    with pytest.raises(ToolError):
+        _call(mcp_fixture, "set_field", {
+            "project_id": "h", "name": "P1", "field": "type",
+            "value": "NOT_AN_ENUM",
+        })
+    # One undo reverts the move — the failed call didn't burn a slot.
+    _call(mcp_fixture, "undo", {"project_id": "h"})
+    assert mcp_server._PROJECTS["h"].components[0].x == 1.0
+
+    # A failed call must not clear the redo stack either.
+    with pytest.raises(ToolError):
+        _call(mcp_fixture, "set_field", {
+            "project_id": "h", "name": "P1", "field": "type",
+            "value": "STILL_BAD",
+        })
+    _call(mcp_fixture, "redo", {"project_id": "h"})
+    assert mcp_server._PROJECTS["h"].components[0].x == 1.5
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_set_project_metadata_is_undoable(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "m", "title": "Before"})
+    _call(mcp_fixture, "set_project_metadata", {
+        "project_id": "m", "title": "After", "width_cm": 99.0,
+    })
+    res = _call(mcp_fixture, "undo", {"project_id": "m"})
+    assert res["undone"] is True
+    p = mcp_server._PROJECTS["m"]
+    assert p.title == "Before"
+    assert p.width_cm != 99.0
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_connect_honors_one_sided_pin(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "cp"})
+    for name, y in (("R1", 1.0), ("R2", 1.0)):
+        _call(mcp_fixture, "add_component", {
+            "project_id": "cp",
+            "component": {"type": "Resistor", "name": name,
+                          "x1": 1.0 if name == "R1" else 1.1,
+                          "y1": y, "x2": 2.0 if name == "R1" else 1.1,
+                          "y2": y if name == "R1" else 2.0},
+        })
+    res = _call(mcp_fixture, "connect", {
+        "project_id": "cp", "from_name": "R1", "to_name": "R2",
+        "from_pin": 0,
+    })
+    assert res["from"]["pin"] == 0  # explicitly pinned side honored
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_align_ignores_duplicate_names(mcp_fixture):
+    _call(mcp_fixture, "create_project", {"project_id": "al"})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "al",
+        "component": {"type": "SolderPad", "name": "P1", "x": 1.0, "y": 1.0},
+    })
+    _call(mcp_fixture, "add_component", {
+        "project_id": "al",
+        "component": {"type": "SolderPad", "name": "P2", "x": 2.0, "y": 2.0},
+    })
+    _call(mcp_fixture, "align", {
+        "project_id": "al", "names": ["P1", "P2", "P2"],
+        "axis": "x", "mode": "first",
+    })
+    p2 = mcp_server._PROJECTS["al"].components[1]
+    assert p2.x == 1.0  # aligned once, not double-shifted to 0.0
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_snap_to_grid_rejects_nonpositive_grid(mcp_fixture):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "sg"})
+    with pytest.raises(ToolError, match="grid must be > 0"):
+        _call(mcp_fixture, "snap_to_grid", {"project_id": "sg", "grid": 0})
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_save_with_path_and_return_content_writes_both(mcp_fixture, tmp_path):
+    _call(mcp_fixture, "create_project", {"project_id": "sv"})
+    out = tmp_path / "out.diy"
+    res = _call(mcp_fixture, "save", {
+        "project_id": "sv", "path": str(out), "return_content": True,
+    })
+    assert out.exists()
+    assert res["path"] == str(out.resolve())
+    assert "<project>" in res["content"]
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_duplicate_component_rejects_existing_new_name(mcp_fixture):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "dp"})
+    for nm in ("P1", "P2"):
+        _call(mcp_fixture, "add_component", {
+            "project_id": "dp",
+            "component": {"type": "SolderPad", "name": nm, "x": 1.0, "y": 1.0},
+        })
+    with pytest.raises(ToolError, match="already exists"):
+        _call(mcp_fixture, "duplicate_component", {
+            "project_id": "dp", "name": "P1", "new_name": "P2",
+        })
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_set_value_validates_enums(mcp_fixture):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "sv2"})
+    _call(mcp_fixture, "add_component", {
+        "project_id": "sv2",
+        "component": {"type": "Resistor", "name": "R1",
+                      "x1": 1.0, "y1": 1.0, "x2": 2.0, "y2": 1.0},
+    })
+    with pytest.raises(ToolError, match="power"):
+        _call(mcp_fixture, "set_value", {
+            "project_id": "sv2", "name": "R1", "field": "power",
+            "value": "BOGUS",
+        })
+    assert mcp_server._PROJECTS["sv2"].components[0].power != "BOGUS"
+
+
+@pytest.mark.skipif(not mcp_server.has_mcp(), reason="MCP SDK not installed")
+def test_add_wire_rejects_bad_color_at_the_boundary(mcp_fixture):
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    _call(mcp_fixture, "create_project", {"project_id": "wc"})
+    with pytest.raises(ToolError, match="invalid hex color"):
+        _call(mcp_fixture, "add_wire", {
+            "project_id": "wc", "src": [1.0, 1.0], "dst": [2.0, 1.0],
+            "color": "red",
+        })
+    assert len(mcp_server._PROJECTS["wc"].components) == 0
