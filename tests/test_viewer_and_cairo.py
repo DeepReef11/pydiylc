@@ -853,12 +853,8 @@ def test_hold_position_keeps_the_user_where_they_were():
     assert viewer._hold_position(-5, 46, 2520) == 0
 
 
-def test_rotate_leaves_unselected_wires_alone():
-    """The bus case: a part parked on a bus corner must not drag it when spun.
-
-    Rotation used to pull any wire endpoint sitting on a moved pin, however it
-    got there. Now the selection is the attachment, same as for moves.
-    """
+def test_alt_rotate_detaches_instead_of_dragging_leads():
+    """Alt+R spins the part out of its joints, leaving every wire behind."""
     from pydiylc import HookupWire, Line
     p = Project()
     p.add(Resistor(name="R1", x1=2.0, y1=2.0, x2=3.0, y2=2.0))
@@ -868,8 +864,8 @@ def test_rotate_leaves_unselected_wires_alone():
     s = viewer._ViewerState(p, builder=None, watch_path=None)
     _tree_mode(s)
     s.nav.focus_node(0, None)
-    s.selected_names = {"R1"}          # only the resistor
-    viewer._tree_rotate(s, clockwise=True)
+    s.selected_names = {"R1"}
+    viewer._tree_rotate(s, clockwise=True, detach=True)
 
     bus = next(c for c in p.components if c.name == "BUS")
     w0 = next(c for c in p.components if c.name == "W0")
@@ -877,3 +873,20 @@ def test_rotate_leaves_unselected_wires_alone():
     assert w0.points == [(3.0, 2.0), (4.0, 2.0)]    # wire untouched
     # ...and R1 really did rotate.
     assert (p.components[0].x1, p.components[0].y1) != (2.0, 2.0)
+
+
+def test_rotating_a_line_still_never_drags_an_overlapping_bus():
+    """Elastic never anchors elastic, detach or not — the original bug."""
+    from pydiylc import Line
+    p = Project()
+    p.add(Line(name="L1", points=[(2.0, 2.0), (4.0, 2.0)]))
+    p.add(Line(name="BUS", points=[(2.0, 2.0), (6.0, 2.0)]))  # shares L1's end
+
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    _tree_mode(s)
+    s.nav.focus_node(0, None)
+    s.selected_names = {"L1"}
+    viewer._tree_rotate(s, clockwise=True)
+
+    bus = next(c for c in p.components if c.name == "BUS")
+    assert bus.points == [(2.0, 2.0), (6.0, 2.0)]

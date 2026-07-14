@@ -8,11 +8,12 @@ mount / wire / rigid attachment rules, then mutates the components.
 Two granularities of move:
 
 - **component move** (``move_component`` / ``move_components``): the selection
-  translates by Δ. Attachment is never inferred from geometry — something that
-  merely touches the selection is not dragged along; select it too if you want
-  it to move. The only propagation is containment (a board carries the
-  components mounted on it) and the stretch rule that keeps a selected wire
-  plugged into the *unselected* pin it sits on (see ``_translate_group``).
+  translates by Δ, carrying what is genuinely attached to it — the components
+  mounted on a moving board, and the wires soldered to a moving pin (far end
+  anchored, so leads stretch). Nothing else follows: a wire never anchors
+  another wire, so two lines that merely overlap are not joined. Pass
+  ``detach=True`` to move the selection alone and break its joints. See
+  ``_translate_group``.
 
 - **node move** (``move_node``): a single control point shifts by Δ. Used for
   the Tab-into-a-node + nudge workflow. Coincident points on *other*
@@ -161,28 +162,78 @@ def _pinned_outside(
     )
 
 
+def _leads_to_follow(
+    project: Project, g: ConnectivityGraph, rigid_set: set[int]
+) -> list[tuple[int, int]]:
+    """Wire endpoints soldered to a moving pin, which travel with it.
+
+    An endpoint follows iff it shares a junction with a *rigid* pin belonging
+    to the moving set, and with no rigid pin outside it. Move a pad and the
+    lead soldered to it comes along, far end anchored, so the wire stretches.
+
+    Two conditions, two different disasters averted:
+
+    - The anchor must be rigid. A wire never anchors another wire — both ends
+      are elastic, so two of them sharing a coordinate are merely touching,
+      not joined. Without this, parking a line on a bus and taking it off
+      again dragged the whole bus along underneath it.
+
+    - No rigid anchor outside the moving set. Once the user has dragged a
+      moving component on top of a stationary one, the junction holds both;
+      pulling the lead along would silently unplug it from the part they never
+      touched. Leave it stretched instead — a stretched wire is at least
+      visible.
+
+    Called *before* the move, while the junctions still describe the old
+    layout.
+    """
+    components = project.components
+    follow: list[tuple[int, int]] = []
+    for i, wire in enumerate(components):
+        if i in rigid_set or not is_wire_like(wire):
+            continue
+        for cp in control_points_of(wire, i):
+            j = g.junction_at(cp.x, cp.y)
+            if j is None:
+                continue
+            anchors = {
+                m.component_index
+                for m in j.members
+                if m.component_index != i
+                and not is_wire_like(components[m.component_index])
+            }
+            if anchors and anchors <= rigid_set:
+                follow.append((i, cp.point_index))
+    return follow
+
+
 def _translate_group(
     project: Project, g: ConnectivityGraph, rigid_set: set[int],
-    dx: float, dy: float,
+    dx: float, dy: float, *, detach: bool = False,
 ) -> MoveResult:
-    """Translate ``rigid_set`` by (dx, dy). Nothing outside the set moves.
+    """Translate ``rigid_set`` by (dx, dy), carrying its soldered leads.
 
-    Attachment is never inferred from geometry: a component that merely
-    touches the moving set stays exactly where it is. To move something along
-    with the selection, select it too — that is the whole attachment
-    mechanism, and it's the only one the user can see.
+    Three rules, and nothing else propagates:
 
-    The single exception keeps *untouched* parts wired up: an endpoint of a
-    selected wire that is anchored on a pin outside the set stays put, so the
-    wire stretches rather than silently unplugging a component the user never
-    selected. Both of a wire's ends can be pinned this way, in which case it
-    doesn't move at all.
+    - Containment: a board carries the components mounted on it.
+    - Leads follow: a wire endpoint soldered to a moving pin travels with it,
+      far end anchored, so the wire stretches (see ``_leads_to_follow``).
+    - Stretch, don't unplug: an endpoint of a *moving* wire that is anchored
+      on a pin outside the set stays put, so the wire stretches rather than
+      silently unplugging a component the user never selected. Both ends can
+      be pinned this way, in which case the wire doesn't move at all.
+
+    ``detach=True`` drops the lead-following rule: the selection moves alone
+    and every joint it had is broken. That's the deliberate way to pull a part
+    off its wires — and the escape hatch for the one case geometry can't
+    resolve, a part parked exactly on a rail's endpoint.
     """
     components = project.components
     result = MoveResult()
 
     # Resolve the topology up front — once the components move, the junctions
     # they used to sit on are gone.
+    follow = [] if detach else _leads_to_follow(project, g, rigid_set)
     pinned: dict[int, set[int]] = {}
     for ci in rigid_set:
         comp = components[ci]
@@ -215,6 +266,20 @@ def _translate_group(
                 PointShift(ci, b.point_index, (b.x, b.y), (a.x, a.y))
             )
 
+    # Drag each soldered lead to its pin's new position. The far end stays,
+    # so the wire stretches.
+    for (wi, pi) in follow:
+        wire = components[wi]
+        wp = next(
+            (p for p in control_points_of(wire, wi) if p.point_index == pi),
+            None,
+        )
+        if wp is None:
+            continue
+        new_x, new_y = _clean(wp.x + dx), _clean(wp.y + dy)
+        _set_point(wire, pi, new_x, new_y)
+        result.shifts.append(PointShift(wi, pi, (wp.x, wp.y), (new_x, new_y)))
+
     return result
 
 
@@ -225,15 +290,16 @@ def move_component(
     dy: float,
     *,
     graph: ConnectivityGraph | None = None,
+    detach: bool = False,
 ) -> MoveResult:
-    """Move one component by (dx, dy). Only it (and its board's parts) move.
+    """Move one component by (dx, dy), carrying its board's parts and leads.
 
-    Nothing attaches itself to the move. A wire whose endpoint sits on this
-    component's pin does *not* follow — select it too if you want it along.
+    A wire soldered to one of this component's pins follows it, far end
+    anchored, so the lead stretches. ``detach=True`` leaves every wire behind.
     """
     g = graph or build_graph(project)
     rigid_set = _rigid_set(project, g, [component_index])
-    return _translate_group(project, g, rigid_set, dx, dy)
+    return _translate_group(project, g, rigid_set, dx, dy, detach=detach)
 
 
 def move_components(
@@ -241,23 +307,24 @@ def move_components(
     component_indices: list[int],
     dx: float,
     dy: float,
+    *,
+    detach: bool = False,
 ) -> MoveResult:
-    """Rigidly translate a selection by (dx, dy).
+    """Rigidly translate a selection by (dx, dy), carrying its soldered leads.
 
-    The selection *is* the attachment: exactly what's listed moves, plus the
-    components mounted on any board in it (they sit on it, so they ride along).
-    A component that merely touches the selection never follows.
-
-    - Wires inside the selection translate as a whole — both endpoints shift.
-    - A selected wire endpoint anchored on an *unselected* pin stays put, so
-      the wire stretches instead of unplugging a component the user never
-      selected.
     - Components on a selected board move with it, but only once (no
       double-move from also appearing in the selection list).
+    - A wire soldered to a selected pin follows it; its far end stays, so the
+      lead stretches. Nothing else in the layout moves.
+    - Wires inside the selection translate as a whole — both endpoints shift —
+      unless an endpoint is anchored on an *unselected* pin, which holds, so
+      the wire stretches instead of unplugging a part the user never selected.
+
+    ``detach=True`` drops the lead-following: the selection moves alone.
     """
     g = build_graph(project)
     rigid_set = _rigid_set(project, g, component_indices)
-    return _translate_group(project, g, rigid_set, dx, dy)
+    return _translate_group(project, g, rigid_set, dx, dy, detach=detach)
 
 
 def move_node(
@@ -323,15 +390,14 @@ class RotateResult:
 
 def rotate_component(
     project: Project, component_index: int, *, clockwise: bool = True,
-    follow: Iterable[int] = (),
+    detach: bool = False,
 ) -> RotateResult:
-    """Rotate a component 90°, dragging the endpoints of selected wires.
+    """Rotate a component 90°, dragging its soldered leads to the new pins.
 
-    ``follow`` is the set of component indices the caller has selected. Only a
-    wire in that set may have an endpoint dragged to a new pin position;
-    everything else keeps its coordinates. Same rule as the move engine — the
-    selection is the attachment, never the geometry — so spinning a part does
-    not silently rewire whatever happened to be touching its pins.
+    Same attachment rule as the move engine: a wire endpoint soldered to one of
+    this component's pins tracks that pin to its new position (far end stays).
+    A wire never anchors another wire, so spinning a line that overlaps a bus
+    leaves the bus alone. ``detach=True`` leaves every wire behind.
 
     Strategy depends on the component:
 
@@ -359,7 +425,7 @@ def rotate_component(
         new = _ORIENT_4[(idx + (1 if clockwise else -1)) % 4]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins, follow
+            components, component_index, pre_pins, detach
         )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
@@ -367,7 +433,7 @@ def rotate_component(
         new = _ORIENT_HV[(_ORIENT_HV.index(orientation) + 1) % 2]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins, follow
+            components, component_index, pre_pins, detach
         )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
@@ -387,7 +453,7 @@ def rotate_component(
             ny = cy + (cp.x - cx)
         _set_point(comp, cp.point_index, _clean(nx), _clean(ny))
     _follow_wires_after_geometry_change(
-        components, component_index, pre_pins, follow
+        components, component_index, pre_pins, detach
     )
     return RotateResult(component_index, "coords")
 
@@ -396,22 +462,19 @@ def _follow_wires_after_geometry_change(
     components: list,
     component_index: int,
     pre_pins: list,
-    follow: Iterable[int] = (),
+    detach: bool = False,
 ) -> None:
-    """Move selected wires' endpoints to track a component's per-pin movement.
+    """Drag soldered leads to track a component's per-pin movement.
 
     Used by rotate_component (and any future geometry-changing operation).
-    Matches by pre-change position, so two selected wires sharing a junction
-    at the same old pin both follow that pin to its new location.
+    Matches by pre-change position, so two wires sharing a junction at the same
+    old pin both follow that pin to its new location.
 
-    Only wires in ``follow`` (the caller's selection) move. Everything else
-    keeps its coordinates, however exactly it happens to touch a pin — the
-    selection is the attachment, never the geometry.
-
-    A wire's own pins are elastic, so rotating one drags nothing at all;
+    A wire's own pins are elastic, so rotating one drags nothing at all —
     otherwise spinning a line that overlapped a bus would drag the bus along.
+    ``detach`` skips the whole thing and leaves every wire where it is.
     """
-    if is_wire_like(components[component_index]):
+    if detach or is_wire_like(components[component_index]):
         return
 
     post_pins = control_points_of(components[component_index], component_index)
@@ -431,10 +494,9 @@ def _follow_wires_after_geometry_change(
     def _close(a: float, b: float) -> bool:
         return abs(a - b) < tol
 
-    follow_set = set(follow)
     for i, wire in enumerate(components):
-        if i == component_index or i not in follow_set:
-            continue  # not selected → not attached
+        if i == component_index:
+            continue
         if not is_wire_like(wire):
             continue
         pts = list(getattr(wire, "points", []))

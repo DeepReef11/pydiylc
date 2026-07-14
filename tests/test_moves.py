@@ -64,22 +64,32 @@ def test_board_move_drags_mounted_components():
     assert jack.x == 8.0
 
 
-def test_moving_a_component_leaves_an_unselected_wire_alone():
-    """Touching is not attaching: an unselected wire never follows a move.
-
-    Attachment is the selection, not the geometry — see
-    ``test_selected_wire_stretches_off_an_unselected_pin`` for taking it along.
-    """
+def test_moving_a_component_carries_its_soldered_lead():
+    """Move a pad and the wire soldered to it comes along; the far end stays."""
     p = Project()
     p.add(SolderPad("P1", x=1.0, y=1.0))
-    # Wire sitting on the pad (1.0, 1.0), running out to (3.0, 1.0).
+    # Wire soldered to the pad (1.0, 1.0), running out to (3.0, 1.0).
     p.add(HookupWire("W1", points=[(1.0, 1.0), (3.0, 1.0)]))
 
-    move_component(p, 0, 0.0, 0.5)  # move the pad down, on its own
+    move_component(p, 0, 0.0, 0.5)  # move the pad down
 
     pad, wire = p.components
-    assert (pad.x, pad.y) == (1.0, 1.5)          # pad moved
-    assert wire.points == [(1.0, 1.0), (3.0, 1.0)]  # wire stayed behind
+    assert (pad.x, pad.y) == (1.0, 1.5)
+    assert wire.points[0] == (1.0, 1.5)  # soldered end followed the pad
+    assert wire.points[1] == (3.0, 1.0)  # far end anchored → lead stretched
+
+
+def test_detach_moves_a_component_out_of_its_joints():
+    """Alt-move: the part goes, every wire it was soldered to stays."""
+    p = Project()
+    p.add(SolderPad("P1", x=1.0, y=1.0))
+    p.add(HookupWire("W1", points=[(1.0, 1.0), (3.0, 1.0)]))
+
+    move_component(p, 0, 0.0, 0.5, detach=True)
+
+    pad, wire = p.components
+    assert (pad.x, pad.y) == (1.0, 1.5)             # pad moved
+    assert wire.points == [(1.0, 1.0), (3.0, 1.0)]  # wire left behind
 
 
 def test_selected_wire_stretches_off_an_unselected_pin():
@@ -180,24 +190,32 @@ def test_rotating_a_line_does_not_drag_an_overlapping_bus():
     assert p.components[1].points == [(1.0, 1.0), (1.0, 3.0)]
 
 
-def test_component_dropped_on_a_bus_corner_does_not_stick_to_it():
-    """Parking a pad on the bus's endpoint must not weld the two together."""
+def test_a_pad_on_a_bus_endpoint_drags_it_and_detach_is_the_escape():
+    """The one case geometry genuinely cannot resolve.
+
+    A pad sitting on a rail's END is indistinguishable from a pad with a lead
+    soldered to it — an elastic endpoint on a rigid pin, either way. We choose
+    to carry it (that's what makes the common case work) and give the user Alt
+    to say otherwise. Documented here so the trade-off can't rot silently.
+    """
     p = Project()
     p.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
-    p.add(SolderPad("P1", x=1.0, y=1.0))  # sitting exactly on the bus corner
+    p.add(SolderPad("P1", x=1.0, y=1.0))  # parked exactly on the bus's corner
 
-    move_component(p, 1, 2.0, 2.0)  # drag the pad away again
+    move_component(p, 1, 2.0, 2.0)
+    assert p.components[0].points[0] == (3.0, 3.0)  # bus end came along
+    assert p.components[0].points[1] == (5.0, 1.0)  # far end anchored
 
-    assert p.components[0].points == [(1.0, 1.0), (5.0, 1.0)]  # bus stayed
-    assert (p.components[1].x, p.components[1].y) == (3.0, 3.0)
+    # Alt-move instead: the bus is left alone.
+    q = Project()
+    q.add(Line("BUS", points=[(1.0, 1.0), (5.0, 1.0)]))
+    q.add(SolderPad("P1", x=1.0, y=1.0))
+    move_component(q, 1, 2.0, 2.0, detach=True)
+    assert q.components[0].points == [(1.0, 1.0), (5.0, 1.0)]
 
 
-def test_board_move_carries_its_parts_but_not_an_unselected_wire():
-    """Containment still propagates; coincidence does not.
-
-    The pad rides the board because it's mounted *on* it. The wire only
-    touches the pad, so it stays — select it to bring it along.
-    """
+def test_board_move_carries_its_parts_and_their_leads():
+    """A board carries what's mounted on it, and their leads stretch along."""
     p = Project()
     p.add(PerfBoard("B1", x1=1.0, y1=1.0, x2=3.0, y2=2.0))
     p.add(SolderPad("P1", x=2.0, y=1.5))  # on the board
@@ -206,8 +224,9 @@ def test_board_move_carries_its_parts_but_not_an_unselected_wire():
     move_component(p, 0, 1.0, 0.0)  # move board right
 
     board, pad, wire = p.components
-    assert pad.x == 3.0  # pad is mounted on the board → moved with it
-    assert wire.points == [(2.0, 1.5), (6.0, 5.0)]  # unselected wire untouched
+    assert pad.x == 3.0                  # pad is mounted on the board
+    assert wire.points[0] == (3.0, 1.5)  # its lead followed the pad
+    assert wire.points[1] == (6.0, 5.0)  # far end stayed → stretched
 
 
 def test_multi_node_component_moves_as_body():

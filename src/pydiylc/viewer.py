@@ -329,6 +329,8 @@ class _ViewerState:
         self.pan_drag_start: tuple[float, float] | None = None
         self.pan_drag_origin: tuple[float, float] | None = None
         self.pan_drag_moved: bool = False
+        # Alt was held when this drag was grabbed → move out of the joints.
+        self.moving_detach: bool = False
         # Tree-editor mode.
         self.tree_mode: bool = False
         self.nav = None  # tree_editor.NavState, lazily built
@@ -815,6 +817,18 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
         ("dd", "delete the focused component (or all multi-selected, press d twice)"),
         ("arrows (multi-sel)", "nudge every multi-selected component together"),
     ]),
+    ("Attachment — what comes along", [
+        ("(default)", "a move or rotation carries the wires soldered to the "
+                      "pins it touches; the far end stays, so the lead stretches"),
+        ("Alt+arrows", "detach: move out of the joints, leaving the wires behind"),
+        ("Alt+R", "detach: rotate out of the joints"),
+        ("Ctrl+Alt+drag", "detach: drag a part off its wires"),
+        ("(a board)", "carries the components mounted on it"),
+        ("(two wires)", "never drag each other — overlapping a line on a bus "
+                        "does not join them"),
+        ("node move", "Tab into a node, then arrows — peels that one point "
+                      "off its junction"),
+    ]),
     ("History", [
         ("u / Ctrl+Z", "undo"),
         ("U / Ctrl+Y / Ctrl+Shift+Z", "redo"),
@@ -1242,6 +1256,10 @@ def _make_drag_begin(state: _ViewerState):
                 state.moving_component = hit
                 state.moving_orig_anchor = _current_anchor(hit)
                 state.last_drag_delta = (0.0, 0.0)
+                # Alt held at grab time = drag out of the joints, leaving the
+                # soldered leads behind.
+                mods_now = kbd.get_modifier_state() if kbd is not None else 0
+                state.moving_detach = bool(mods_now & Gdk.ModifierType.ALT_MASK)
                 name = getattr(hit, "name", None)
                 state.selected_name = name
                 if name is not None:
@@ -1348,10 +1366,12 @@ def _make_drag_end(state: _ViewerState, canvas):
         comp = state.moving_component
         new_anchor = _current_anchor(comp)
         orig = state.moving_orig_anchor
+        detach = state.moving_detach
         # Reset move-state regardless of whether we apply.
         state.moving_component = None
         state.moving_orig_anchor = None
         state.last_drag_delta = (0.0, 0.0)
+        state.moving_detach = False
         if orig is None or new_anchor == orig:
             return
         # Snap the new anchor to the project grid (0.1 in default). Round the
@@ -1360,16 +1380,29 @@ def _make_drag_end(state: _ViewerState, canvas):
         grid = state.project.grid_inches or 0.1
         new_x = round(round(new_anchor[0] / grid) * grid, 4)
         new_y = round(round(new_anchor[1] / grid) * grid, 4)
-        # Re-align the in-memory component to the snapped anchor so the
-        # preview matches what we'd write to disk.
+
+        # The drag only previewed the grabbed component. Rewind that preview
+        # and replay the whole thing through the move engine, so the leads
+        # soldered to it (and the parts on it, if it's a board) come along —
+        # the same rules the keyboard nudge obeys.
         from .edit import move_component_inplace
+        from . import moves
+
         cur = _current_anchor(comp)
         try:
-            move_component_inplace(comp, new_x - cur[0], new_y - cur[1])
+            move_component_inplace(comp, orig[0] - cur[0], orig[1] - cur[1])
         except TypeError:
             pass
+        before = _snapshot_points(state.project)
+        try:
+            ci = state.project.components.index(comp)
+        except ValueError:
+            return
+        moves.move_component(
+            state.project, ci, new_x - orig[0], new_y - orig[1], detach=detach,
+        )
         canvas.queue_draw()
-        _propose_and_dialog(state, comp, orig, (new_x, new_y))
+        _propose_and_dialog(state, comp, orig, (new_x, new_y), before)
     return on_end
 
 
@@ -1418,8 +1451,14 @@ def _move_ops_for_component(component, name: str) -> list:
 
 
 def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float, float],
-                         new_anchor: tuple[float, float]) -> None:
+                         new_anchor: tuple[float, float],
+                         before: dict | None = None) -> None:
     """Compute a source-rewrite proposal and surface a confirmation dialog.
+
+    ``before`` is a pre-move snapshot of the project's control points. When
+    given, the proposal covers everything the move actually shifted — the
+    dragged part, the leads that followed it, the components riding a dragged
+    board — instead of just the part under the cursor.
 
     If the source can't be AST-edited (positional args, no file, etc.),
     show an informational dialog explaining how to apply the move manually.
@@ -1455,10 +1494,12 @@ def _propose_and_dialog(state: _ViewerState, component, orig_anchor: tuple[float
         return
 
     from .edit import propose_changes, locate_component
+    ops = (
+        _move_ops_from_diff(state.project, before) if before is not None
+        else _move_ops_for_component(component, name)
+    )
     try:
-        proposal = propose_changes(
-            state.watch_path, moves=_move_ops_for_component(component, name),
-        )
+        proposal = propose_changes(state.watch_path, moves=ops)
     except LookupError as exc:
         _info_dialog(state.window, "Can't auto-apply", str(exc))
         return
@@ -1864,6 +1905,7 @@ def _build_tree_panel(state: _ViewerState):
               "Ctrl+arrows nudge (+Shift fine) · R/Shift+R rotate · / focus · g send\n"
               "a add+wire · A add · v edit value · D duplicate · dd delete\n"
               "Ctrl+G snap grid · Ctrl+L align · u undo · U redo\n"
+              "soldered leads follow a move · +Alt to detach\n"
               "Enter save · Ctrl+S save (diff) · Q/Esc exit · ? all keys"
     )
     hint.add_css_class("dim-label")
@@ -2126,69 +2168,54 @@ def _save_buffer(state: _ViewerState) -> None:
     _save_dialog(state)
 
 
-def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
+def _tree_move(state: _ViewerState, dx: float, dy: float,
+               detach: bool = False) -> None:
     """Apply a literal nudge to the focused component or node. If a
     multi-selection (N>1) is active, every selected component's body
     shifts by (dx, dy) in a single snapshot.
+
+    Wires soldered to a moving pin come along (the lead stretches).
+    ``detach`` leaves them behind — that's the Alt-modified nudge.
     """
     from . import moves
-    from .edit import MoveOp
-    from .graph import control_points_of
 
     nav = state.nav
     if nav is None or nav.current is None:
         return
+
+    before = _snapshot_points(state.project)
 
     # Bulk path: nudge every selected component as a single rigid
     # translation. moves.move_components resolves the topology once so
     # consecutive nudges don't accumulate spurious wire-pulling.
     if len(state.selected_names) > 1:
         names = set(state.selected_names)
-        indices = [
-            i for i, c in enumerate(state.project.components)
-            if getattr(c, "name", None) in names
-        ]
+        indices = sorted(_selected_indices(state))
         _record(state, f"move {len(names)} components")
-        moves.move_components(state.project, indices, dx, dy)
-        for ci in indices:
-            comp = state.project.components[ci]
-            anchor = _current_anchor(comp)
-            cname = getattr(comp, "name", None)
-            if cname:
-                _sync_buffer_move(state, MoveOp(cname, anchor[0], anchor[1]))
+        moves.move_components(state.project, indices, dx, dy, detach=detach)
+        _sync_buffer_changed_points(state, before)
         nav.rebuild(state.project)
         _refresh_tree_panel(state)
         return
 
     cur = nav.current
-    comp = state.project.components[cur.component_index]
-    name = getattr(comp, "name", None)
     _record(state, "move")
     if cur.is_node and cur.movable:
+        # A node move is always a detach — that's how you peel one point off
+        # a junction.
         moves.move_node(state.project, cur.component_index, cur.point_index, dx, dy)
     else:
         # Header row, single-anchor, or read-only multinode pin → move body.
-        moves.move_component(state.project, cur.component_index, dx, dy)
-    # Mirror the change in the working buffer.
-    if name:
-        if cur.is_node and cur.movable and hasattr(comp, "points"):
-            cps = control_points_of(comp, cur.component_index)
-            pt = next(p for p in cps if p.point_index == cur.point_index)
-            _sync_buffer_move(state, MoveOp(name, pt.x, pt.y, point_index=cur.point_index))
-        elif cur.is_node and cur.movable and hasattr(comp, "x2"):
-            cps = control_points_of(comp, cur.component_index)
-            pt = next(p for p in cps if p.point_index == cur.point_index)
-            _sync_buffer_move(state, MoveOp(name, pt.x, pt.y, second_point=(cur.point_index == 1)))
-        else:
-            anchor = _current_anchor(comp)
-            _sync_buffer_move(state, MoveOp(name, anchor[0], anchor[1]))
+        moves.move_component(
+            state.project, cur.component_index, dx, dy, detach=detach,
+        )
+    _sync_buffer_changed_points(state, before)
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
 
 
 def _selected_indices(state: _ViewerState) -> set[int]:
-    """Indices of the multi-selected components. The move/rotate engines take
-    this as the set of things allowed to travel with an edit."""
+    """Indices of the multi-selected components."""
     names = set(state.selected_names)
     return {
         i for i, c in enumerate(state.project.components)
@@ -2196,16 +2223,77 @@ def _selected_indices(state: _ViewerState) -> set[int]:
     }
 
 
-def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
+def _snapshot_points(project) -> dict[int, list[tuple[float, float]]]:
+    """Every control point of every component, keyed by index."""
+    from .graph import control_points_of
+
+    return {
+        i: [(p.x, p.y) for p in control_points_of(c, i)]
+        for i, c in enumerate(project.components)
+    }
+
+
+def _move_ops_from_diff(project, before: dict, skip=()) -> list:
+    """Source-rewrite ops for every control point an edit actually moved.
+
+    An edit moves more than the thing you aimed at: the leads soldered to it
+    come along, and a board carries its parts. Writing back only the target's
+    anchor left those in the source at their old coordinates — the canvas
+    showed a connected layout and the file held a disconnected one, which you
+    only discover on the next reload. So diff the whole project against a
+    pre-edit snapshot and write back whatever actually moved.
+    """
+    from .edit import MoveOp
+    from .graph import control_points_of
+
+    ops: list = []
+    for i, comp in enumerate(project.components):
+        if i in skip:
+            continue
+        name = getattr(comp, "name", None)
+        if not name:
+            continue
+        old = before.get(i)
+        new = [(p.x, p.y) for p in control_points_of(comp, i)]
+        if old is None or len(old) != len(new) or old == new:
+            continue
+        if hasattr(comp, "points"):
+            ops += [
+                MoveOp(name, n[0], n[1], point_index=pi)
+                for pi, (o, n) in enumerate(zip(old, new)) if o != n
+            ]
+        elif hasattr(comp, "x1") and hasattr(comp, "x2"):
+            ops += [
+                MoveOp(name, n[0], n[1], second_point=(pi == 1))
+                for pi, (o, n) in enumerate(zip(old, new)) if o != n
+            ]
+        else:
+            # Multi-node bodies derive their pins from an (x, y) anchor —
+            # write the anchor, not the pins.
+            anchor = _current_anchor(comp)
+            ops.append(MoveOp(name, anchor[0], anchor[1]))
+    return ops
+
+
+def _sync_buffer_changed_points(state: _ViewerState, before: dict, skip=()) -> None:
+    """Mirror every point an edit moved into the working buffer."""
+    for op in _move_ops_from_diff(state.project, before, skip):
+        _sync_buffer_move(state, op)
+
+
+def _tree_rotate(state: _ViewerState, clockwise: bool,
+                 detach: bool = False) -> None:
     """Rotate the focused component 90°. If a multi-selection (N>1) is
     active, every selected part spins about its own anchor.
 
-    An unselected wire never moves, however exactly it touches a rotating pin —
-    the selection is the attachment, same as for a move. Select a wire along
-    with the part and it stays plugged in: its endpoints track the pins to
-    their new positions rather than spinning on their own, which is what
-    "rotate this part and its leads" has to mean. A selection of nothing but
-    wires has no part to track, so those wires do spin.
+    Wires soldered to the rotating pins track them to their new positions, so
+    the part stays wired up. ``detach`` (Alt) spins it out of its joints and
+    leaves the wires where they are.
+
+    In a bulk rotation the selected *parts* spin; a wire in the selection rides
+    along with the pins instead of spinning about its own centroid, which is
+    what "rotate these parts and their leads" has to mean. A selection of
+    nothing but wires has no part to track, so those wires do spin.
     """
     from . import moves
     from .graph import is_wire_like
@@ -2214,10 +2302,11 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     if nav is None or nav.current is None:
         return
 
-    selected = _selected_indices(state)
+    before = _snapshot_points(state.project)
 
-    # Bulk path: spin each selected part; selected wires ride along instead.
+    # Bulk path: spin each selected part; wires ride along instead.
     if len(state.selected_names) > 1:
+        selected = _selected_indices(state)
         targets = [
             i for i in sorted(selected)
             if not is_wire_like(state.project.components[i])
@@ -2227,9 +2316,10 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
         _record(state, f"rotate {len(state.selected_names)} components")
         for ci in targets:
             moves.rotate_component(
-                state.project, ci, clockwise=clockwise, follow=selected,
+                state.project, ci, clockwise=clockwise, detach=detach,
             )
             _sync_buffer_rotate(state, state.project.components[ci])
+        _sync_buffer_changed_points(state, before, skip=set(targets))
         nav.rebuild(state.project)
         _refresh_tree_panel(state)
         return
@@ -2237,11 +2327,13 @@ def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     ci = nav.current.component_index
     _record(state, "rotate")
     moves.rotate_component(
-        state.project, ci, clockwise=clockwise, follow=selected,
+        state.project, ci, clockwise=clockwise, detach=detach,
     )
     # Mirror the rotation in the working buffer (orientation= keyword for
-    # parts with an orientation enum; raw-coord replacement otherwise).
+    # parts with an orientation enum; raw-coord replacement otherwise), then
+    # the leads it dragged with it.
     _sync_buffer_rotate(state, state.project.components[ci])
+    _sync_buffer_changed_points(state, before, skip={ci})
     nav.rebuild(state.project)
     _refresh_tree_panel(state)
 
@@ -2693,6 +2785,9 @@ def _make_key_handler(state: _ViewerState, canvas, win):
     def on_key(controller, keyval, keycode, modifiers):
         ctrl = bool(modifiers & Gdk.ModifierType.CONTROL_MASK)
         shift = bool(modifiers & Gdk.ModifierType.SHIFT_MASK)
+        # Alt = "detach": move/rotate out of the joints instead of carrying
+        # the soldered leads along.
+        alt = bool(modifiers & Gdk.ModifierType.ALT_MASK)
 
         # T toggles tree-editor mode (works in or out of it).
         if keyval in (Gdk.KEY_t, Gdk.KEY_T):
@@ -2709,7 +2804,7 @@ def _make_key_handler(state: _ViewerState, canvas, win):
 
         # In tree mode, navigation/move/rotate/commit keys take over.
         if state.tree_mode and state.nav is not None:
-            if _handle_tree_key(state, canvas, keyval, ctrl, shift):
+            if _handle_tree_key(state, canvas, keyval, ctrl, shift, alt):
                 return True
 
         if keyval in (Gdk.KEY_q, Gdk.KEY_Q, Gdk.KEY_Escape):
@@ -2792,7 +2887,8 @@ def _do_align(state: _ViewerState, canvas, axis: str, mode: str) -> None:
     _refresh_status(state)
 
 
-def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: bool) -> bool:
+def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool,
+                     shift: bool, alt: bool = False) -> bool:
     """Handle a key while in tree-editor mode. Returns True if consumed."""
     import gi
     gi.require_version("Gtk", "4.0")
@@ -2847,7 +2943,7 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
         direction = _DIRS[keyval]
         dx = -step if direction == "left" else step if direction == "right" else 0.0
         dy = -step if direction == "up" else step if direction == "down" else 0.0
-        _tree_move(state, dx, dy)
+        _tree_move(state, dx, dy, detach=alt)
         return True
 
     # Plain arrow = move the focused node by one board hole (if it's on a
@@ -2892,7 +2988,7 @@ def _handle_tree_key(state: _ViewerState, canvas, keyval, ctrl: bool, shift: boo
 
     # R / Shift+R rotate.
     if keyval in (Gdk.KEY_r, Gdk.KEY_R):
-        _tree_rotate(state, clockwise=not shift)
+        _tree_rotate(state, clockwise=not shift, detach=alt)
         return True
 
     # "/" — fuzzy search to FOCUS a node (like Tab nav, but searchable).

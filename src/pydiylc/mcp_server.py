@@ -505,17 +505,19 @@ def build_server():
         name: str,
         dx: float,
         dy: float,
+        detach: bool = False,
         project_id: str = "default",
     ) -> dict:
-        """Translate a component by (dx, dy) inches. Only this component moves
-        (plus anything mounted on it, if it's a board). A wire that merely
-        touches it is NOT dragged along — attachment is never inferred from
-        geometry. To move a part together with its wires, pass them all to
-        ``align`` / move each, or move the wire's endpoint with move_node."""
+        """Translate a component by (dx, dy) inches, carrying what is attached.
+
+        A wire soldered to one of its pins follows (far end anchored, so the
+        lead stretches), and a board carries the components mounted on it. A
+        wire never drags another wire, so overlapping lines are not joined.
+        Pass ``detach=True`` to move it alone and break every joint."""
         p = _get(project_id)
         i, _c = _find_component(p, name)
         _record_history(project_id, f"move {name}")
-        moves.move_component(p, i, dx, dy)
+        moves.move_component(p, i, dx, dy, detach=detach)
         return _component_summary(p.components[i], i)
 
     @server.tool()
@@ -555,18 +557,19 @@ def build_server():
     def rotate_component(
         name: str,
         clockwise: bool = True,
+        detach: bool = False,
         project_id: str = "default",
     ) -> dict:
         """Rotate a component 90°. Components with an ``orientation`` enum
         cycle the enum (so derived pins re-orient cleanly); two-pin and
         points-list components rotate their coordinates about the centroid.
 
-        Wires attached to the rotated pins are left where they are — nothing
-        is dragged along automatically."""
+        Wires soldered to the rotated pins track them to their new positions.
+        Pass ``detach=True`` to spin the part out of its joints instead."""
         p = _get(project_id)
         i, _c = _find_component(p, name)
         _record_history(project_id, f"rotate {name}")
-        moves.rotate_component(p, i, clockwise=clockwise)
+        moves.rotate_component(p, i, clockwise=clockwise, detach=detach)
         return _component_summary(p.components[i], i)
 
     @server.tool()

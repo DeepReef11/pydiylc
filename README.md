@@ -152,18 +152,23 @@ surface. The status bar shows ✎ EDIT while you're in.
   again" preference, persisted in `~/.config/pydiylc/prefs.json`)
 - **Esc / Q** — exit edit mode
 
-**The selection is the attachment.** A move or rotation affects exactly what
-you selected; anything that merely *touches* it stays where it is. Overlapping
-two parts never welds them together, so parking a line on top of a bus and
-taking it off again leaves the bus alone.
+**Moves and rotations carry what's soldered to them.** Move a pad and the wire
+joined to it comes along — the far end stays anchored, so the lead stretches.
+Move a board and the components mounted on it ride with it. Nothing else
+follows.
 
-To bring a wire along, select it too (Ctrl/Shift+click or rubber-band). A
-selected wire keeps any endpoint that's anchored on an *unselected* pin, so it
-stretches rather than quietly unplugging something you didn't touch; rotating a
-part with its wires selected tracks them to the pins' new positions. The one
-thing that still propagates on its own is containment: a board carries the
-components mounted on it. A node-level move (Tab into a node, then Ctrl+arrow)
-moves that one point. See `docs/keyboard-tree-editor.md` for the full design.
+In particular **a wire never drags another wire**: both ends are elastic, so
+two of them sharing a coordinate are merely touching, not joined. Parking a
+line on top of a bus and taking it off again leaves the bus exactly where it
+was.
+
+Hold **Alt** to *detach* — move or rotate a part out of its joints and leave
+every wire behind. That's also the escape hatch for the one case geometry
+can't resolve on its own: a part parked exactly on a rail's **endpoint** looks
+identical to a part with a lead soldered to it, so it will be carried along
+unless you Alt-move it. A node-level move (Tab into a node, then Ctrl+arrow)
+always moves just that one point, peeling it off its junction. See
+`docs/keyboard-tree-editor.md` for the full design.
 
 > **Note:** the tree-editor GTK UI is built against a fully unit-tested core
 > (graph, move engine, rotation, navigation — 60+ tests) but the GTK panel and
