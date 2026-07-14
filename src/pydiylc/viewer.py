@@ -1927,6 +1927,12 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
     import gi
     gi.require_version("Gtk", "4.0")
     from gi.repository import Gtk
+    # Where the list was scrolled to before we tear it down. Emptying the
+    # listbox makes GTK reset the adjustment, so this is the only reliable
+    # record of the user's position — read it while it still means something.
+    sw = _scrolled_window_for(lb)
+    adj = sw.get_vadjustment() if sw is not None else None
+    baseline = adj.get_value() if adj is not None else 0.0
     # Clear existing rows.
     child = lb.get_first_child()
     while child is not None:
@@ -1961,7 +1967,7 @@ def _refresh_tree_panel(state: _ViewerState) -> None:
         # vadjustment directly across the re-allocation lag of a freshly
         # rebuilt listbox.
         selected_row.grab_focus()
-        _scroll_into_view(lb, selected_row)
+        _scroll_into_view(lb, selected_row, baseline)
     # Sync the canvas highlight to the focused component.
     cur = nav.current
     if cur is not None:
@@ -3113,11 +3119,34 @@ _SCROLL_RETRY_FRAMES = 30
 def _geometry_ready(row_height: float, page: float, upper: float) -> bool:
     """Has GTK laid the row (and the scroll area) out yet?
 
-    A row appended a moment ago reports a zero height until the next layout
-    pass, and the adjustment reads back a zero page/upper. Scrolling off those
-    numbers would land nowhere, so callers wait.
+    ``row_height`` must come from ``Gtk.Widget.get_height()``, which is 0 until
+    the row is allocated. Do NOT probe readiness with ``get_allocation()``: on
+    a row appended a moment ago it doesn't report "unallocated", it reports a
+    confident, garbage ``(y=-2, height=4)``. Believing that yields a nonsense
+    "already visible" verdict, and the scroll silently never happens.
     """
     return row_height > 0 and page > 0 and upper > 0
+
+
+def _hold_position(baseline: float, page: float, upper: float) -> float:
+    """Clamp the pre-rebuild scroll position back into range.
+
+    Used when the cursor is already visible and we just want the list to stay
+    where the user had it.
+    """
+    return max(0.0, min(baseline, upper - page))
+
+
+def _content_settled(row_bottom: float, upper: float) -> bool:
+    """Has the scroll area's content grown back to cover the row?
+
+    Rebuilding the panel empties the listbox, which collapses the adjustment's
+    ``upper`` and clamps its value to 0. The rows come back before ``upper``
+    does, so there's a window where the row is allocated at y=1281 while the
+    content still claims to be 46px tall. Scrolling then clamps the target to
+    0 — the row stays off-screen and we'd call it done. Wait it out instead.
+    """
+    return upper + 1 >= row_bottom
 
 
 def _scroll_target(
@@ -3139,54 +3168,98 @@ def _scroll_target(
     return None
 
 
-def _scroll_into_view(listbox, row) -> None:
+def _scrolled_window_for(widget):
+    """The ScrolledWindow ancestor of ``widget``, or None."""
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    parent = widget.get_parent()
+    while parent is not None:
+        if isinstance(parent, Gtk.ScrolledWindow):
+            return parent
+        parent = parent.get_parent()
+    return None
+
+
+def _scroll_into_view(listbox, row, baseline: float = 0.0) -> None:
     """Scroll the row's containing ScrolledWindow so ``row`` is visible.
 
-    Walks up from the listbox to find the ScrolledWindow ancestor, then
-    adjusts its vertical adjustment to expose the row.
+    ``baseline`` is the scroll position captured *before* the panel was
+    rebuilt, and it is the position we reason from — never the live one.
+    Emptying the listbox collapses its content, so GTK resets the adjustment
+    to 0 as part of the rebuild, and it does so on its own schedule: read the
+    live value and you may get the pre-rebuild position, conclude the cursor
+    is already visible, do nothing — and then watch GTK zero the adjustment
+    out from under you. So we always assert a value, either the row's target
+    or the held position.
 
-    The row was almost certainly appended microseconds ago (the panel rebuilds
-    every one of its rows whenever the tree cursor moves), so it has no
-    allocation yet and we have to wait for a layout pass. That wait must be
-    frame-paced: an idle source re-fires as fast as the main loop can spin, so
-    retrying on idle burns the entire retry budget long before GTK ever
-    allocates the row — which is how Tab used to leave the cursor selected but
-    scrolled off-screen. One timeout source, one retry per frame.
+    The row was appended microseconds ago, so it has no allocation yet and we
+    must wait for a layout pass. That wait has to be frame-paced: an idle
+    source re-fires as fast as the main loop can spin, so retrying on idle
+    burns the whole retry budget before GTK ever allocates the row.
+
+    Only one such source may be alive at a time. Tab twice quickly and the
+    first is still waiting on a row the rebuild has since thrown away; letting
+    it fire scrolls the list to wherever that dead row thinks it is.
     """
     import gi
     gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk, GLib
+    from gi.repository import GLib
 
-    parent = listbox.get_parent()
-    sw = None
-    while parent is not None:
-        if isinstance(parent, Gtk.ScrolledWindow):
-            sw = parent
-            break
-        parent = parent.get_parent()
+    sw = _scrolled_window_for(listbox)
     if sw is None:
         return
 
+    # Retire the previous refresh's pending scroll — its row is gone.
+    pending = getattr(listbox, "_pydiylc_scroll_source", 0)
+    if pending:
+        try:
+            GLib.source_remove(pending)
+        except Exception:
+            pass  # already fired and removed itself
+    listbox._pydiylc_scroll_source = 0
+
     attempts = {"n": 0}
 
+    def done():
+        listbox._pydiylc_scroll_source = 0
+        return False
+
     def do_scroll():
+        # A newer rebuild has already discarded this row; it no longer has a
+        # meaningful position, so scrolling to it would throw the list around.
+        if row.get_parent() is not listbox:
+            return done()
         adj = sw.get_vadjustment()
         if adj is None:
-            return False  # nothing we can do
-        alloc = row.get_allocation()
-        page, upper, value = (
-            adj.get_page_size(), adj.get_upper(), adj.get_value(),
-        )
-        if not _geometry_ready(alloc.height, page, upper):
-            attempts["n"] += 1
-            return attempts["n"] < _SCROLL_RETRY_FRAMES  # try again next frame
-        target = _scroll_target(alloc.y, alloc.height, value, page, upper)
-        if target is not None:
-            adj.set_value(target)
-        return False  # done
+            return done()  # nothing we can do
+        page, upper = adj.get_page_size(), adj.get_upper()
+        # get_height() is the only honest "am I laid out yet" signal here.
+        if not _geometry_ready(row.get_height(), page, upper):
+            return retry()
+        ok, bounds = row.compute_bounds(listbox)
+        if not ok:
+            return retry()
+        row_top, row_height = bounds.origin.y, bounds.size.height
+        if not _content_settled(row_top + row_height, upper):
+            return retry()
+        target = _scroll_target(row_top, row_height, baseline, page, upper)
+        if target is None:
+            # Cursor already on screen: hold the position the user had, and
+            # assert it — GTK may still be about to reset us to 0.
+            target = _hold_position(baseline, page, upper)
+        adj.set_value(target)
+        return done()
+
+    def retry():
+        attempts["n"] += 1
+        if attempts["n"] < _SCROLL_RETRY_FRAMES:
+            return True  # come back next frame
+        return done()  # laid out too slowly; stop rather than spin forever
 
     if do_scroll():
-        GLib.timeout_add(16, do_scroll)
+        listbox._pydiylc_scroll_source = GLib.timeout_add(16, do_scroll)
 
 
 def _focused_pin_position(state: _ViewerState) -> tuple[float, float] | None:

@@ -832,3 +832,20 @@ def test_row_below_the_viewport_scrolls_it_flush_to_the_bottom():
 def test_scroll_never_overruns_the_end_of_the_list():
     # Last row, viewport can't scroll past (upper - page) = 600.
     assert viewer._scroll_target(776, 24, 100, 200, 800) == 600
+
+
+def test_content_not_settled_until_the_list_can_contain_the_row():
+    # Rebuilding empties the listbox, so `upper` collapses and only catches up
+    # a frame or two after the rows are back. Scrolling against the stale
+    # `upper` clamps the target to 0 and strands the cursor off-screen.
+    assert not viewer._content_settled(1302, 46)     # upper still collapsed
+    assert viewer._content_settled(1302, 2520)       # content caught up
+    assert viewer._content_settled(46, 46)           # exactly fits
+
+
+def test_hold_position_keeps_the_user_where_they_were():
+    # Cursor already visible: hold the pre-rebuild position rather than jump...
+    assert viewer._hold_position(731, 46, 2520) == 731
+    # ...but never outside the scrollable range.
+    assert viewer._hold_position(9999, 46, 2520) == 2474
+    assert viewer._hold_position(-5, 46, 2520) == 0
