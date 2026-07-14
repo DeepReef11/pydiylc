@@ -795,3 +795,40 @@ def test_middle_drag_end_without_menu_is_fine():
     begin(None, 10, 10)
     end(None, 0, 0)  # no motion + no menu handler: must not raise
     assert s.pan_drag_start is None
+
+
+# ---------------------------------------------------------------------------
+# Tree-panel scroll-into-view (the arithmetic; GTK plumbing is untestable here)
+# ---------------------------------------------------------------------------
+
+def test_geometry_not_ready_until_gtk_has_laid_the_row_out():
+    # A freshly-appended row reports zero height, and the adjustment reads
+    # back a zero page/upper. Scrolling off those numbers lands nowhere.
+    assert not viewer._geometry_ready(0, 200, 800)    # row not allocated
+    assert not viewer._geometry_ready(24, 0, 800)     # no page yet
+    assert not viewer._geometry_ready(24, 200, 0)     # no content yet
+    assert viewer._geometry_ready(24, 200, 800)
+
+
+def test_visible_row_is_left_alone():
+    # Row fully inside the viewport (value=100 .. 300): don't jump the list.
+    assert viewer._scroll_target(120, 24, 100, 200, 800) is None
+    assert viewer._scroll_target(100, 24, 100, 200, 800) is None  # flush top
+    assert viewer._scroll_target(276, 24, 100, 200, 800) is None  # flush bottom
+
+
+def test_row_above_the_viewport_scrolls_to_its_top():
+    # Tab wrapped back to the top of the list.
+    assert viewer._scroll_target(40, 24, 100, 200, 800) == 40
+    # Never past the start of the list.
+    assert viewer._scroll_target(-10, 24, 100, 200, 800) == 0
+
+
+def test_row_below_the_viewport_scrolls_it_flush_to_the_bottom():
+    # Row at 400..424, viewport 100..300 → value 224 puts it flush at bottom.
+    assert viewer._scroll_target(400, 24, 100, 200, 800) == 224
+
+
+def test_scroll_never_overruns_the_end_of_the_list():
+    # Last row, viewport can't scroll past (upper - page) = 600.
+    assert viewer._scroll_target(776, 24, 100, 200, 800) == 600

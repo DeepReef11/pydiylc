@@ -3072,15 +3072,53 @@ def _move_list_selection(listbox, delta: int) -> None:
     _scroll_into_view(listbox, nxt)
 
 
+# How long to keep waiting for GTK to allocate a freshly-rebuilt row before
+# giving up on scrolling it into view. Counted in frames, at ~16 ms each.
+_SCROLL_RETRY_FRAMES = 30
+
+
+def _geometry_ready(row_height: float, page: float, upper: float) -> bool:
+    """Has GTK laid the row (and the scroll area) out yet?
+
+    A row appended a moment ago reports a zero height until the next layout
+    pass, and the adjustment reads back a zero page/upper. Scrolling off those
+    numbers would land nowhere, so callers wait.
+    """
+    return row_height > 0 and page > 0 and upper > 0
+
+
+def _scroll_target(
+    row_top: float, row_height: float,
+    value: float, page: float, upper: float,
+) -> float | None:
+    """The vadjustment value that brings the row into view, or None if it's
+    already fully visible.
+
+    Scrolls the minimum distance: a row above the viewport goes to the top
+    edge, one below it goes to the bottom edge. Callers must have checked
+    ``_geometry_ready`` first.
+    """
+    row_bottom = row_top + row_height
+    if row_top < value:
+        return max(0.0, row_top)
+    if row_bottom > value + page:
+        return max(0.0, min(upper - page, row_bottom - page))
+    return None
+
+
 def _scroll_into_view(listbox, row) -> None:
     """Scroll the row's containing ScrolledWindow so ``row`` is visible.
 
     Walks up from the listbox to find the ScrolledWindow ancestor, then
-    adjusts its vertical adjustment to expose the row. Rows are often
-    not yet allocated on the first synchronous call (we just cleared and
-    repopulated the listbox); a short retry chain via GLib idle + a few
-    timeouts is reliable. Without focus-grabbing, so the SearchEntry in
-    fuzzy menus doesn't lose its caret.
+    adjusts its vertical adjustment to expose the row.
+
+    The row was almost certainly appended microseconds ago (the panel rebuilds
+    every one of its rows whenever the tree cursor moves), so it has no
+    allocation yet and we have to wait for a layout pass. That wait must be
+    frame-paced: an idle source re-fires as fast as the main loop can spin, so
+    retrying on idle burns the entire retry budget long before GTK ever
+    allocates the row — which is how Tab used to leave the cursor selected but
+    scrolled off-screen. One timeout source, one retry per frame.
     """
     import gi
     gi.require_version("Gtk", "4.0")
@@ -3102,35 +3140,20 @@ def _scroll_into_view(listbox, row) -> None:
         adj = sw.get_vadjustment()
         if adj is None:
             return False  # nothing we can do
-        row_alloc = row.get_allocation()
-        if row_alloc.height == 0:
-            # Not allocated yet; retry up to ~10 frames (~160 ms).
+        alloc = row.get_allocation()
+        page, upper, value = (
+            adj.get_page_size(), adj.get_upper(), adj.get_value(),
+        )
+        if not _geometry_ready(alloc.height, page, upper):
             attempts["n"] += 1
-            if attempts["n"] >= 10:
-                return False
-            return True
-        row_top = row_alloc.y
-        row_bottom = row_top + row_alloc.height
-        page = adj.get_page_size()
-        value = adj.get_value()
-        upper = adj.get_upper()
-        if page <= 0 or upper <= 0:
-            attempts["n"] += 1
-            if attempts["n"] >= 10:
-                return False
-            return True
-        if row_top < value:
-            adj.set_value(row_top)
-        elif row_bottom > value + page:
-            adj.set_value(min(upper - page, row_bottom - page))
+            return attempts["n"] < _SCROLL_RETRY_FRAMES  # try again next frame
+        target = _scroll_target(alloc.y, alloc.height, value, page, upper)
+        if target is not None:
+            adj.set_value(target)
         return False  # done
 
-    # Try synchronously first; if the row isn't allocated yet, retry on
-    # idle, and as a belt-and-braces fallback on a short timeout chain.
     if do_scroll():
-        GLib.idle_add(do_scroll)
         GLib.timeout_add(16, do_scroll)
-        GLib.timeout_add(64, do_scroll)
 
 
 def _focused_pin_position(state: _ViewerState) -> tuple[float, float] | None:
