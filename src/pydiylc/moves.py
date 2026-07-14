@@ -322,9 +322,16 @@ class RotateResult:
 
 
 def rotate_component(
-    project: Project, component_index: int, *, clockwise: bool = True
+    project: Project, component_index: int, *, clockwise: bool = True,
+    follow: Iterable[int] = (),
 ) -> RotateResult:
-    """Rotate a component 90°, pulling attached wire endpoints along.
+    """Rotate a component 90°, dragging the endpoints of selected wires.
+
+    ``follow`` is the set of component indices the caller has selected. Only a
+    wire in that set may have an endpoint dragged to a new pin position;
+    everything else keeps its coordinates. Same rule as the move engine — the
+    selection is the attachment, never the geometry — so spinning a part does
+    not silently rewire whatever happened to be touching its pins.
 
     Strategy depends on the component:
 
@@ -352,7 +359,7 @@ def rotate_component(
         new = _ORIENT_4[(idx + (1 if clockwise else -1)) % 4]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins
+            components, component_index, pre_pins, follow
         )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
@@ -360,7 +367,7 @@ def rotate_component(
         new = _ORIENT_HV[(_ORIENT_HV.index(orientation) + 1) % 2]
         comp.orientation = new
         _follow_wires_after_geometry_change(
-            components, component_index, pre_pins
+            components, component_index, pre_pins, follow
         )
         return RotateResult(component_index, "enum", "orientation", orientation, new)
 
@@ -379,7 +386,9 @@ def rotate_component(
             nx = cx - (cp.y - cy)
             ny = cy + (cp.x - cx)
         _set_point(comp, cp.point_index, _clean(nx), _clean(ny))
-    _follow_wires_after_geometry_change(components, component_index, pre_pins)
+    _follow_wires_after_geometry_change(
+        components, component_index, pre_pins, follow
+    )
     return RotateResult(component_index, "coords")
 
 
@@ -387,17 +396,20 @@ def _follow_wires_after_geometry_change(
     components: list,
     component_index: int,
     pre_pins: list,
+    follow: Iterable[int] = (),
 ) -> None:
-    """Move wire endpoints to track a component's per-pin movement.
+    """Move selected wires' endpoints to track a component's per-pin movement.
 
-    Used by rotate_component (and any future geometry-changing
-    operation). Matches by pre-change position, so two wires sharing
-    a junction at the same old pin both follow that pin's new
-    location. Wire endpoints on other components are left alone.
+    Used by rotate_component (and any future geometry-changing operation).
+    Matches by pre-change position, so two selected wires sharing a junction
+    at the same old pin both follow that pin to its new location.
 
-    Same anchoring rule as ``_endpoints_to_follow``: a wire's pins are
-    elastic, so rotating one drags nothing — otherwise spinning a line
-    that happened to overlap a bus would drag the bus with it.
+    Only wires in ``follow`` (the caller's selection) move. Everything else
+    keeps its coordinates, however exactly it happens to touch a pin — the
+    selection is the attachment, never the geometry.
+
+    A wire's own pins are elastic, so rotating one drags nothing at all;
+    otherwise spinning a line that overlapped a bus would drag the bus along.
     """
     if is_wire_like(components[component_index]):
         return
@@ -419,9 +431,10 @@ def _follow_wires_after_geometry_change(
     def _close(a: float, b: float) -> bool:
         return abs(a - b) < tol
 
+    follow_set = set(follow)
     for i, wire in enumerate(components):
-        if i == component_index:
-            continue
+        if i == component_index or i not in follow_set:
+            continue  # not selected → not attached
         if not is_wire_like(wire):
             continue
         pts = list(getattr(wire, "points", []))

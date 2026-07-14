@@ -507,10 +507,11 @@ def build_server():
         dy: float,
         project_id: str = "default",
     ) -> dict:
-        """Translate a component by (dx, dy) inches, propagating per the
-        connection-aware rules: moving a board drags components mounted on
-        it; wire endpoints coincident with the moved part follow it (the
-        wire's far end stays put, so leads stretch)."""
+        """Translate a component by (dx, dy) inches. Only this component moves
+        (plus anything mounted on it, if it's a board). A wire that merely
+        touches it is NOT dragged along — attachment is never inferred from
+        geometry. To move a part together with its wires, pass them all to
+        ``align`` / move each, or move the wire's endpoint with move_node."""
         p = _get(project_id)
         i, _c = _find_component(p, name)
         _record_history(project_id, f"move {name}")
@@ -558,7 +559,10 @@ def build_server():
     ) -> dict:
         """Rotate a component 90°. Components with an ``orientation`` enum
         cycle the enum (so derived pins re-orient cleanly); two-pin and
-        points-list components rotate their coordinates about the centroid."""
+        points-list components rotate their coordinates about the centroid.
+
+        Wires attached to the rotated pins are left where they are — nothing
+        is dragged along automatically."""
         p = _get(project_id)
         i, _c = _find_component(p, name)
         _record_history(project_id, f"rotate {name}")

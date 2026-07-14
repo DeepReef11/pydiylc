@@ -2186,31 +2186,59 @@ def _tree_move(state: _ViewerState, dx: float, dy: float) -> None:
     _refresh_tree_panel(state)
 
 
+def _selected_indices(state: _ViewerState) -> set[int]:
+    """Indices of the multi-selected components. The move/rotate engines take
+    this as the set of things allowed to travel with an edit."""
+    names = set(state.selected_names)
+    return {
+        i for i, c in enumerate(state.project.components)
+        if getattr(c, "name", None) in names
+    }
+
+
 def _tree_rotate(state: _ViewerState, clockwise: bool) -> None:
     """Rotate the focused component 90°. If a multi-selection (N>1) is
-    active, every selected component spins about its own anchor.
+    active, every selected part spins about its own anchor.
+
+    An unselected wire never moves, however exactly it touches a rotating pin —
+    the selection is the attachment, same as for a move. Select a wire along
+    with the part and it stays plugged in: its endpoints track the pins to
+    their new positions rather than spinning on their own, which is what
+    "rotate this part and its leads" has to mean. A selection of nothing but
+    wires has no part to track, so those wires do spin.
     """
     from . import moves
+    from .graph import is_wire_like
 
     nav = state.nav
     if nav is None or nav.current is None:
         return
 
-    # Bulk path: rotate each selected component independently.
+    selected = _selected_indices(state)
+
+    # Bulk path: spin each selected part; selected wires ride along instead.
     if len(state.selected_names) > 1:
-        names = set(state.selected_names)
-        _record(state, f"rotate {len(names)} components")
-        for ci, comp in enumerate(state.project.components):
-            if getattr(comp, "name", None) in names:
-                moves.rotate_component(state.project, ci, clockwise=clockwise)
-                _sync_buffer_rotate(state, state.project.components[ci])
+        targets = [
+            i for i in sorted(selected)
+            if not is_wire_like(state.project.components[i])
+        ]
+        if not targets:
+            targets = sorted(selected)  # all wires: nothing to track, so spin
+        _record(state, f"rotate {len(state.selected_names)} components")
+        for ci in targets:
+            moves.rotate_component(
+                state.project, ci, clockwise=clockwise, follow=selected,
+            )
+            _sync_buffer_rotate(state, state.project.components[ci])
         nav.rebuild(state.project)
         _refresh_tree_panel(state)
         return
 
     ci = nav.current.component_index
     _record(state, "rotate")
-    moves.rotate_component(state.project, ci, clockwise=clockwise)
+    moves.rotate_component(
+        state.project, ci, clockwise=clockwise, follow=selected,
+    )
     # Mirror the rotation in the working buffer (orientation= keyword for
     # parts with an orientation enum; raw-coord replacement otherwise).
     _sync_buffer_rotate(state, state.project.components[ci])

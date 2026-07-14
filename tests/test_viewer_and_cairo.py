@@ -450,9 +450,9 @@ def test_rubber_band_empty_rectangle_keeps_base_in_add_mode():
     assert s.selected_names == {"R1"}
 
 
-def test_rotate_drags_attached_wires():
-    """Wires attached to a rotating component should follow each
-    pin to its new position; the wire's far endpoint stays.
+def test_rotate_drags_selected_wires():
+    """Wires SELECTED with a rotating component follow each pin to its new
+    position; the wire's far endpoint stays.
     """
     from pydiylc import HookupWire
     p = Project()
@@ -464,6 +464,7 @@ def test_rotate_drags_attached_wires():
     s = viewer._ViewerState(p, builder=None, watch_path=None)
     _tree_mode(s)
     s.nav.focus_node(0, None)
+    s.selected_names = {"R1", "W0", "W1"}  # take the wires along
     viewer._tree_rotate(s, clockwise=True)
     # R1's centroid was (2.5, 2.0); 90° CW → R1 is now vertical at x=2.5.
     w0 = next(c for c in p.components if c.name == "W0")
@@ -500,6 +501,7 @@ def test_enum_rotate_drags_attached_wires_per_pin():
     s = viewer._ViewerState(p, builder=None, watch_path=None)
     _tree_mode(s)
     s.nav.focus_node(0, None)
+    s.selected_names = {"Q1", "W0", "W1", "W2"}
     viewer._tree_rotate(s, clockwise=True)
     # After rotation, each W's first endpoint should be on the
     # transistor's new pin position; the far endpoint unchanged.
@@ -849,3 +851,29 @@ def test_hold_position_keeps_the_user_where_they_were():
     # ...but never outside the scrollable range.
     assert viewer._hold_position(9999, 46, 2520) == 2474
     assert viewer._hold_position(-5, 46, 2520) == 0
+
+
+def test_rotate_leaves_unselected_wires_alone():
+    """The bus case: a part parked on a bus corner must not drag it when spun.
+
+    Rotation used to pull any wire endpoint sitting on a moved pin, however it
+    got there. Now the selection is the attachment, same as for moves.
+    """
+    from pydiylc import HookupWire, Line
+    p = Project()
+    p.add(Resistor(name="R1", x1=2.0, y1=2.0, x2=3.0, y2=2.0))
+    p.add(Line(name="BUS", points=[(2.0, 2.0), (6.0, 2.0)]))       # touches pin0
+    p.add(HookupWire(name="W0", points=[(3.0, 2.0), (4.0, 2.0)]))  # touches pin1
+
+    s = viewer._ViewerState(p, builder=None, watch_path=None)
+    _tree_mode(s)
+    s.nav.focus_node(0, None)
+    s.selected_names = {"R1"}          # only the resistor
+    viewer._tree_rotate(s, clockwise=True)
+
+    bus = next(c for c in p.components if c.name == "BUS")
+    w0 = next(c for c in p.components if c.name == "W0")
+    assert bus.points == [(2.0, 2.0), (6.0, 2.0)]   # bus untouched
+    assert w0.points == [(3.0, 2.0), (4.0, 2.0)]    # wire untouched
+    # ...and R1 really did rotate.
+    assert (p.components[0].x1, p.components[0].y1) != (2.0, 2.0)

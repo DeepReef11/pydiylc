@@ -152,10 +152,18 @@ surface. The status bar shows ✎ EDIT while you're in.
   again" preference, persisted in `~/.config/pydiylc/prefs.json`)
 - **Esc / Q** — exit edit mode
 
-Moves are connection-aware: moving a board drags the components mounted on it,
-and moving a part stretches any wires attached to it (the wire's far end stays
-put). A node-level move (Tab into a node, then Ctrl+arrow) detaches that point
-from its junction. See `docs/keyboard-tree-editor.md` for the full design.
+**The selection is the attachment.** A move or rotation affects exactly what
+you selected; anything that merely *touches* it stays where it is. Overlapping
+two parts never welds them together, so parking a line on top of a bus and
+taking it off again leaves the bus alone.
+
+To bring a wire along, select it too (Ctrl/Shift+click or rubber-band). A
+selected wire keeps any endpoint that's anchored on an *unselected* pin, so it
+stretches rather than quietly unplugging something you didn't touch; rotating a
+part with its wires selected tracks them to the pins' new positions. The one
+thing that still propagates on its own is containment: a board carries the
+components mounted on it. A node-level move (Tab into a node, then Ctrl+arrow)
+moves that one point. See `docs/keyboard-tree-editor.md` for the full design.
 
 > **Note:** the tree-editor GTK UI is built against a fully unit-tested core
 > (graph, move engine, rotation, navigation — 60+ tests) but the GTK panel and
