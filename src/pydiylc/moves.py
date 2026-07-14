@@ -167,22 +167,23 @@ def _leads_to_follow(
 ) -> list[tuple[int, int]]:
     """Wire endpoints soldered to a moving pin, which travel with it.
 
-    An endpoint follows iff it shares a junction with a *rigid* pin belonging
-    to the moving set, and with no rigid pin outside it. Move a pad and the
-    lead soldered to it comes along, far end anchored, so the wire stretches.
+    An endpoint follows iff it shares a junction with a *rigid* pin in the
+    moving set. Move a pad and the lead soldered to it comes along, far end
+    anchored, so the wire stretches.
 
-    Two conditions, two different disasters averted:
+    The anchor must be rigid: a wire never anchors another wire. Both ends are
+    elastic, so two of them sharing a coordinate are merely touching, not
+    joined — without this, parking a line on a bus and taking it off again
+    dragged the whole bus along underneath it.
 
-    - The anchor must be rigid. A wire never anchors another wire — both ends
-      are elastic, so two of them sharing a coordinate are merely touching,
-      not joined. Without this, parking a line on a bus and taking it off
-      again dragged the whole bus along underneath it.
-
-    - No rigid anchor outside the moving set. Once the user has dragged a
-      moving component on top of a stationary one, the junction holds both;
-      pulling the lead along would silently unplug it from the part they never
-      touched. Leave it stretched instead — a stretched wire is at least
-      visible.
+    Other rigid pins may share the junction, and the lead still follows the one
+    that moves. It is tempting to bail out in that case, on the grounds that
+    the lead also touches a part we aren't moving and dragging it away would
+    silently unplug that part. Doing so loses the connection you actually care
+    about: park a pad on top of another and move it off again, and the lead
+    stays behind, re-soldered to the pad you merely passed over. Following the
+    pin that moves keeps the link with the thing the user is manipulating,
+    which is the one they can see.
 
     Called *before* the move, while the junctions still describe the old
     layout.
@@ -196,13 +197,11 @@ def _leads_to_follow(
             j = g.junction_at(cp.x, cp.y)
             if j is None:
                 continue
-            anchors = {
-                m.component_index
-                for m in j.members
-                if m.component_index != i
+            if any(
+                m.component_index in rigid_set
                 and not is_wire_like(components[m.component_index])
-            }
-            if anchors and anchors <= rigid_set:
+                for m in j.members
+            ):
                 follow.append((i, cp.point_index))
     return follow
 
@@ -218,15 +217,22 @@ def _translate_group(
     - Containment: a board carries the components mounted on it.
     - Leads follow: a wire endpoint soldered to a moving pin travels with it,
       far end anchored, so the wire stretches (see ``_leads_to_follow``).
-    - Stretch, don't unplug: an endpoint of a *moving* wire that is anchored
-      on a pin outside the set stays put, so the wire stretches rather than
-      silently unplugging a component the user never selected. Both ends can
-      be pinned this way, in which case the wire doesn't move at all.
+    - Stretch, don't unplug: when a part carries a wire along, an endpoint of
+      that wire anchored on a pin *outside* the move stays put, so the wire
+      stretches instead of silently unplugging a component the user never
+      selected. Both ends can be pinned this way, in which case the wire
+      doesn't move at all.
 
-    ``detach=True`` drops the lead-following rule: the selection moves alone
-    and every joint it had is broken. That's the deliberate way to pull a part
-    off its wires — and the escape hatch for the one case geometry can't
-    resolve, a part parked exactly on a rail's endpoint.
+    That last rule applies only when a *part* is doing the carrying. Grab a
+    wire on its own and it moves whole, joints and all: pinning it would mean
+    that dragging a wire over a pad welds it there, and the next drag deforms
+    the wire instead of moving it — the same trap, from the other side, as a
+    lead being left behind on a pad it was merely passed over.
+
+    ``detach=True`` ignores every joint: the selection moves alone, leads stay
+    behind, and pinned endpoints are released. That's the deliberate way to
+    pull a part off its wires — and the escape hatch for the one case geometry
+    can't resolve, a part parked exactly on a rail's endpoint.
     """
     components = project.components
     result = MoveResult()
@@ -234,16 +240,21 @@ def _translate_group(
     # Resolve the topology up front — once the components move, the junctions
     # they used to sit on are gone.
     follow = [] if detach else _leads_to_follow(project, g, rigid_set)
+    # Is a part carrying wires along, or did the user grab wires directly?
+    carried_by_a_part = any(
+        not is_wire_like(components[ci]) for ci in rigid_set
+    )
     pinned: dict[int, set[int]] = {}
-    for ci in rigid_set:
-        comp = components[ci]
-        if not is_wire_like(comp):
-            continue
-        pinned[ci] = {
-            cp.point_index
-            for cp in control_points_of(comp, ci)
-            if _pinned_outside(project, g, ci, cp, rigid_set)
-        }
+    if carried_by_a_part and not detach:
+        for ci in rigid_set:
+            comp = components[ci]
+            if not is_wire_like(comp):
+                continue
+            pinned[ci] = {
+                cp.point_index
+                for cp in control_points_of(comp, ci)
+                if _pinned_outside(project, g, ci, cp, rigid_set)
+            }
 
     for ci in sorted(rigid_set):
         comp = components[ci]

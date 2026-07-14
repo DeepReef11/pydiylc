@@ -373,3 +373,47 @@ def test_rotate_coords_clean_floats():
     for v in (r.x1, r.y1, r.x2, r.y2):
         # No long binary tails.
         assert len(repr(v).split(".")[-1]) <= 4
+
+
+def test_a_lead_is_not_stolen_by_a_pad_you_move_over():
+    """Park P1 on P2, move it off, and W must still be soldered to P1.
+
+    The junction holds both pads while they overlap. Refusing to drag the lead
+    in that case (to avoid "unplugging" the pad we aren't moving) left it
+    behind, re-soldered to the pad P1 had merely been passed over — the
+    connection the user was actually working on was the one that got lost.
+    """
+    p = Project()
+    p.add(SolderPad("P1", x=1.0, y=1.0))
+    p.add(SolderPad("P2", x=2.0, y=2.0))
+    p.add(HookupWire("W", points=[(1.0, 1.0), (3.0, 1.0)]))  # soldered to P1
+
+    move_component(p, 0, 1.0, 1.0)  # P1 lands exactly on P2
+    move_component(p, 0, 1.0, 0.0)  # ...and moves off again
+
+    p1, p2, w = p.components
+    assert (p1.x, p1.y) == (3.0, 2.0)
+    assert w.points[0] == (3.0, 2.0)  # lead stayed with P1
+    assert (p2.x, p2.y) == (2.0, 2.0)  # P2 never moved
+    assert w.points[1] == (3.0, 1.0)   # far end still anchored
+
+
+def test_a_wire_grabbed_on_its_own_moves_whole():
+    """Dragging a wire over a pad must not weld it there.
+
+    A wire carried by a part keeps an endpoint anchored on an outside pin (it
+    stretches instead of unplugging it). But when the user grabs the *wire*,
+    that same rule welded it to whatever pad it had been dragged across, and
+    the next drag deformed it instead of moving it.
+    """
+    p = Project()
+    p.add(SolderPad("P2", x=3.0, y=1.0))
+    p.add(HookupWire("W", points=[(1.0, 1.0), (2.0, 1.0)]))
+
+    move_component(p, 1, 1.0, 0.0)  # W's far end lands on P2
+    assert p.components[1].points == [(2.0, 1.0), (3.0, 1.0)]
+
+    move_component(p, 1, 0.0, 1.0)  # drag W away again
+
+    assert p.components[1].points == [(2.0, 2.0), (3.0, 2.0)]  # shape intact
+    assert (p.components[0].x, p.components[0].y) == (3.0, 1.0)  # pad stayed
