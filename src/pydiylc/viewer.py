@@ -204,11 +204,23 @@ def show(project: Project, *, title: str = "pydiylc viewer",
         click.connect("pressed", _make_click_handler(state, canvas))
         canvas.add_controller(click)
 
-        # Right-click → context menu.
-        rclick = Gtk.GestureClick()
-        rclick.set_button(3)  # right mouse button
-        rclick.connect("pressed", _make_right_click_handler(state, canvas))
-        canvas.add_controller(rclick)
+        # Right button: drag pans; press-release without movement opens the
+        # context menu (decided on drag-end, so the menu never pops mid-pan).
+        open_menu = _make_right_click_handler(state, canvas)
+        rdrag = Gtk.GestureDrag()
+        rdrag.set_button(3)
+        rdrag.connect("drag-begin", _make_pan_drag_begin(state))
+        rdrag.connect("drag-update", _make_pan_drag_update(state, canvas))
+        rdrag.connect("drag-end", _make_pan_drag_end(state, open_menu))
+        canvas.add_controller(rdrag)
+
+        # Middle button: plain drag-to-pan (no menu on release).
+        mdrag = Gtk.GestureDrag()
+        mdrag.set_button(2)
+        mdrag.connect("drag-begin", _make_pan_drag_begin(state))
+        mdrag.connect("drag-update", _make_pan_drag_update(state, canvas))
+        mdrag.connect("drag-end", _make_pan_drag_end(state, None))
+        canvas.add_controller(mdrag)
 
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", _make_drag_begin(state))
@@ -311,6 +323,12 @@ class _ViewerState:
         self.rubber_band: tuple[float, float, float, float] | None = None
         self.rubber_band_base: set[str] = set()
         self.rubber_band_mode: str = "replace"  # "replace" | "add" | "toggle"
+        # Right/middle-drag pan state. The right button doubles as the
+        # context-menu trigger, so the menu is deferred to release and only
+        # opens when the pointer never moved past the click slop.
+        self.pan_drag_start: tuple[float, float] | None = None
+        self.pan_drag_origin: tuple[float, float] | None = None
+        self.pan_drag_moved: bool = False
         # Tree-editor mode.
         self.tree_mode: bool = False
         self.nav = None  # tree_editor.NavState, lazily built
@@ -756,7 +774,8 @@ def _install_viewer_actions(state: _ViewerState, win) -> None:
 _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
     ("View", [
         ("scroll", "zoom"),
-        ("drag", "pan"),
+        ("right-drag / middle-drag", "pan (anywhere on the canvas)"),
+        ("drag (on a part)", "pan"),
         ("0", "fit page to viewport"),
         ("+/-", "zoom in/out"),
         ("click", "select component"),
@@ -769,7 +788,7 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
     ]),
     ("Modes", [
         ("T", "toggle edit mode"),
-        ("Q / Esc", "exit edit mode"),
+        ("Q / Esc", "exit edit mode (closes the viewer when not editing)"),
         ("?", "this help dialog"),
         ("r", "reload from disk"),
     ]),
@@ -798,7 +817,7 @@ _KEYBINDINGS: list[tuple[str, list[tuple[str, str]]]] = [
     ]),
     ("History", [
         ("u / Ctrl+Z", "undo"),
-        ("U / Ctrl+Y", "redo"),
+        ("U / Ctrl+Y / Ctrl+Shift+Z", "redo"),
     ]),
     ("Save", [
         ("Enter", "write the working buffer to disk (silent)"),
@@ -1046,6 +1065,11 @@ def _make_click_handler(state: _ViewerState, canvas):
     from gi.repository import Gdk
 
     def on_click(gesture, n_press, x, y):
+        # Right/middle presses belong to the pan/context-menu gestures —
+        # selecting (or clearing) here would wreck a multi-selection the
+        # user is only trying to pan around.
+        if gesture.get_current_button() in (2, 3):
+            return
         cx, cy = _project_xy_from_screen(state, x, y)
         hit = cairo_render.hit_test(state.project, cx, cy, cairo_render.PX_PER_INCH)
         mods = gesture.get_current_event_state()
@@ -1148,6 +1172,47 @@ def _make_right_click_handler(state: _ViewerState, canvas):
         state.context_popover = popover
 
     return on_rclick
+
+
+# Below this Manhattan pixel distance a right-button press-release counts as
+# a click (context menu), not a pan. Matches GTK's dnd threshold ballpark.
+_PAN_CLICK_SLOP_PX = 6.0
+
+
+def _make_pan_drag_begin(state: _ViewerState):
+    def on_begin(_gesture, x, y):
+        state.pan_drag_start = (x, y)
+        state.pan_drag_origin = (state.pan_x, state.pan_y)
+        state.pan_drag_moved = False
+    return on_begin
+
+
+def _make_pan_drag_update(state: _ViewerState, canvas):
+    def on_update(_gesture, dx, dy):
+        if state.pan_drag_origin is None:
+            return
+        # Hold still until the slop is exceeded so a slightly-jittery
+        # right-click doesn't nudge the canvas before the menu opens.
+        if not state.pan_drag_moved and abs(dx) + abs(dy) < _PAN_CLICK_SLOP_PX:
+            return
+        state.pan_drag_moved = True
+        state.pan_x = state.pan_drag_origin[0] + dx
+        state.pan_y = state.pan_drag_origin[1] + dy
+        canvas.queue_draw()
+    return on_update
+
+
+def _make_pan_drag_end(state: _ViewerState, open_menu):
+    """open_menu is the right-click context-menu handler, or None (middle)."""
+    def on_end(gesture, _dx, _dy):
+        start = state.pan_drag_start
+        moved = state.pan_drag_moved
+        state.pan_drag_start = None
+        state.pan_drag_origin = None
+        state.pan_drag_moved = False
+        if not moved and start is not None and open_menu is not None:
+            open_menu(gesture, 1, start[0], start[1])
+    return on_end
 
 
 def _make_drag_begin(state: _ViewerState):
@@ -1763,9 +1828,10 @@ def _build_tree_panel(state: _ViewerState):
 
     hint = Gtk.Label(
         label="Tab component · Space drill · PgUp/PgDn page · arrows hole-move\n"
-              "Ctrl+arrows nudge · R rotate · / focus · g send · a add+wire · A add\n"
-              "v edit value · D duplicate · dd delete · u undo · U redo\n"
-              "Enter save · Ctrl+S save (diff)"
+              "Ctrl+arrows nudge (+Shift fine) · R/Shift+R rotate · / focus · g send\n"
+              "a add+wire · A add · v edit value · D duplicate · dd delete\n"
+              "Ctrl+G snap grid · Ctrl+L align · u undo · U redo\n"
+              "Enter save · Ctrl+S save (diff) · Q/Esc exit · ? all keys"
     )
     hint.add_css_class("dim-label")
     hint.set_wrap(True)

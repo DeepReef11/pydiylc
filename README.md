@@ -98,11 +98,19 @@ Keyboard:
 - **R** — manual reload
 - **0** — reset zoom + pan
 - **+/-** — zoom in/out
+- **?** — keyboard-shortcut help dialog (which-key style)
 - **Q / Esc** — quit
-- **mouse drag** — pan
+- **right-drag / middle-drag** — pan anywhere (left-drag starting on a
+  component also pans)
 - **scroll** — zoom
 - **click** — select component (name shown in header bar)
-- **Right-click** — context menu: Add component here / Edit value / Duplicate / Rotate / Delete / Send to / Focus. The "Add here" option places the new component at the cursor (snapped to the project grid).
+- **Ctrl+click / Shift+click** — toggle / add a component in the
+  multi-selection; **drag on empty canvas** — rubber-band rectangle select
+  (**Shift+drag** adds to the existing selection)
+- **Ctrl+G** — snap the selection to the 0.1 in grid (whole project if
+  nothing is selected); **Ctrl+L** — align the multi-selection horizontally
+  (y mean). Both work in and out of edit mode.
+- **Right-click** — context menu: Add component here / Edit value / Duplicate / Rotate / Delete / Send to / Focus. The "Add here" option places the new component at the cursor (snapped to the project grid). The menu opens on release, so a right-*drag* pans instead of popping the menu.
 - **Ctrl + drag** — move a component; on release the viewer proposes the
   source edit (snapped to the grid) and shows a diff with an **Apply** button.
   Auto-apply works when the layout is a `.py` file whose components are built
@@ -134,6 +142,11 @@ surface. The status bar shows ✎ EDIT while you're in.
 - **U** / **Ctrl+Y** — redo the last undone edit
 - **R / Shift+R** — rotate 90° CW / CCW (cycles `orientation` for oriented
   parts, rotates coordinates otherwise)
+- **Multi-selection bulk edits** — with several components selected
+  (Ctrl/Shift+click or rubber-band), **arrows** nudge them together,
+  **R / Shift+R** rotates each one, **v** edits the shared value field,
+  **D** duplicates them all (the clones become the new selection), and
+  **dd** deletes them all
 - **Enter** — save the working buffer to disk (silent)
 - **Ctrl+S** — save with the diff-on-save dialog (gated by a "don't show
   again" preference, persisted in `~/.config/pydiylc/prefs.json`)

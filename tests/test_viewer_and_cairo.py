@@ -721,3 +721,77 @@ def test_bulk_move_survives_repeated_nudges():
     assert s.project.components[0].x1 == 2.5   # R1: 1.0 + 3 * 0.5
     assert s.project.components[1].x1 == 1.0   # R2: untouched
     assert s.project.components[2].x1 == 2.5   # R3: 1.0 + 3 * 0.5
+
+
+# ---------------------------------------------------------------------------
+# Right/middle-drag pan (click-vs-drag discrimination)
+# ---------------------------------------------------------------------------
+
+class _FakeCanvas:
+    def __init__(self):
+        self.draws = 0
+
+    def queue_draw(self):
+        self.draws += 1
+
+
+def test_pan_drag_holds_still_inside_slop_then_pans():
+    s = _state_with("R1")
+    canvas = _FakeCanvas()
+    begin = viewer._make_pan_drag_begin(s)
+    update = viewer._make_pan_drag_update(s, canvas)
+    end = viewer._make_pan_drag_end(s, None)
+    ox, oy = s.pan_x, s.pan_y
+
+    begin(None, 100, 100)
+    update(None, 2, 1)  # inside the click slop: canvas must not jiggle
+    assert (s.pan_x, s.pan_y) == (ox, oy)
+    assert canvas.draws == 0
+
+    update(None, 40, -15)  # past the slop: pan follows the full offset
+    assert (s.pan_x, s.pan_y) == (ox + 40, oy - 15)
+    assert canvas.draws == 1
+
+    end(None, 40, -15)
+    assert s.pan_drag_origin is None
+    assert s.pan_drag_start is None
+    assert s.pan_drag_moved is False
+
+
+def test_right_click_without_motion_opens_menu_at_press_point():
+    s = _state_with("R1")
+    opened = []
+    begin = viewer._make_pan_drag_begin(s)
+    update = viewer._make_pan_drag_update(s, _FakeCanvas())
+    end = viewer._make_pan_drag_end(s, lambda _g, _n, x, y: opened.append((x, y)))
+    ox, oy = s.pan_x, s.pan_y
+
+    begin(None, 50, 60)
+    update(None, 1, 1)  # jitter inside the slop
+    end(None, 1, 1)
+    assert opened == [(50, 60)]
+    assert (s.pan_x, s.pan_y) == (ox, oy)  # canvas never moved
+
+
+def test_right_drag_pans_and_suppresses_menu():
+    s = _state_with("R1")
+    opened = []
+    begin = viewer._make_pan_drag_begin(s)
+    update = viewer._make_pan_drag_update(s, _FakeCanvas())
+    end = viewer._make_pan_drag_end(s, lambda _g, _n, x, y: opened.append((x, y)))
+    ox = s.pan_x
+
+    begin(None, 50, 60)
+    update(None, 30, 0)
+    end(None, 30, 0)
+    assert opened == []
+    assert s.pan_x == ox + 30
+
+
+def test_middle_drag_end_without_menu_is_fine():
+    s = _state_with("R1")
+    begin = viewer._make_pan_drag_begin(s)
+    end = viewer._make_pan_drag_end(s, None)
+    begin(None, 10, 10)
+    end(None, 0, 0)  # no motion + no menu handler: must not raise
+    assert s.pan_drag_start is None
